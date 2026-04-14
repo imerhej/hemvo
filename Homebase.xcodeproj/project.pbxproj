@@ -24,34 +24,34 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		2B70BA1D2F676B7C008EA50F /* Homebase.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Homebase.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		2B70BA2A2F676B7E008EA50F /* HomebaseTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HomebaseTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		2B70BA342F676B7E008EA50F /* HomebaseUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HomebaseUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2B70BA1D2F676B7C008EA50F /* Homebaserun.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Homebaserun.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2B70BA2A2F676B7E008EA50F /* HomebaserunTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HomebaserunTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2B70BA342F676B7E008EA50F /* HomebaserunUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HomebaserunUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		2B70BAE62F67744D008EA50F /* Exceptions for "HomeBaseTests" folder in "HomebaseTests" target */ = {
+		2B70BAE62F67744D008EA50F /* Exceptions for "HomeBaseTests" folder in "HomebaserunTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				ServiceTests/PersistenceServiceTests.swift,
 				ServiceTests/StoreKitServiceTests.swift,
 			);
-			target = 2B70BA292F676B7E008EA50F /* HomebaseTests */;
+			target = 2B70BA292F676B7E008EA50F /* HomebaserunTests */;
 		};
-		2B70BAE72F67744D008EA50F /* Exceptions for "HomeBaseTests" folder in "HomebaseUITests" target */ = {
+		2B70BAE72F67744D008EA50F /* Exceptions for "HomeBaseTests" folder in "HomebaserunUITests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				ServiceTests/PersistenceServiceTests.swift,
 				ServiceTests/StoreKitServiceTests.swift,
 			);
-			target = 2B70BA332F676B7E008EA50F /* HomebaseUITests */;
+			target = 2B70BA332F676B7E008EA50F /* HomebaserunUITests */;
 		};
-		2BB865032F6EFC9B003F3B0C /* Exceptions for "Homebase" folder in "Homebase" target */ = {
+		2BB865032F6EFC9B003F3B0C /* Exceptions for "Homebase" folder in "Homebaserun" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Resources/HomeBase.xcdatamodeld,
+				Resources/HomeBaserun.xcdatamodeld,
 			);
-			target = 2B70BA1C2F676B7C008EA50F /* Homebase */;
+			target = 2B70BA1C2F676B7C008EA50F /* Homebaserun */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -59,7 +59,7 @@
 		2B70BA1F2F676B7C008EA50F /* Homebase */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				2BB865032F6EFC9B003F3B0C /* Exceptions for "Homebase" folder in "Homebase" target */,
+				2BB865032F6EFC9B003F3B0C /* Exceptions for "Homebase" folder in "Homebaserun" target */,
 			);
 			path = Homebase;
 			sourceTree = "<group>";
@@ -67,8 +67,8 @@
 		2B70BA2D2F676B7E008EA50F /* HomeBaseTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				2B70BAE62F67744D008EA50F /* Exceptions for "HomeBaseTests" folder in "HomebaseTests" target */,
-				2B70BAE72F67744D008EA50F /* Exceptions for "HomeBaseTests" folder in "HomebaseUITests" target */,
+				2B70BAE62F67744D008EA50F /* Exceptions for "HomeBaseTests" folder in "HomebaserunTests" target */,
+				2B70BAE72F67744D008EA50F /* Exceptions for "HomeBaseTests" folder in "HomebaserunUITests" target */,
 			);
 			path = HomeBaseTests;
 			sourceTree = "<group>";
@@ -106,9 +106,9 @@
 		2B70BA1E2F676B7C008EA50F /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				2B70BA1D2F676B7C008EA50F /* Homebase.app */,
-				2B70BA2A2F676B7E008EA50F /* HomebaseTests.xctest */,
-				2B70BA342F676B7E008EA50F /* HomebaseUITests.xctest */,
+				2B70BA1D2F676B7C008EA50F /* Homebaserun.app */,
+				2B70BA2A2F676B7E008EA50F /* HomebaserunTests.xctest */,
+				2B70BA342F676B7E008EA50F /* HomebaserunUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -116,9 +116,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		2B70BA1C2F676B7C008EA50F /* Homebase */ = {
+		2B70BA1C2F676B7C008EA50F /* Homebaserun */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 2B70BA3E2F676B7E008EA50F /* Build configuration list for PBXNativeTarget "Homebase" */;
+			buildConfigurationList = 2B70BA3E2F676B7E008EA50F /* Build configuration list for PBXNativeTarget "Homebaserun" */;
 			buildPhases = (
 				2B70BA192F676B7C008EA50F /* Sources */,
 				2B70BA1A2F676B7C008EA50F /* Frameworks */,
@@ -129,14 +129,14 @@
 			fileSystemSynchronizedGroups = (
 				2B70BA1F2F676B7C008EA50F /* Homebase */,
 			);
-			name = Homebase;
+			name = Homebaserun;
 			productName = Homebase;
-			productReference = 2B70BA1D2F676B7C008EA50F /* Homebase.app */;
+			productReference = 2B70BA1D2F676B7C008EA50F /* Homebaserun.app */;
 			productType = "com.apple.product-type.application";
 		};
-		2B70BA292F676B7E008EA50F /* HomebaseTests */ = {
+		2B70BA292F676B7E008EA50F /* HomebaserunTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 2B70BA412F676B7E008EA50F /* Build configuration list for PBXNativeTarget "HomebaseTests" */;
+			buildConfigurationList = 2B70BA412F676B7E008EA50F /* Build configuration list for PBXNativeTarget "HomebaserunTests" */;
 			buildPhases = (
 				2B70BA262F676B7E008EA50F /* Sources */,
 				2B70BA272F676B7E008EA50F /* Frameworks */,
@@ -150,14 +150,14 @@
 			fileSystemSynchronizedGroups = (
 				2B70BA2D2F676B7E008EA50F /* HomeBaseTests */,
 			);
-			name = HomebaseTests;
+			name = HomebaserunTests;
 			productName = HomebaseTests;
-			productReference = 2B70BA2A2F676B7E008EA50F /* HomebaseTests.xctest */;
+			productReference = 2B70BA2A2F676B7E008EA50F /* HomebaserunTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		2B70BA332F676B7E008EA50F /* HomebaseUITests */ = {
+		2B70BA332F676B7E008EA50F /* HomebaserunUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 2B70BA442F676B7E008EA50F /* Build configuration list for PBXNativeTarget "HomebaseUITests" */;
+			buildConfigurationList = 2B70BA442F676B7E008EA50F /* Build configuration list for PBXNativeTarget "HomebaserunUITests" */;
 			buildPhases = (
 				2B70BA302F676B7E008EA50F /* Sources */,
 				2B70BA312F676B7E008EA50F /* Frameworks */,
@@ -168,9 +168,9 @@
 			dependencies = (
 				2B70BA362F676B7E008EA50F /* PBXTargetDependency */,
 			);
-			name = HomebaseUITests;
+			name = HomebaserunUITests;
 			productName = HomebaseUITests;
-			productReference = 2B70BA342F676B7E008EA50F /* HomebaseUITests.xctest */;
+			productReference = 2B70BA342F676B7E008EA50F /* HomebaserunUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -196,7 +196,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 2B70BA182F676B7C008EA50F /* Build configuration list for PBXProject "Homebase" */;
+			buildConfigurationList = 2B70BA182F676B7C008EA50F /* Build configuration list for PBXProject "I" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -210,9 +210,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				2B70BA1C2F676B7C008EA50F /* Homebase */,
-				2B70BA292F676B7E008EA50F /* HomebaseTests */,
-				2B70BA332F676B7E008EA50F /* HomebaseUITests */,
+				2B70BA1C2F676B7C008EA50F /* Homebaserun */,
+				2B70BA292F676B7E008EA50F /* HomebaserunTests */,
+				2B70BA332F676B7E008EA50F /* HomebaserunUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -256,18 +256,18 @@
 /* Begin PBXTargetDependency section */
 		2B70BA2C2F676B7E008EA50F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 2B70BA1C2F676B7C008EA50F /* Homebase */;
+			target = 2B70BA1C2F676B7C008EA50F /* Homebaserun */;
 			targetProxy = 2B70BA2B2F676B7E008EA50F /* PBXContainerItemProxy */;
 		};
 		2B70BA362F676B7E008EA50F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 2B70BA1C2F676B7C008EA50F /* Homebase */;
+			target = 2B70BA1C2F676B7C008EA50F /* Homebaserun */;
 			targetProxy = 2B70BA352F676B7E008EA50F /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		2B70BA3C2F676B7E008EA50F /* Debug configuration for PBXProject "Homebase" */ = {
+		2B70BA3C2F676B7E008EA50F /* Debug configuration for PBXProject "I" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -331,7 +331,7 @@
 			};
 			name = Debug;
 		};
-		2B70BA3D2F676B7E008EA50F /* Release configuration for PBXProject "Homebase" */ = {
+		2B70BA3D2F676B7E008EA50F /* Release configuration for PBXProject "I" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -388,7 +388,7 @@
 			};
 			name = Release;
 		};
-		2B70BA3F2F676B7E008EA50F /* Debug configuration for PBXNativeTarget "Homebase" */ = {
+		2B70BA3F2F676B7E008EA50F /* Debug configuration for PBXNativeTarget "Homebaserun" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -410,7 +410,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				NEW_SETTING = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.issammerhej.Homebase;
+				PRODUCT_BUNDLE_IDENTIFIER = com.issammerhej.Homebaserun;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -422,15 +422,15 @@
 			};
 			name = Debug;
 		};
-		2B70BA402F676B7E008EA50F /* Release configuration for PBXNativeTarget "Homebase" */ = {
+		2B70BA402F676B7E008EA50F /* Release configuration for PBXNativeTarget "Homebaserun" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Homebase/HomebaseRelease.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 545XYWBM95;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -446,6 +446,7 @@
 				NEW_SETTING = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.issammerhej.Homebase;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -456,7 +457,7 @@
 			};
 			name = Release;
 		};
-		2B70BA422F676B7E008EA50F /* Debug configuration for PBXNativeTarget "HomebaseTests" */ = {
+		2B70BA422F676B7E008EA50F /* Debug configuration for PBXNativeTarget "HomebaserunTests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -475,11 +476,11 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Homebase.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Homebase";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Homebaserun.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Homebaserun";
 			};
 			name = Debug;
 		};
-		2B70BA432F676B7E008EA50F /* Release configuration for PBXNativeTarget "HomebaseTests" */ = {
+		2B70BA432F676B7E008EA50F /* Release configuration for PBXNativeTarget "HomebaserunTests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -498,11 +499,11 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Homebase.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Homebase";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Homebaserun.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Homebaserun";
 			};
 			name = Release;
 		};
-		2B70BA452F676B7E008EA50F /* Debug configuration for PBXNativeTarget "HomebaseUITests" */ = {
+		2B70BA452F676B7E008EA50F /* Debug configuration for PBXNativeTarget "HomebaserunUITests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
@@ -523,7 +524,7 @@
 			};
 			name = Debug;
 		};
-		2B70BA462F676B7E008EA50F /* Release configuration for PBXNativeTarget "HomebaseUITests" */ = {
+		2B70BA462F676B7E008EA50F /* Release configuration for PBXNativeTarget "HomebaserunUITests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
@@ -547,35 +548,35 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		2B70BA182F676B7C008EA50F /* Build configuration list for PBXProject "Homebase" */ = {
+		2B70BA182F676B7C008EA50F /* Build configuration list for PBXProject "I" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				2B70BA3C2F676B7E008EA50F /* Debug configuration for PBXProject "Homebase" */,
-				2B70BA3D2F676B7E008EA50F /* Release configuration for PBXProject "Homebase" */,
+				2B70BA3C2F676B7E008EA50F /* Debug configuration for PBXProject "I" */,
+				2B70BA3D2F676B7E008EA50F /* Release configuration for PBXProject "I" */,
 			);
 			defaultConfigurationName = Release;
 		};
-		2B70BA3E2F676B7E008EA50F /* Build configuration list for PBXNativeTarget "Homebase" */ = {
+		2B70BA3E2F676B7E008EA50F /* Build configuration list for PBXNativeTarget "Homebaserun" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				2B70BA3F2F676B7E008EA50F /* Debug configuration for PBXNativeTarget "Homebase" */,
-				2B70BA402F676B7E008EA50F /* Release configuration for PBXNativeTarget "Homebase" */,
+				2B70BA3F2F676B7E008EA50F /* Debug configuration for PBXNativeTarget "Homebaserun" */,
+				2B70BA402F676B7E008EA50F /* Release configuration for PBXNativeTarget "Homebaserun" */,
 			);
 			defaultConfigurationName = Release;
 		};
-		2B70BA412F676B7E008EA50F /* Build configuration list for PBXNativeTarget "HomebaseTests" */ = {
+		2B70BA412F676B7E008EA50F /* Build configuration list for PBXNativeTarget "HomebaserunTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				2B70BA422F676B7E008EA50F /* Debug configuration for PBXNativeTarget "HomebaseTests" */,
-				2B70BA432F676B7E008EA50F /* Release configuration for PBXNativeTarget "HomebaseTests" */,
+				2B70BA422F676B7E008EA50F /* Debug configuration for PBXNativeTarget "HomebaserunTests" */,
+				2B70BA432F676B7E008EA50F /* Release configuration for PBXNativeTarget "HomebaserunTests" */,
 			);
 			defaultConfigurationName = Release;
 		};
-		2B70BA442F676B7E008EA50F /* Build configuration list for PBXNativeTarget "HomebaseUITests" */ = {
+		2B70BA442F676B7E008EA50F /* Build configuration list for PBXNativeTarget "HomebaserunUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				2B70BA452F676B7E008EA50F /* Debug configuration for PBXNativeTarget "HomebaseUITests" */,
-				2B70BA462F676B7E008EA50F /* Release configuration for PBXNativeTarget "HomebaseUITests" */,
+				2B70BA452F676B7E008EA50F /* Debug configuration for PBXNativeTarget "HomebaserunUITests" */,
+				2B70BA462F676B7E008EA50F /* Release configuration for PBXNativeTarget "HomebaserunUITests" */,
 			);
 			defaultConfigurationName = Release;
 		};

@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  HomeBase.xcdatamodeld
+  Place this file at: HomeBase/Resources/HomeBase.xcdatamodeld/HomeBase.xcdatamodel/contents
+  In Xcode 26: File > New > File > Data Model, name it "HomeBase"
+  Then replace the generated contents file with this XML.
+-->
+<model type="com.apple.IDECoreDataModeler.DataModel"
+       documentVersion="1.0"
+       lastSavedToolsVersion="21754"
+       systemVersion="22A380"
+       minimumToolsVersion="Automatic"
+       sourceLanguage="Swift"
+       userDefinedModelVersionIdentifier="1.0">
+
+    <!-- ═══════════════════ MEAL ═══════════════════ -->
+    <entity name="MealEntity" representedClassName="MealEntity" syncable="YES">
+        <attribute name="id"              attributeType="UUID"    usesScalarValueType="NO"/>
+        <attribute name="name"            attributeType="String"  defaultValueString=""/>
+        <attribute name="dayRaw"          attributeType="Integer16" defaultValueString="1"/>
+        <attribute name="mealTypeRaw"     attributeType="String"  defaultValueString="dinner"/>
+        <attribute name="notes"           attributeType="String"  defaultValueString=""/>
+        <attribute name="prepTimeMinutes" attributeType="Integer16" defaultValueString="30"/>
+        <attribute name="servings"        attributeType="Integer16" defaultValueString="4"/>
+        <relationship name="ingredients"
+                      optional="YES"
+                      toMany="YES"
+                      deletionRule="Cascade"
+                      destinationEntity="GroceryItemEntity"
+                      inverseName="meal"
+                      inverseEntity="GroceryItemEntity"/>
+    </entity>
+
+    <!-- ═══════════════════ GROCERY ITEM ═══════════════════ -->
+    <entity name="GroceryItemEntity" representedClassName="GroceryItemEntity" syncable="YES">
+        <attribute name="id"            attributeType="UUID"    usesScalarValueType="NO"/>
+        <attribute name="name"          attributeType="String"  defaultValueString=""/>
+        <attribute name="quantity"      attributeType="String"  defaultValueString="1"/>
+        <attribute name="unit"          attributeType="String"  defaultValueString=""/>
+        <attribute name="categoryRaw"   attributeType="String"  defaultValueString="other"/>
+        <attribute name="isChecked"     attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
+        <attribute name="sourceMealID"  attributeType="UUID"    optional="YES" usesScalarValueType="NO"/>
+        <relationship name="meal"
+                      optional="YES"
+                      maxCount="1"
+                      deletionRule="Nullify"
+                      destinationEntity="MealEntity"
+                      inverseName="ingredients"
+                      inverseEntity="MealEntity"/>
+    </entity>
+
+    <!-- ═══════════════════ EXPENSE ═══════════════════ -->
+    <entity name="ExpenseEntity" representedClassName="ExpenseEntity" syncable="YES">
+        <attribute name="id"          attributeType="UUID"    usesScalarValueType="NO"/>
+        <attribute name="title"       attributeType="String"  defaultValueString=""/>
+        <attribute name="amount"      attributeType="Double"  usesScalarValueType="YES" defaultValueString="0"/>
+        <attribute name="categoryRaw" attributeType="String"  defaultValueString="other"/>
+        <attribute name="date"        attributeType="Date"    usesScalarValueType="NO"/>
+        <attribute name="isPaid"      attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
+        <attribute name="isRecurring" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
+        <attribute name="notes"       attributeType="String"  defaultValueString=""/>
+    </entity>
+
+    <!-- ═══════════════════ CALENDAR EVENT ═══════════════════ -->
+    <entity name="CalendarEventEntity" representedClassName="CalendarEventEntity" syncable="YES">
+        <attribute name="id"            attributeType="UUID"    usesScalarValueType="NO"/>
+        <attribute name="title"         attributeType="String"  defaultValueString=""/>
+        <attribute name="date"          attributeType="Date"    usesScalarValueType="NO"/>
+        <attribute name="endDate"       attributeType="Date"    optional="YES" usesScalarValueType="NO"/>
+        <attribute name="assignedToID"  attributeType="UUID"    optional="YES" usesScalarValueType="NO"/>
+        <attribute name="isAllDay"      attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
+        <attribute name="notes"         attributeType="String"  defaultValueString=""/>
+        <attribute name="categoryRaw"   attributeType="String"  defaultValueString="general"/>
+        <attribute name="colorHex"      attributeType="String"  defaultValueString="#4CAF74"/>
+    </entity>
+
+    <!-- ═══════════════════ HOUSE TASK ═══════════════════ -->
+    <entity name="HouseTaskEntity" representedClassName="HouseTaskEntity" syncable="YES">
+        <attribute name="id"            attributeType="UUID"    usesScalarValueType="NO"/>
+        <attribute name="title"         attributeType="String"  defaultValueString=""/>
+        <attribute name="assignedToID"  attributeType="UUID"    optional="YES" usesScalarValueType="NO"/>
+        <attribute name="dueDate"       attributeType="Date"    usesScalarValueType="NO"/>
+        <attribute name="isComplete"    attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
+        <attribute name="priorityRaw"   attributeType="String"  defaultValueString="medium"/>
+        <attribute name="notes"         attributeType="String"  defaultValueString=""/>
+        <attribute name="completedDate" attributeType="Date"    optional="YES" usesScalarValueType="NO"/>
+    </entity>
+
+    <!-- ═══════════════════ MAINTENANCE ITEM ═══════════════════ -->
+    <entity name="MaintenanceItemEntity" representedClassName="MaintenanceItemEntity" syncable="YES">
+        <attribute name="id"                 attributeType="UUID"     usesScalarValueType="NO"/>
+        <attribute name="title"              attributeType="String"   defaultValueString=""/>
+        <attribute name="areaRaw"            attributeType="String"   defaultValueString="general"/>
+        <attribute name="frequencyRaw"       attributeType="String"   defaultValueString="monthly"/>
+        <attribute name="lastCompleted"      attributeType="Date"     optional="YES" usesScalarValueType="NO"/>
+        <attribute name="nextDue"            attributeType="Date"     usesScalarValueType="NO"/>
+        <attribute name="notes"              attributeType="String"   defaultValueString=""/>
+        <attribute name="estimatedMinutes"   attributeType="Integer16" defaultValueString="15"/>
+    </entity>
+
+    <!-- ═══════════════════ HOUSEHOLD MEMBER ═══════════════════ -->
+    <entity name="HouseholdMemberEntity" representedClassName="HouseholdMemberEntity" syncable="YES">
+        <attribute name="id"             attributeType="UUID"   usesScalarValueType="NO"/>
+        <attribute name="name"           attributeType="String" defaultValueString=""/>
+        <attribute name="role"           attributeType="String" defaultValueString=""/>
+        <attribute name="avatarColorHex" attributeType="String" defaultValueString="#4CAF74"/>
+    </entity>
+
+    <!-- ═══════════════════ BUDGET CATEGORY ═══════════════════ -->
+    <entity name="BudgetCategoryEntity" representedClassName="BudgetCategoryEntity" syncable="YES">
+        <attribute name="id"    attributeType="UUID"   usesScalarValueType="NO"/>
+        <attribute name="name"  attributeType="String" defaultValueString=""/>
+        <attribute name="limit" attributeType="Double" usesScalarValueType="YES" defaultValueString="0"/>
+        <attribute name="spent" attributeType="Double" usesScalarValueType="YES" defaultValueString="0"/>
+    </entity>
+
+    <!-- Default fetch index for performance -->
+    <fetchIndex name="byDate" element="ExpenseEntity">
+        <fetchIndexElement property="date" type="Binary" order="ascending"/>
+    </fetchIndex>
+    <fetchIndex name="byNextDue" element="MaintenanceItemEntity">
+        <fetchIndexElement property="nextDue" type="Binary" order="ascending"/>
+    </fetchIndex>
+    <fetchIndex name="byDueDate" element="HouseTaskEntity">
+        <fetchIndexElement property="dueDate" type="Binary" order="ascending"/>
+    </fetchIndex>
+
+</model>
