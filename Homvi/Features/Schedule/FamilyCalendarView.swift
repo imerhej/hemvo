@@ -1,0 +1,2143 @@
+//  FamilyCalendarView.swift
+//  Homvi
+//  Replicates the iPhone Calendar app: month grid → week strip + day timeline.
+//
+//  Info.plist keys required:
+//    NSCalendarsUsageDescription
+//    NSCalendarsFullAccessUsageDescription
+
+internal import SwiftUI
+internal import EventKit
+internal import Combine
+internal import UserNotifications
+
+// MARK: - NativeCalendarService
+@MainActor
+final class NativeCalendarService: ObservableObject {
+
+    @Published var authStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
+    @Published var nativeEvents: [EKEvent] = []
+    @Published var calendars:    [EKCalendar] = []
+
+    private let store = EKEventStore()
+
+    func requestAccess() async {
+        let current = EKEventStore.authorizationStatus(for: .event)
+        if current == .fullAccess {
+            authStatus = current
+            loadCalendars()
+            fetchEvents(for: Date())
+            return
+        }
+        let granted = (try? await store.requestFullAccessToEvents()) ?? false
+        authStatus = EKEventStore.authorizationStatus(for: .event)
+        if granted { loadCalendars(); fetchEvents(for: Date()) }
+    }
+
+    func loadCalendars() {
+        calendars = store.calendars(for: .event).sorted { $0.title < $1.title }
+    }
+
+    func fetchEvents(for date: Date) {
+        guard isAuthorized else { return }
+        let cal   = Calendar.current
+        let start = cal.date(byAdding: .month, value: -2, to: cal.startOfDay(for: date)) ?? date
+        let end   = cal.date(byAdding: .month, value:  3, to: start) ?? date
+        let pred  = store.predicateForEvents(withStart: start, end: end, calendars: nil)
+        nativeEvents = store.events(matching: pred).sorted { $0.startDate < $1.startDate }
+    }
+
+    func events(on date: Date) -> [EKEvent] {
+        nativeEvents.filter { Calendar.current.isDate($0.startDate, inSameDayAs: date) }
+    }
+
+    func hasEvent(on date: Date) -> Bool { !events(on: date).isEmpty }
+
+    var isAuthorized: Bool { authStatus == .fullAccess }
+    var isDenied: Bool     { authStatus == .denied || authStatus == .restricted }
+}
+
+// MARK: - FamilyCalendarView
+struct FamilyCalendarView: View {
+
+    @Binding var jumpToDate: Date?
+
+    init(jumpToDate: Binding<Date?> = .constant(nil)) {
+        self._jumpToDate = jumpToDate
+    }
+
+    @StateObject private var vm     = ScheduleViewModel()
+    @StateObject private var calSvc = NativeCalendarService()
+
+    // Navigation state
+    enum CalMode { case year, month, week }
+    @State private var mode:          CalMode = .month
+    @State private var selectedDate   = Date()
+    @State private var displayedMonth = Date()
+    @State private var displayedYear  = Calendar.current.component(.year, from: Date())
+
+    // Sheet state
+    @State private var showAddEvent    = false
+    @State private var showCalendars   = false
+    @State private var showSearch      = false
+    @State private var searchQuery     = ""
+
+    // Edit/delete HB events
+    @State private var eventToEdit:    CalendarEvent? = nil
+    @State private var eventToDelete:  CalendarEvent? = nil
+    @State private var eventToView:    CalendarEvent? = nil
+    @State private var showDeleteAlert = false
+
+    private let cal = Calendar.current
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                VStack(spacing: 0) {
+                    topBar
+                    if mode == .year  { yearView  }
+                    else if mode == .month { monthView }
+                    else { weekDayView }
+                }
+                .background(Color(.systemBackground).ignoresSafeArea())
+
+                // Floating add button (bottom-right, oval)
+                if !showSearch {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            Button { showAddEvent = true } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "calendar.badge.plus")
+                                        .font(.system(size: 16, weight: .semibold))
+                                    Text("Add Event")
+                                        .font(.system(size: 15, weight: .semibold))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.vertical, 14)
+                                .padding(.horizontal, 22)
+                                .background(Color.systemRed)
+                                .clipShape(Capsule())
+                                .shadow(color: Color.systemRed.opacity(0.4), radius: 10, y: 4)
+                            }
+                            .padding(.trailing, 20)
+                            .padding(.bottom, 30)
+                        }
+                    }
+                    .zIndex(5)
+                }
+
+                if showSearch {
+                    searchOverlay.transition(.opacity).zIndex(10)
+                }
+            }
+            .task { await calSvc.requestAccess() }
+            .onChange(of: jumpToDate) { _, newDate in
+                guard let d = newDate else { return }
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    selectedDate   = d
+                    displayedMonth = d
+                    mode           = .month
+                }
+                jumpToDate = nil
+            }
+            .sheet(isPresented: $showAddEvent) {
+                NativeAddEventSheet(store: calSvc, preselectedDate: selectedDate) { event, cat, repeatRule, travelTime, alertOption in
+                    calSvc.fetchEvents(for: selectedDate)
+                    let hbEvent = CalendarEvent(
+                        title:       event.title ?? "",
+                        date:        event.startDate,
+                        endDate:     event.endDate,
+                        isAllDay:    event.isAllDay,
+                        notes:       event.notes ?? "",
+                        category:    cat,
+                        colorHex:    cat.defaultColorHex,
+                        repeatRule:  repeatRule,
+                        travelTime:  travelTime,
+                        alertOption: alertOption
+                    )
+                    vm.addEvent(hbEvent)
+                }
+            }
+            .sheet(isPresented: $showCalendars) {
+                CalendarsSheet(calSvc: calSvc)
+            }
+            .sheet(item: $eventToEdit) { ev in
+                EditCalendarEventSheet(event: ev, vm: vm)
+            }
+            .sheet(item: $eventToView) { ev in
+                EventDetailSheet(event: ev,
+                    assignedMember: vm.member(for: ev.assignedToID),
+                    onEdit:   { eventToEdit = ev },
+                    onDelete: { eventToDelete = ev; showDeleteAlert = true })
+            }
+            .alert("Delete Event", isPresented: $showDeleteAlert) {
+                Button("Delete", role: .destructive) {
+                    if let ev = eventToDelete { vm.deleteEvent(ev) }
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Remove \"\(eventToDelete?.title ?? "this event")\"?")
+            }
+        }
+    }
+
+    // MARK: - Top toolbar
+    private var topBar: some View {
+        HStack(spacing: 8) {
+            // Back / year button
+            Button {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    switch mode {
+                    case .week:
+                        mode = .month
+                    case .month:
+                        displayedYear = cal.component(.year, from: displayedMonth)
+                        mode = .year
+                    case .year:
+                        displayedYear = max(displayedYear - 1, 1970)
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text(mode == .week
+                         ? displayedMonth.formatted(.dateTime.month(.wide))
+                         : mode == .month
+                           ? String(cal.component(.year, from: displayedMonth))
+                           : String(displayedYear))
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .foregroundColor(.systemRed)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+                .background(Color(.systemGray6))
+                .cornerRadius(20)
+            }
+
+            // Today button
+            Button {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    let today = Date()
+                    selectedDate    = today
+                    displayedMonth  = today
+                    displayedYear   = cal.component(.year, from: today)
+                    if mode == .year { mode = .month }
+                }
+            } label: {
+                Text("Today")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.systemRed)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 12)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(20)
+            }
+
+            Spacer()
+
+            HStack(spacing: 10) {
+                // Grid toggle
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        mode = (mode == .month) ? .week : .month
+                    }
+                } label: {
+                    Image(systemName: mode == .week ? "square.grid.2x2" : "rectangle.grid.1x2")
+                        .font(.system(size: 17))
+                        .foregroundColor(.systemRed)
+                        .frame(width: 40, height: 40)
+                        .background(Color(.systemGray6))
+                        .clipShape(Circle())
+                }
+
+                // Search
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { searchQuery = ""; showSearch = true }
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 17))
+                        .foregroundColor(.systemRed)
+                        .frame(width: 40, height: 40)
+                        .background(Color(.systemGray6))
+                        .clipShape(Circle())
+                }
+
+            }
+            .padding(.trailing, 14)
+        }
+        .padding(.leading, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - Year View (12 mini months in a 3×4 grid)
+    private var yearView: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 0) {
+                // Year title + prev/next nav
+                HStack {
+                    Text(String(displayedYear))
+                        .font(.system(size: 28, weight: .black))
+                        .foregroundColor(.primary)
+                    Spacer()
+                    HStack(spacing: 6) {
+                        Button {
+                            withAnimation { displayedYear = max(displayedYear - 1, 1970) }
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.systemRed)
+                                .frame(width: 34, height: 34)
+                                .background(Color(.systemGray6))
+                                .clipShape(Circle())
+                        }
+                        Button {
+                            withAnimation { displayedYear += 1 }
+                        } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.systemRed)
+                                .frame(width: 34, height: 34)
+                                .background(Color(.systemGray6))
+                                .clipShape(Circle())
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 4)
+                .padding(.bottom, 12)
+
+                // 3-column grid of mini months
+                let months = (1...12).compactMap { m -> Date? in
+                    cal.date(from: DateComponents(year: displayedYear, month: m, day: 1))
+                }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 3), spacing: 20) {
+                    ForEach(months, id: \.self) { monthDate in
+                        miniMonthCard(monthDate)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 24)
+            }
+        }
+        .background(Color(.systemGroupedBackground))
+    }
+
+    @ViewBuilder
+    private func miniMonthCard(_ monthDate: Date) -> some View {
+        let monthIndex = cal.component(.month, from: monthDate)
+        // Palette: each month gets a distinct accent
+        let monthColors: [Color] = [
+            Color(hex: "#E53935")!, // Jan - red
+            Color(hex: "#E91E63")!, // Feb - pink
+            Color(hex: "#9C27B0")!, // Mar - purple
+            Color(hex: "#3F51B5")!, // Apr - indigo
+            Color(hex: "#2196F3")!, // May - blue
+            Color(hex: "#00BCD4")!, // Jun - cyan
+            Color(hex: "#009688")!, // Jul - teal
+            Color(hex: "#4CAF50")!, // Aug - green
+            Color(hex: "#8BC34A")!, // Sep - light green
+            Color(hex: "#FF9800")!, // Oct - orange
+            Color(hex: "#FF5722")!, // Nov - deep orange
+            Color(hex: "#795548")!, // Dec - brown
+        ]
+        let accent = monthColors[monthIndex - 1]
+        let isCurrentMonth = cal.isDate(monthDate, equalTo: Date(), toGranularity: .month)
+
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                displayedMonth = monthDate
+                mode = .month
+            }
+        } label: {
+            VStack(spacing: 5) {
+                // Month header
+                HStack {
+                    Text(monthDate.formatted(.dateTime.month(.abbreviated)))
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(isCurrentMonth ? accent : .primary)
+                    Spacer()
+                    if isCurrentMonth {
+                        Circle().fill(accent).frame(width: 6, height: 6)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+
+                // Weekday labels
+                HStack(spacing: 0) {
+                    ForEach(["S","M","T","W","T","F","S"], id: \.self) { d in
+                        Text(d)
+                            .font(.system(size: 7, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.horizontal, 4)
+
+                // Day cells
+                let weeks = calendarWeeks(for: monthDate)
+                VStack(spacing: 1) {
+                    ForEach(weeks.indices, id: \.self) { wi in
+                        HStack(spacing: 0) {
+                            ForEach(weeks[wi].indices, id: \.self) { di in
+                                if let day = weeks[wi][di] {
+                                    let isToday   = cal.isDateInToday(day)
+                                    let hasEvents = calSvc.hasEvent(on: day) || vm.hasActivity(on: day)
+                                    ZStack {
+                                        if isToday {
+                                            Circle().fill(accent).frame(width: 18, height: 18)
+                                        }
+                                        Text("\(cal.component(.day, from: day))")
+                                            .font(.system(size: 8, weight: isToday ? .bold : .regular))
+                                            .foregroundColor(isToday ? .white : .primary)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .overlay(alignment: .bottom) {
+                                        if hasEvents && !isToday {
+                                            Circle().fill(accent).frame(width: 3, height: 3)
+                                                .offset(y: 1)
+                                        }
+                                    }
+                                } else {
+                                    Color.clear.frame(maxWidth: .infinity)
+                                }
+                            }
+                        }
+                        .frame(height: 20)
+                    }
+                }
+                .padding(.horizontal, 4)
+                .padding(.bottom, 8)
+            }
+            .background(Color(.systemBackground))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isCurrentMonth ? accent.opacity(0.5) : Color(.systemGray5), lineWidth: isCurrentMonth ? 1.5 : 0.5)
+            )
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Month View
+    private var monthView: some View {
+        VStack(spacing: 0) {
+            // Month title
+            HStack {
+                Text(displayedMonth.formatted(.dateTime.month(.wide)))
+                    .font(.system(size: 34, weight: .black))
+                    .foregroundColor(.primary)
+                    .padding(.leading, 16)
+                    .padding(.top, 2)
+                Spacer()
+            }
+
+            weekdayHeader
+            monthGrid
+
+            Divider()
+
+            // Selected day events list (scrollable, below the grid)
+            selectedDayEventsList
+        }
+        .gesture(DragGesture(minimumDistance: 40).onEnded { v in
+            withAnimation(.easeInOut(duration: 0.2)) {
+                if v.translation.width < -40 {
+                    displayedMonth = cal.date(byAdding: .month, value:  1, to: displayedMonth) ?? displayedMonth
+                } else if v.translation.width > 40 {
+                    displayedMonth = cal.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
+                }
+            }
+        })
+    }
+
+    // MARK: - Weekday header row
+    private var weekdayHeader: some View {
+        HStack(spacing: 0) {
+            ForEach(["S","M","T","W","T","F","S"], id: \.self) { d in
+                Text(d)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Color(.systemGray2))
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - Month grid
+    private var monthGrid: some View {
+        let weeks = calendarWeeks(for: displayedMonth)
+        return VStack(spacing: 0) {
+            ForEach(weeks.indices, id: \.self) { wi in
+                HStack(spacing: 0) {
+                    ForEach(weeks[wi].indices, id: \.self) { di in
+                        monthDayCell(weeks[wi][di])
+                    }
+                }
+                Divider()
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    @ViewBuilder
+    private func monthDayCell(_ day: Date?) -> some View {
+        let isToday    = day.map { cal.isDateInToday($0) } ?? false
+        let isSelected = day.map { cal.isDate($0, inSameDayAs: selectedDate) } ?? false
+        let inMonth    = day.map { cal.isDate($0, equalTo: displayedMonth, toGranularity: .month) } ?? false
+        let events     = day.map { calSvc.events(on: $0) } ?? []
+        let hbEvents   = day.map { vm.events(on: $0) } ?? []
+        let isSun = day.map { cal.component(.weekday, from: $0) == 1 } ?? false
+        let isSat = day.map { cal.component(.weekday, from: $0) == 7 } ?? false
+        let allEvents  = events.count + hbEvents.count
+
+        Button {
+            if let d = day {
+                withAnimation(.easeInOut(duration: 0.15)) { selectedDate = d }
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                // Day number — left-aligned
+                HStack {
+                    ZStack {
+                        if isToday {
+                            Circle().fill(Color.systemRed).frame(width: 27, height: 27)
+                        } else if isSelected {
+                            Circle().fill(Color(.systemGray4)).frame(width: 27, height: 27)
+                        }
+                        if let d = day {
+                            Text("\(cal.component(.day, from: d))")
+                                .font(.system(size: 15, weight: isToday ? .bold : .medium))
+                                .foregroundColor(
+                                    isToday        ? .white :
+                                    !inMonth       ? Color(.systemGray4) :
+                                    (isSun || isSat) ? Color(.systemGray2) :
+                                    .primary
+                                )
+                        }
+                    }
+                    .frame(width: 27, height: 27)
+                    Spacer()
+                }
+                .padding(.top, 5)
+                .padding(.leading, 3)
+
+                // Event pills — up to 3
+                VStack(alignment: .leading, spacing: 2) {
+                    let maxPills = 3
+                    ForEach(events.prefix(maxPills), id: \.eventIdentifier) { ev in
+                        eventPill(title: ev.title ?? "",
+                                  color: Color(cgColor: ev.calendar.cgColor),
+                                  isAllDay: ev.isAllDay)
+                    }
+                    let remaining = max(0, maxPills - events.count)
+                    ForEach(hbEvents.prefix(remaining), id: \.id) { ev in
+                        eventPill(title: ev.title,
+                                  color: Color(hex: ev.colorHex) ?? .purple,
+                                  isAllDay: ev.isAllDay)
+                    }
+                    if allEvents > maxPills {
+                        Text("+\(allEvents - maxPills) more")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(Color(.systemGray3))
+                            .padding(.leading, 4)
+                    }
+                }
+                .padding(.horizontal, 3)
+
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, minHeight: 90, maxHeight: 90)
+        }
+        .buttonStyle(.plain)
+        .disabled(day == nil)
+    }
+
+    private func eventPill(title: String, color: Color, isAllDay: Bool) -> some View {
+        HStack(spacing: 3) {
+            if isAllDay {
+                Image(systemName: "star.circle.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .lineLimit(1)
+                .foregroundColor(isAllDay ? .white : color)
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2.5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isAllDay ? color : color.opacity(0.18))
+        .cornerRadius(4)
+    }
+
+    // MARK: - Selected day events list
+    private var selectedDayEventsList: some View {
+        let events    = calSvc.events(on: selectedDate).sorted { $0.startDate < $1.startDate }
+        let hbEvs     = vm.events(on: selectedDate).sorted { $0.date < $1.date }
+        let tasks     = vm.tasks(on: selectedDate)
+        let dateLabel = selectedDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+
+        return ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(dateLabel)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+                    .padding(.bottom, 6)
+
+                if events.isEmpty && hbEvs.isEmpty && tasks.isEmpty {
+                    HStack(spacing: 10) {
+                        Image(systemName: "calendar").foregroundColor(.secondary)
+                        Text("No events").font(.system(size: 14)).foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                } else {
+                    // Native EKEvents (read-only, no edit — they live in Apple Calendar)
+                    ForEach(events, id: \.eventIdentifier) { ev in
+                        dayListEventRow(
+                            title: ev.title ?? "Untitled",
+                            time:  ev.isAllDay ? "all-day" : ev.startDate.formatted(.dateTime.hour().minute()),
+                            color: Color(cgColor: ev.calendar.cgColor),
+                            cal:   ev.calendar?.title ?? "",
+                            onEdit:   nil,
+                            onDelete: nil
+                        )
+                        Divider().padding(.leading, 16)
+                    }
+
+                    // Homvi events — tappable, editable & deletable
+                    ForEach(hbEvs, id: \.id) { ev in
+                        Button { eventToView = ev } label: {
+                            dayListEventRow(
+                                title: ev.title,
+                                time:  ev.formattedTime,
+                                color: Color(hex: ev.colorHex) ?? .purple,
+                                cal:   ev.category.rawValue,
+                                onEdit:   { eventToEdit = ev },
+                                onDelete: { eventToDelete = ev; showDeleteAlert = true }
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        Divider().padding(.leading, 16)
+                    }
+
+                    // Tasks
+                    ForEach(tasks, id: \.id) { task in
+                        HStack(spacing: 12) {
+                            Rectangle()
+                                .fill(task.priority.displayColor)
+                                .frame(width: 3).padding(.vertical, 4)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(task.title)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(task.isComplete ? .secondary : .primary)
+                                    .strikethrough(task.isComplete)
+                                Text("Task · \(task.priority.label)")
+                                    .font(.system(size: 12)).foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Button { vm.toggleTask(task) } label: {
+                                Image(systemName: task.isComplete ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(task.isComplete ? .green : Color(.systemGray3))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        Divider().padding(.leading, 16)
+                    }
+                }
+            }
+        }
+    }
+
+    private func dayListEventRow(
+        title: String, time: String, color: Color, cal: String,
+        onEdit: (() -> Void)?, onDelete: (() -> Void)?
+    ) -> some View {
+        HStack(spacing: 12) {
+            Rectangle().fill(color).frame(width: 3).padding(.vertical, 4)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.primary)
+                HStack(spacing: 4) {
+                    Text(time).font(.system(size: 12)).foregroundColor(.secondary)
+                    if !cal.isEmpty {
+                        Text("· \(cal)").font(.system(size: 12)).foregroundColor(.secondary)
+                    }
+                }
+            }
+            Spacer()
+            // Edit / delete buttons for HB events
+            if let onEdit, let onDelete {
+                HStack(spacing: 8) {
+                    Button { onEdit() } label: {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.systemRed)
+                            .frame(width: 28, height: 28)
+                            .background(Color.systemRed.opacity(0.1))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    Button { onDelete() } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.red)
+                            .frame(width: 28, height: 28)
+                            .background(Color.red.opacity(0.08))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 8)
+    }
+
+    // MARK: - Search overlay
+    private var searchOverlay: some View {
+        ZStack(alignment: .top) {
+            Color(.systemBackground).ignoresSafeArea()
+            VStack(spacing: 0) {
+                // Search bar
+                HStack(spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                        TextField("Search events…", text: $searchQuery)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
+
+                    Button("Cancel") {
+                        withAnimation { showSearch = false; searchQuery = "" }
+                    }
+                    .foregroundColor(.systemRed)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 56)
+                .padding(.bottom, 12)
+
+                Divider()
+
+                // Results
+                let results = searchResults
+                if searchQuery.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 40)).foregroundColor(.secondary)
+                        Text("Type to search events")
+                            .font(.system(size: 15)).foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if results.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "calendar.badge.exclamationmark")
+                            .font(.system(size: 40)).foregroundColor(.secondary)
+                        Text("No events found for \"\(searchQuery)\"")
+                            .font(.system(size: 15)).foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(results, id: \.id) { item in
+                        Button {
+                            if let ev = item.event {
+                                withAnimation { showSearch = false }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                    eventToView = ev
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Rectangle().fill(item.color).frame(width: 3, height: 40).cornerRadius(1.5)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(item.title)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(.primary)
+                                    Text(item.subtitle)
+                                        .font(.system(size: 12)).foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                if item.event != nil {
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    }
+                    .listStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private struct SearchResult: Identifiable {
+        let id       = UUID()
+        let title:    String
+        let subtitle: String
+        let color:    Color
+        let event:    CalendarEvent?   // nil for native EK events
+    }
+
+    private var searchResults: [SearchResult] {
+        let q = searchQuery.lowercased()
+        guard !q.isEmpty else { return [] }
+        var out: [SearchResult] = []
+        for ev in vm.events where ev.title.lowercased().contains(q) {
+            out.append(SearchResult(
+                title:    ev.title,
+                subtitle: ev.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) + " · " + ev.formattedTime,
+                color:    Color(hex: ev.colorHex) ?? .purple,
+                event:    ev
+            ))
+        }
+        for ev in calSvc.nativeEvents where (ev.title ?? "").lowercased().contains(q) {
+            out.append(SearchResult(
+                title:    ev.title ?? "",
+                subtitle: ev.startDate.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()),
+                color:    Color(cgColor: ev.calendar.cgColor),
+                event:    nil
+            ))
+        }
+        return out
+    }
+
+    // MARK: - Week + Day Timeline View
+    private var weekDayView: some View {
+        VStack(spacing: 0) {
+            weekStrip
+            Divider()
+            dayTimeline
+        }
+    }
+
+    private var weekStrip: some View {
+        let days = weekDays(for: selectedDate)
+        return HStack(spacing: 0) {
+            ForEach(days, id: \.self) { day in
+                let isToday    = cal.isDateInToday(day)
+                let isSelected = cal.isDate(day, inSameDayAs: selectedDate)
+                let hasEvents  = calSvc.hasEvent(on: day) || vm.hasActivity(on: day)
+                let wd         = day.formatted(.dateTime.weekday(.abbreviated)).uppercased()
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) { selectedDate = day }
+                } label: {
+                    VStack(spacing: 2) {
+                        Text(String(wd.prefix(1)))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(isToday ? .systemRed : .secondary)
+
+                        ZStack {
+                            if isToday && isSelected {
+                                Circle().fill(Color.systemRed).frame(width: 30, height: 30)
+                            } else if isSelected {
+                                Circle().fill(Color(.systemGray4)).frame(width: 30, height: 30)
+                            }
+                            Text("\(cal.component(.day, from: day))")
+                                .font(.system(size: 18, weight: isToday ? .bold : .regular))
+                                .foregroundColor(
+                                    (isToday && isSelected) ? .white :
+                                    isToday ? .systemRed : .primary
+                                )
+                        }
+
+                        // Event dot
+                        Circle()
+                            .fill(hasEvents ? (isToday ? Color.systemRed : Color(.systemGray3)) : Color.clear)
+                            .frame(width: 4, height: 4)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 5)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var dayTimeline: some View {
+        let events    = calSvc.events(on: selectedDate)
+        let allDayEvs = events.filter { $0.isAllDay }
+        let timedEvs  = events.filter { !$0.isAllDay }
+        let hbEvs     = vm.events(on: selectedDate)
+        let title     = selectedDate.formatted(.dateTime.weekday(.wide)) + " – " +
+                        selectedDate.formatted(.dateTime.month(.abbreviated).day(.defaultDigits)) + ", " +
+                        selectedDate.formatted(.dateTime.year())
+
+        return ScrollViewReader { proxy in
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Date title
+                    Text(title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+
+                    // All-day row
+                    if !allDayEvs.isEmpty || !hbEvs.filter({ $0.isAllDay }).isEmpty {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("all-day")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                                .frame(width: 52, alignment: .trailing)
+                            VStack(spacing: 4) {
+                                ForEach(allDayEvs, id: \.eventIdentifier) { ev in
+                                    allDayChip(title: ev.title ?? "", color: Color(cgColor: ev.calendar.cgColor))
+                                }
+                                ForEach(hbEvs.filter { $0.isAllDay }, id: \.id) { ev in
+                                    allDayChip(title: ev.title, color: Color(hex: ev.colorHex) ?? .purple)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 8)
+                        Divider()
+                    }
+
+                    // Hourly timeline
+                    ZStack(alignment: .topLeading) {
+                        // Hour lines
+                        VStack(spacing: 0) {
+                            ForEach(0..<24, id: \.self) { hour in
+                                HStack(alignment: .top, spacing: 0) {
+                                    Text(hour == 0 ? "" : String(format: "%02d:00", hour))
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 52, alignment: .trailing)
+                                        .padding(.trailing, 8)
+                                        .offset(y: -7)
+                                    Rectangle()
+                                        .fill(Color(.systemGray5))
+                                        .frame(height: 0.5)
+                                }
+                                .id(hour)
+                                .frame(height: 60)
+                            }
+                        }
+
+                        // Timed events overlay
+                        ForEach(timedEvs, id: \.eventIdentifier) { ev in
+                            timedEventBlock(ev)
+                        }
+                        ForEach(hbEvs.filter { !$0.isAllDay }, id: \.id) { ev in
+                            hbEventBlock(ev)
+                        }
+
+                        // Current time line
+                        if cal.isDateInToday(selectedDate) {
+                            currentTimeLine
+                        }
+                    }
+                }
+            }
+            .onAppear {
+                let hour = cal.component(.hour, from: Date())
+                proxy.scrollTo(max(hour - 1, 0), anchor: .top)
+            }
+        }
+    }
+
+    private func allDayChip(title: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "star.circle.fill")
+                .font(.system(size: 12))
+                .foregroundColor(.white)
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white)
+                .lineLimit(1)
+            Image(systemName: "person.2.fill")
+                .font(.system(size: 10))
+                .foregroundColor(.white.opacity(0.8))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color)
+        .cornerRadius(6)
+    }
+
+    private func timedEventBlock(_ ev: EKEvent) -> some View {
+        let color    = Color(cgColor: ev.calendar.cgColor)
+        let startMin = minuteOfDay(ev.startDate)
+        let durMin   = max(minuteOfDay(ev.endDate) - startMin, 30)
+        let top      = CGFloat(startMin) / 60.0 * 60.0
+        let height   = CGFloat(durMin)  / 60.0 * 60.0
+
+        return HStack(spacing: 0) {
+            Spacer().frame(width: 60)
+            RoundedRectangle(cornerRadius: 4)
+                .fill(color.opacity(0.2))
+                .overlay(
+                    HStack(alignment: .top) {
+                        Rectangle().fill(color).frame(width: 3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(ev.title ?? "")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(color)
+                                .lineLimit(2)
+                            Text(ev.startDate.formatted(.dateTime.hour().minute()))
+                                .font(.system(size: 10))
+                                .foregroundColor(color.opacity(0.8))
+                        }
+                        .padding(4)
+                        Spacer()
+                    }
+                )
+                .frame(height: max(height, 30))
+                .padding(.trailing, 8)
+        }
+        .offset(y: top)
+        .frame(height: max(height, 30))
+        .allowsHitTesting(false)
+    }
+
+    private func hbEventBlock(_ ev: CalendarEvent) -> some View {
+        let color    = Color(hex: ev.colorHex) ?? .purple
+        let startMin = minuteOfDay(ev.date)
+        let endMin   = ev.endDate.map { minuteOfDay($0) } ?? (startMin + 60)
+        let durMin   = max(endMin - startMin, 30)
+        let top      = CGFloat(startMin) / 60.0 * 60.0
+        let height   = CGFloat(durMin)  / 60.0 * 60.0
+
+        return HStack(spacing: 0) {
+            Spacer().frame(width: 60)
+            RoundedRectangle(cornerRadius: 4)
+                .fill(color.opacity(0.15))
+                .overlay(
+                    HStack(alignment: .top) {
+                        Rectangle().fill(color).frame(width: 3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(ev.title)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(color)
+                                .lineLimit(2)
+                            Text(ev.formattedTime)
+                                .font(.system(size: 10))
+                                .foregroundColor(color.opacity(0.8))
+                        }
+                        .padding(4)
+                        Spacer()
+                    }
+                )
+                .frame(height: max(height, 30))
+                .padding(.trailing, 8)
+        }
+        .offset(y: top)
+        .frame(height: max(height, 30))
+        .allowsHitTesting(false)
+    }
+
+    private var currentTimeLine: some View {
+        let now = minuteOfDay(Date())
+        return HStack(spacing: 0) {
+            Text(Date().formatted(.dateTime.hour().minute()))
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.systemRed)
+                .frame(width: 52, alignment: .trailing)
+                .padding(.trailing, 8)
+            Circle().fill(Color.systemRed).frame(width: 10, height: 10)
+            Rectangle().fill(Color.systemRed).frame(height: 1)
+        }
+        .offset(y: CGFloat(now) / 60.0 * 60.0 - 5)
+        .allowsHitTesting(false)
+    }
+
+    // MARK: - Helpers
+    private func calendarWeeks(for month: Date) -> [[Date?]] {
+        let first   = cal.date(from: cal.dateComponents([.year, .month], from: month))!
+        let weekday = (cal.component(.weekday, from: first) - cal.firstWeekday + 7) % 7
+        let count   = cal.range(of: .day, in: .month, for: first)!.count
+        var days: [Date?] = Array(repeating: nil, count: weekday)
+        for i in 0..<count { days.append(cal.date(byAdding: .day, value: i, to: first)) }
+        while days.count % 7 != 0 { days.append(nil) }
+        return stride(from: 0, to: days.count, by: 7).map { Array(days[$0..<$0+7]) }
+    }
+
+    private func weekDays(for date: Date) -> [Date] {
+        let sunday = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)) ?? date
+        return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: sunday) }
+    }
+
+    private func minuteOfDay(_ date: Date) -> Int {
+        cal.component(.hour, from: date) * 60 + cal.component(.minute, from: date)
+    }
+}
+
+// MARK: - Calendars Sheet (Image 3)
+struct CalendarsSheet: View {
+    @ObservedObject var calSvc: NativeCalendarService
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                let grouped = Dictionary(grouping: calSvc.calendars) { $0.source.title }
+                ForEach(grouped.keys.sorted(), id: \.self) { source in
+                    Section(source) {
+                        ForEach(grouped[source] ?? [], id: \.calendarIdentifier) { cal in
+                            HStack(spacing: 14) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color(cgColor: cal.cgColor))
+                                        .frame(width: 22, height: 22)
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 10, weight: .black))
+                                        .foregroundColor(.white)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(cal.title)
+                                        .font(.system(size: 16))
+                                    if cal.type == .subscription {
+                                        Text("Subscribed")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Button { } label: {
+                                    Image(systemName: "info.circle")
+                                        .foregroundColor(.systemRed)
+                                        .font(.system(size: 20))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                }
+
+                Section {
+                    Toggle("Show Declined Events", isOn: .constant(false))
+                    Toggle("Show Completed Reminders", isOn: .constant(true))
+                }
+            }
+            .navigationTitle("Calendars")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Native Add Event Sheet
+struct NativeAddEventSheet: View {
+
+    @ObservedObject var store: NativeCalendarService
+    var preselectedDate: Date
+    var onSave: (EKEvent, CalendarEvent.EventCategory, CalendarEvent.RecurrenceRule, String, String) -> Void
+
+    @Environment(\.dismiss) var dismiss
+
+    // Basic fields
+    @State private var title      = ""
+    @State private var notes      = ""
+    @State private var isAllDay   = false
+    @State private var startDate: Date
+    @State private var endDate:   Date
+    @State private var category   = CalendarEvent.EventCategory.general
+
+    // Inline pickers
+    @State private var showStartPicker  = false
+    @State private var showEndPicker    = false
+    @State private var showTravelPicker = false
+    @State private var showRepeatPicker = false
+    @State private var showAlertPicker  = false
+
+    // Picker values
+    @State private var travelTime  = TravelOption.none
+    @State private var repeatRule  = RepeatOption.never
+    @State private var alertOption = AlertOption.none
+
+    // Travel options
+    enum TravelOption: String, CaseIterable {
+        case none    = "None"
+        case five    = "5 minutes"
+        case fifteen = "15 minutes"
+        case thirty  = "30 minutes"
+        case hour    = "1 hour"
+        case ninety  = "1.5 hours"
+        case two     = "2 hours"
+    }
+
+    // Repeat options
+    enum RepeatOption: String, CaseIterable {
+        case never    = "Never"
+        case daily    = "Every Day"
+        case weekly   = "Every Week"
+        case biweekly = "Every 2 Weeks"
+        case monthly  = "Every Month"
+        case yearly   = "Every Year"
+    }
+
+    // Alert options
+    enum AlertOption: String, CaseIterable {
+        case none       = "None"
+        case atTime     = "At time of event"
+        case five       = "5 minutes before"
+        case fifteen    = "15 minutes before"
+        case thirty     = "30 minutes before"
+        case oneHour    = "1 hour before"
+        case oneDay     = "1 day before"
+    }
+
+    init(store: NativeCalendarService, preselectedDate: Date, onSave: @escaping (EKEvent, CalendarEvent.EventCategory, CalendarEvent.RecurrenceRule, String, String) -> Void) {
+        self.store           = store
+        self.preselectedDate = preselectedDate
+        self.onSave          = onSave
+        let cal   = Calendar.current
+        let hour  = cal.component(.hour, from: preselectedDate)
+        let start = cal.date(bySettingHour: hour + 1, minute: 0, second: 0, of: preselectedDate) ?? preselectedDate
+        let end   = cal.date(byAdding: .hour, value: 1, to: start) ?? start
+        _startDate = State(initialValue: start)
+        _endDate   = State(initialValue: end)
+    }
+
+    var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    var body: some View {
+        NavigationStack {
+            List {
+
+                // MARK: Title only
+                Section {
+                    TextField("Title", text: $title)
+                        .font(.system(size: 17))
+                }
+
+                // MARK: Time
+                Section {
+                    // All-day toggle
+                    Toggle("All-day", isOn: $isAllDay.animation())
+                        .onChange(of: isAllDay) { _, allDay in
+                            if allDay {
+                                showStartPicker = false
+                                showEndPicker   = false
+                            }
+                        }
+
+                    // Starts row
+                    HStack {
+                        Text("Starts")
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showStartPicker.toggle()
+                                showEndPicker = false
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text(startDate.formatted(.dateTime.month(.abbreviated).day().year()))
+                                    .font(.system(size: 15, weight: .medium))
+                                    .padding(.horizontal, 8).padding(.vertical, 4)
+                                    .background(showStartPicker ? Color.systemRed : Color(.systemGray5))
+                                    .foregroundColor(showStartPicker ? .white : .primary)
+                                    .cornerRadius(7)
+                                if !isAllDay {
+                                    Text(startDate.formatted(.dateTime.hour().minute()))
+                                        .font(.system(size: 15, weight: .medium))
+                                        .padding(.horizontal, 8).padding(.vertical, 4)
+                                        .background(showStartPicker ? Color.systemRed : Color(.systemGray5))
+                                        .foregroundColor(showStartPicker ? .white : .primary)
+                                        .cornerRadius(7)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if showStartPicker {
+                        DatePicker(
+                            "",
+                            selection: $startDate,
+                            displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute]
+                        )
+                        .datePickerStyle(.graphical)
+                        .labelsHidden()
+                        .onChange(of: startDate) { _, newStart in
+                            // Auto-adjust end if it's before start
+                            if endDate <= newStart {
+                                endDate = Calendar.current.date(byAdding: .hour, value: 1, to: newStart) ?? newStart
+                            }
+                        }
+                    }
+
+                    // Ends row
+                    HStack {
+                        Text("Ends")
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showEndPicker.toggle()
+                                showStartPicker = false
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text(endDate.formatted(.dateTime.month(.abbreviated).day().year()))
+                                    .font(.system(size: 15, weight: .medium))
+                                    .padding(.horizontal, 8).padding(.vertical, 4)
+                                    .background(showEndPicker ? Color.systemRed : Color(.systemGray5))
+                                    .foregroundColor(showEndPicker ? .white : .primary)
+                                    .cornerRadius(7)
+                                if !isAllDay {
+                                    Text(endDate.formatted(.dateTime.hour().minute()))
+                                        .font(.system(size: 15, weight: .medium))
+                                        .padding(.horizontal, 8).padding(.vertical, 4)
+                                        .background(showEndPicker ? Color.systemRed : Color(.systemGray5))
+                                        .foregroundColor(showEndPicker ? .white : .primary)
+                                        .cornerRadius(7)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if showEndPicker {
+                        DatePicker(
+                            "",
+                            selection: $endDate,
+                            in: startDate...,
+                            displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute]
+                        )
+                        .datePickerStyle(.graphical)
+                        .labelsHidden()
+                    }
+
+                    // Travel Time
+                    VStack(spacing: 0) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showTravelPicker.toggle()
+                                showRepeatPicker = false
+                                showAlertPicker  = false
+                            }
+                        } label: {
+                            HStack {
+                                Text("Travel Time").foregroundColor(.primary)
+                                Spacer()
+                                Text(travelTime.rawValue).foregroundColor(.secondary)
+                                Image(systemName: showTravelPicker ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 12)).foregroundColor(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if showTravelPicker {
+                            Picker("Travel Time", selection: $travelTime) {
+                                ForEach(TravelOption.allCases, id: \.self) { opt in
+                                    Text(opt.rawValue).tag(opt)
+                                }
+                            }
+                            .pickerStyle(.wheel)
+                            .frame(height: 150)
+                        }
+                    }
+                }
+
+                // MARK: Repeat
+                Section {
+                    VStack(spacing: 0) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showRepeatPicker.toggle()
+                                showTravelPicker = false
+                                showAlertPicker  = false
+                            }
+                        } label: {
+                            HStack {
+                                Text("Repeat").foregroundColor(.primary)
+                                Spacer()
+                                Text(repeatRule.rawValue).foregroundColor(.secondary)
+                                Image(systemName: showRepeatPicker ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 12)).foregroundColor(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if showRepeatPicker {
+                            Picker("Repeat", selection: $repeatRule) {
+                                ForEach(RepeatOption.allCases, id: \.self) { opt in
+                                    Text(opt.rawValue).tag(opt)
+                                }
+                            }
+                            .pickerStyle(.wheel)
+                            .frame(height: 150)
+                        }
+                    }
+                }
+
+                // MARK: Category
+                Section {
+                    Picker("Category", selection: $category) {
+                        ForEach(CalendarEvent.EventCategory.allCases) { cat in
+                            Label(cat.rawValue, systemImage: cat.iconName).tag(cat)
+                        }
+                    }
+                    .onChange(of: category) { _, newCat in
+                        // auto-update color when category changes
+                        _ = newCat.defaultColorHex
+                    }
+                }
+
+                // MARK: Alert
+                Section {
+                    VStack(spacing: 0) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showAlertPicker.toggle()
+                                showTravelPicker = false
+                                showRepeatPicker = false
+                            }
+                        } label: {
+                            HStack {
+                                Text("Alert").foregroundColor(.primary)
+                                Spacer()
+                                Text(alertOption.rawValue).foregroundColor(.secondary)
+                                Image(systemName: showAlertPicker ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 12)).foregroundColor(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if showAlertPicker {
+                            Picker("Alert", selection: $alertOption) {
+                                ForEach(AlertOption.allCases, id: \.self) { opt in
+                                    Text(opt.rawValue).tag(opt)
+                                }
+                            }
+                            .pickerStyle(.wheel)
+                            .frame(height: 150)
+                        }
+                    }
+                }
+
+                // MARK: Notes
+                Section {
+                    TextField("Notes", text: $notes, axis: .vertical)
+                        .lineLimit(3...6)
+                        .font(.system(size: 16))
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("New Event")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(Color.systemRed)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { saveEvent() }
+                        .foregroundColor(canSave ? Color.systemRed : Color(.systemGray4))
+                        .fontWeight(.semibold)
+                        .disabled(!canSave)
+                }
+            }
+        }
+    }
+
+    // MARK: - Save
+    private func saveEvent() {
+        let eventTitle = title.trimmingCharacters(in: .whitespaces)
+
+        scheduleEventNotification(title: eventTitle, date: startDate, isAllDay: isAllDay, alertOption: alertOption)
+
+        let recurrence: CalendarEvent.RecurrenceRule
+        switch repeatRule {
+        case .never:    recurrence = .never
+        case .daily:    recurrence = .daily
+        case .weekly:   recurrence = .weekly
+        case .biweekly: recurrence = .biweekly
+        case .monthly:  recurrence = .monthly
+        case .yearly:   recurrence = .yearly
+        }
+
+        // Build a minimal EKEvent shell so the onSave signature is satisfied.
+        // Homvi persists its own CalendarEvent in UserDefaults; we don't
+        // write this to the native EKEventStore.
+        let ekStore    = EKEventStore()
+        let ekEvent    = EKEvent(eventStore: ekStore)
+        ekEvent.title    = eventTitle
+        ekEvent.notes    = notes.isEmpty ? nil : notes
+        ekEvent.isAllDay = isAllDay
+        ekEvent.startDate = startDate
+        ekEvent.endDate   = endDate
+
+        onSave(ekEvent, category, recurrence, travelTime.rawValue, alertOption.rawValue)
+        dismiss()
+    }
+
+    // MARK: - Local notification
+    private func scheduleEventNotification(title: String, date: Date, isAllDay: Bool, alertOption: AlertOption) {
+        guard alertOption != .none else { return }
+
+        let offsets: [AlertOption: TimeInterval] = [
+            .atTime: 0, .five: -300, .fifteen: -900,
+            .thirty: -1800, .oneHour: -3600, .oneDay: -86400,
+        ]
+        let fireDate = date.addingTimeInterval(offsets[alertOption] ?? 0)
+
+        // Don't schedule if the fire time is already in the past
+        guard fireDate > Date() else { return }
+
+        let center  = UNUserNotificationCenter.current()
+        let content = UNMutableNotificationContent()
+        content.title = "📅 \(title)"
+        content.body  = isAllDay
+            ? "You have an all-day event today."
+            : "Your event starts at \(date.formatted(.dateTime.hour().minute()))."
+        content.sound = .default
+
+        let cal = Calendar.current
+        let components: DateComponents
+        if isAllDay {
+            // All-day events: fire at 9 AM on the event day regardless of offset
+            var c = cal.dateComponents([.year, .month, .day], from: date)
+            c.hour   = 9
+            c.minute = 0
+            components = c
+        } else {
+            components = cal.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
+        }
+
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        let id      = "event-\(title.hashValue)-\(date.timeIntervalSince1970)"
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+
+        center.add(request) { error in
+            if let error { print("Notification error: \(error)") }
+        }
+    }
+}
+
+// MARK: - Color extension for system red
+private extension Color {
+    static var systemRed: Color { Color(UIColor.systemRed) }
+}
+
+// MARK: - Edit Calendar Event Sheet
+struct EditCalendarEventSheet: View {
+    let event: CalendarEvent
+    @ObservedObject var vm: ScheduleViewModel
+    @Environment(\.dismiss) var dismiss
+
+    @State private var title      = ""
+    @State private var notes      = ""
+    @State private var isAllDay   = false
+    @State private var startDate  = Date()
+    @State private var endDate    = Date()
+    @State private var category   = CalendarEvent.EventCategory.general
+    @State private var assignedTo:  UUID? = nil
+    @State private var repeatRule  = CalendarEvent.RecurrenceRule.never
+    @State private var travelTime  = EditTravelOption.none
+    @State private var alertOption = EditAlertOption.none
+    @State private var showStart   = false
+    @State private var showEnd     = false
+    @State private var showRepeat  = false
+    @State private var showTravel  = false
+    @State private var showAlert   = false
+
+    enum EditTravelOption: String, CaseIterable {
+        case none    = "None"
+        case five    = "5 minutes"
+        case fifteen = "15 minutes"
+        case thirty  = "30 minutes"
+        case hour    = "1 hour"
+        case ninety  = "1.5 hours"
+        case two     = "2 hours"
+    }
+
+    enum EditAlertOption: String, CaseIterable {
+        case none    = "None"
+        case atTime  = "At time of event"
+        case five    = "5 minutes before"
+        case fifteen = "15 minutes before"
+        case thirty  = "30 minutes before"
+        case oneHour = "1 hour before"
+        case oneDay  = "1 day before"
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    TextField("Title", text: $title)
+                        .font(.system(size: 17))
+                }
+
+                Section {
+                    Toggle("All-day", isOn: $isAllDay.animation())
+
+                    // Starts
+                    HStack {
+                        Text("Starts")
+                        Spacer()
+                        Button {
+                            withAnimation { showStart.toggle(); showEnd = false }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text(startDate.formatted(.dateTime.month(.abbreviated).day().year()))
+                                    .padding(.horizontal, 8).padding(.vertical, 4)
+                                    .background(showStart ? Color(UIColor.systemRed) : Color(.systemGray5))
+                                    .foregroundColor(showStart ? .white : .primary)
+                                    .cornerRadius(7)
+                                if !isAllDay {
+                                    Text(startDate.formatted(.dateTime.hour().minute()))
+                                        .padding(.horizontal, 8).padding(.vertical, 4)
+                                        .background(showStart ? Color(UIColor.systemRed) : Color(.systemGray5))
+                                        .foregroundColor(showStart ? .white : .primary)
+                                        .cornerRadius(7)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if showStart {
+                        DatePicker("", selection: $startDate,
+                                   displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
+                            .datePickerStyle(.graphical).labelsHidden()
+                            .onChange(of: startDate) { _, s in
+                                if endDate <= s {
+                                    endDate = Calendar.current.date(byAdding: .hour, value: 1, to: s) ?? s
+                                }
+                            }
+                    }
+
+                    // Ends
+                    HStack {
+                        Text("Ends")
+                        Spacer()
+                        Button {
+                            withAnimation { showEnd.toggle(); showStart = false }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text(endDate.formatted(.dateTime.month(.abbreviated).day().year()))
+                                    .padding(.horizontal, 8).padding(.vertical, 4)
+                                    .background(showEnd ? Color(UIColor.systemRed) : Color(.systemGray5))
+                                    .foregroundColor(showEnd ? .white : .primary)
+                                    .cornerRadius(7)
+                                if !isAllDay {
+                                    Text(endDate.formatted(.dateTime.hour().minute()))
+                                        .padding(.horizontal, 8).padding(.vertical, 4)
+                                        .background(showEnd ? Color(UIColor.systemRed) : Color(.systemGray5))
+                                        .foregroundColor(showEnd ? .white : .primary)
+                                        .cornerRadius(7)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if showEnd {
+                        DatePicker("", selection: $endDate, in: startDate...,
+                                   displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
+                            .datePickerStyle(.graphical).labelsHidden()
+                    }
+
+                    // Travel Time
+                    VStack(spacing: 0) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showTravel.toggle()
+                                showRepeat = false
+                                showAlert  = false
+                            }
+                        } label: {
+                            HStack {
+                                Text("Travel Time").foregroundColor(.primary)
+                                Spacer()
+                                Text(travelTime.rawValue).foregroundColor(.secondary)
+                                Image(systemName: showTravel ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 12)).foregroundColor(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if showTravel {
+                            Picker("Travel Time", selection: $travelTime) {
+                                ForEach(EditTravelOption.allCases, id: \.self) { opt in
+                                    Text(opt.rawValue).tag(opt)
+                                }
+                            }
+                            .pickerStyle(.wheel)
+                            .frame(height: 150)
+                        }
+                    }
+                }
+
+                // MARK: Repeat
+                Section {
+                    VStack(spacing: 0) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showRepeat.toggle()
+                                showTravel = false
+                                showAlert  = false
+                            }
+                        } label: {
+                            HStack {
+                                Text("Repeat").foregroundColor(.primary)
+                                Spacer()
+                                Text(repeatRule.rawValue).foregroundColor(.secondary)
+                                Image(systemName: showRepeat ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 12)).foregroundColor(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if showRepeat {
+                            Picker("Repeat", selection: $repeatRule) {
+                                ForEach(CalendarEvent.RecurrenceRule.allCases, id: \.self) { opt in
+                                    Text(opt.rawValue).tag(opt)
+                                }
+                            }
+                            .pickerStyle(.wheel)
+                            .frame(height: 150)
+                        }
+                    }
+                }
+
+                Section {
+                    Picker("Category", selection: $category) {
+                        ForEach(CalendarEvent.EventCategory.allCases) { cat in
+                            Label(cat.rawValue, systemImage: cat.iconName).tag(cat)
+                        }
+                    }
+                }
+
+                // MARK: Assign To
+                if !vm.householdMembers.isEmpty {
+                    Section("Assign To") {
+                        Picker("Member", selection: $assignedTo) {
+                            Text("No one").tag(nil as UUID?)
+                            ForEach(vm.householdMembers) { m in
+                                Text(m.name).tag(m.id as UUID?)
+                            }
+                        }
+                    }
+                }
+
+                // MARK: Alert
+                Section {
+                    VStack(spacing: 0) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showAlert.toggle()
+                                showTravel = false
+                                showRepeat = false
+                            }
+                        } label: {
+                            HStack {
+                                Text("Alert").foregroundColor(.primary)
+                                Spacer()
+                                Text(alertOption.rawValue).foregroundColor(.secondary)
+                                Image(systemName: showAlert ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 12)).foregroundColor(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if showAlert {
+                            Picker("Alert", selection: $alertOption) {
+                                ForEach(EditAlertOption.allCases, id: \.self) { opt in
+                                    Text(opt.rawValue).tag(opt)
+                                }
+                            }
+                            .pickerStyle(.wheel)
+                            .frame(height: 150)
+                        }
+                    }
+                }
+
+                Section {
+                    TextField("Notes", text: $notes, axis: .vertical)
+                        .lineLimit(3...6)
+                        .font(.system(size: 16))
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("Edit Event")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .foregroundColor(Color(UIColor.systemRed))
+                }
+            }
+            .onAppear {
+                title       = event.title
+                notes       = event.notes
+                isAllDay    = event.isAllDay
+                startDate   = event.date
+                endDate     = event.endDate ?? Calendar.current.date(byAdding: .hour, value: 1, to: event.date) ?? event.date
+                category    = event.category
+                assignedTo  = event.assignedToID
+                repeatRule  = event.repeatRule
+                travelTime  = EditTravelOption(rawValue: event.travelTime) ?? .none
+                alertOption = EditAlertOption(rawValue: event.alertOption) ?? .none
+            }
+        }
+    }
+
+    private func save() {
+        var updated           = event
+        updated.title         = title.trimmingCharacters(in: .whitespaces)
+        updated.notes         = notes
+        updated.isAllDay      = isAllDay
+        updated.date          = startDate
+        updated.endDate       = endDate
+        updated.category      = category
+        updated.colorHex      = category.defaultColorHex
+        updated.assignedToID  = assignedTo
+        updated.repeatRule    = repeatRule
+        updated.travelTime    = travelTime.rawValue
+        updated.alertOption   = alertOption.rawValue
+        vm.updateEvent(updated)
+        dismiss()
+    }
+}
+
+// MARK: - Event Detail Sheet
+struct EventDetailSheet: View {
+    let event:          CalendarEvent
+    var assignedMember: HouseholdMember? = nil
+    let onEdit:         () -> Void
+    let onDelete:       () -> Void
+
+    @Environment(\.dismiss) var dismiss
+
+    private var color: Color { Color(hex: event.colorHex) ?? Color(UIColor.systemRed) }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+
+                    // ── Colored header ───────────────────────────
+                    ZStack(alignment: .bottomLeading) {
+                        LinearGradient(
+                            colors: [color.opacity(0.85), color],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        )
+                        .frame(minHeight: 90)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 8) {
+                                Image(systemName: event.category.iconName)
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.85))
+                                Text(event.category.rawValue.uppercased())
+                                    .font(.system(size: 10, weight: .heavy)).kerning(1.2)
+                                    .foregroundColor(.white.opacity(0.85))
+                            }
+                            Text(event.title)
+                                .font(.system(size: 22, weight: .black))
+                                .foregroundColor(.white)
+                                .lineLimit(2)
+                        }
+                        .padding(20)
+                    }
+
+                    // ── Info rows ────────────────────────────────
+                    VStack(alignment: .leading, spacing: 0) {
+
+                        // Date
+                        infoRow(icon: "calendar", iconColor: color) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(event.date.formatted(.dateTime.weekday(.wide).month(.wide).day().year()))
+                                    .font(.system(size: 15, weight: .semibold))
+                                if event.isAllDay {
+                                    Text("All Day")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+
+                        divRow
+
+                        // Time (if not all-day)
+                        if !event.isAllDay {
+                            infoRow(icon: "clock.fill", iconColor: color) {
+                                HStack(spacing: 8) {
+                                    Text(event.date.formatted(.dateTime.hour().minute()))
+                                        .font(.system(size: 15, weight: .semibold))
+                                    if let end = event.endDate {
+                                        Image(systemName: "arrow.right")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                        Text(end.formatted(.dateTime.hour().minute()))
+                                            .font(.system(size: 15, weight: .semibold))
+                                        let mins = Int(end.timeIntervalSince(event.date) / 60)
+                                        Text("(\(mins) min)")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                            divRow
+                        }
+
+                        // Category
+                        infoRow(icon: event.category.iconName, iconColor: color) {
+                            HStack(spacing: 8) {
+                                Text(event.category.rawValue)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(color)
+                                    .padding(.horizontal, 10).padding(.vertical, 4)
+                                    .background(color.opacity(0.1))
+                                    .cornerRadius(20)
+                            }
+                        }
+
+                        // Repeat
+                        divRow
+                        infoRow(icon: "repeat", iconColor: color) {
+                            Text(event.repeatRule.rawValue)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.primary)
+                        }
+
+                        // Travel Time
+                        divRow
+                        infoRow(icon: "car.fill", iconColor: color) {
+                            Text(event.travelTime)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.primary)
+                        }
+
+                        // Alert
+                        divRow
+                        infoRow(icon: "bell.fill", iconColor: color) {
+                            Text(event.alertOption)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.primary)
+                        }
+
+                        // Assigned To
+//                        divRow
+//                        infoRow(icon: "person.fill", iconColor: color) {
+//                            Text(assignedMember?.name ?? "Unassigned")
+//                                .font(.system(size: 15, weight: .semibold))
+//                                .foregroundColor(assignedMember == nil ? .secondary : .primary)
+//                        }
+
+                        // Notes
+                        divRow
+                        infoRow(icon: "note.text", iconColor: color) {
+                            Text(event.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                 ? "No notes" : event.notes)
+                                .font(.system(size: 15))
+                                .foregroundColor(event.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                                 ? .secondary : .primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        divRow
+
+                        // Created / ID
+//                        infoRow(icon: "info.circle.fill", iconColor: Color(.systemGray3)) {
+//                            VStack(alignment: .leading, spacing: 2) {
+//                                Text("Homvi Event")
+//                                    .font(.system(size: 13, weight: .medium))
+//                                    .foregroundColor(.secondary)
+//                                Text("ID: \(event.id.uuidString.prefix(8))…")
+//                                    .font(.system(size: 11))
+//                                    .foregroundColor(Color(.systemGray3))
+//                            }
+//                        }
+                    }
+                    .background(Color(.systemBackground))
+
+                    // ── Action buttons ────────────────────────────
+                    HStack(spacing: 12) {
+                        Button {
+                            dismiss()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { onEdit() }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "pencil").font(.system(size: 14, weight: .semibold))
+                                Text("Edit").font(.system(size: 15, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity).padding(.vertical, 14)
+                            .background(color)
+                            .cornerRadius(14)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            dismiss()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { onDelete() }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "trash").font(.system(size: 14, weight: .semibold))
+                                Text("Delete").font(.system(size: 15, weight: .semibold))
+                            }
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity).padding(.vertical, 14)
+                            .background(Color.red.opacity(0.08))
+                            .cornerRadius(14)
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.red.opacity(0.2), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 20)
+                }
+            }
+            .navigationTitle("Event Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .foregroundColor(color)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var divRow: some View {
+        Divider().padding(.leading, 60)
+    }
+
+    @ViewBuilder
+    private func infoRow<C: View>(icon: String, iconColor: Color, @ViewBuilder content: () -> C) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(iconColor.opacity(0.12))
+                    .frame(width: 34, height: 34)
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(iconColor)
+            }
+            .padding(.leading, 20)
+
+            content()
+                .padding(.vertical, 10)
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Compatibility stubs
+struct CalendarStrip: View {
+    @Binding var selectedDate: Date
+    @ObservedObject var vm: ScheduleViewModel
+    var body: some View { EmptyView() }
+}
+struct EventDetailRow: View {
+    let event: CalendarEvent; let member: HouseholdMember?; let onDelete: () -> Void
+    var body: some View { EmptyView() }
+}
+struct TaskDetailRow: View {
+    let task: HouseTask; let member: HouseholdMember?
+    let onToggle: () -> Void; let onDelete: () -> Void
+    var body: some View { EmptyView() }
+}
+
+// MARK: - CalendarTaskRow (used by DashboardView)
+struct CalendarTaskRow: View {
+    let task: HouseTask; let member: HouseholdMember?
+    let onToggle: () -> Void; let onDelete: () -> Void
+
+    var priorityColor: Color {
+        switch task.priority {
+        case .high:   return Color(hex: "#C0392B")!
+        case .medium: return Color(hex: "#E67E22")!
+        case .low:    return Color(hex: "#3D7A52")!
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button { onToggle() } label: {
+                ZStack {
+                    Circle().stroke(task.isComplete ? Color(hex: "#3D7A52")! : Color(.systemGray4), lineWidth: 2)
+                        .frame(width: 26, height: 26)
+                    if task.isComplete {
+                        Circle().fill(Color(hex: "#3D7A52")!).frame(width: 26, height: 26)
+                        Image(systemName: "checkmark").font(.system(size: 10, weight: .black)).foregroundColor(.white)
+                    }
+                }
+                .animation(.spring(response: 0.25), value: task.isComplete)
+            }
+            .buttonStyle(.plain).padding(.leading, 14)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(task.title)
+                    .font(.system(size: 14, weight: .bold))
+                    .strikethrough(task.isComplete)
+                    .foregroundColor(task.isComplete ? .secondary : .primary).lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(task.priority.label)
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundColor(priorityColor)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(priorityColor.opacity(0.1)).cornerRadius(20)
+                    if let m = member {
+                        HStack(spacing: 3) {
+                            Image(systemName: "person.fill").font(.system(size: 8))
+                            Text(m.name).font(.system(size: 10, weight: .medium))
+                        }.foregroundColor(.secondary)
+                    }
+                }
+            }
+            Spacer()
+            Button { onDelete() } label: {
+                Image(systemName: "trash").font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.red.opacity(0.6))
+                    .frame(width: 28, height: 28).background(Color.red.opacity(0.07)).clipShape(Circle())
+            }
+            .buttonStyle(.plain).padding(.trailing, 14)
+        }
+        .padding(.vertical, 10)
+    }
+}
+
+// MARK: - CalendarDayCell (unused, kept for compatibility)
+struct CalendarDayCell: View {
+    let day: Date?; let isSelected: Bool; let isToday: Bool
+    let isCurrentMonth: Bool; let hasEvents: Bool
+    let eventColors: [Color]; let onTap: () -> Void
+    var body: some View { EmptyView() }
+}
+
+#Preview { FamilyCalendarView() }

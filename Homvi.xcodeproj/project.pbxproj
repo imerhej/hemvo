@@ -1,0 +1,640 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 90;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		2B9719352F9D8DAB005134BA /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 2B9719342F9D8DAB005134BA /* Supabase */; };
+		2B9719372F9D8DB0005134BA /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = 2B9719362F9D8DB0005134BA /* Auth */; };
+		2B9719392F9D8DBC005134BA /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = 2B9719382F9D8DBC005134BA /* Realtime */; };
+		2B97193B2F9D8DC3005134BA /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = 2B97193A2F9D8DC3005134BA /* PostgREST */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		2B70BA2B2F676B7E008EA50F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2B70BA152F676B7C008EA50F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2B70BA1C2F676B7C008EA50F;
+			remoteInfo = Homvi;
+		};
+		2B70BA352F676B7E008EA50F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2B70BA152F676B7C008EA50F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2B70BA1C2F676B7C008EA50F;
+			remoteInfo = Homvi;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		2B70BA1D2F676B7C008EA50F /* Homvi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Homvi.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2B70BA2A2F676B7E008EA50F /* HomviTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HomviTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2B70BA342F676B7E008EA50F /* HomviUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HomviUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		2B70BA1F2F676B7C008EA50F /* Homvi */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Homvi;
+			sourceTree = "<group>";
+		};
+		2B70BA2D2F676B7E008EA50F /* HomviTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = HomviTests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		2B70BA1A2F676B7C008EA50F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				2B97193B2F9D8DC3005134BA /* PostgREST in Frameworks */,
+				2B9719392F9D8DBC005134BA /* Realtime in Frameworks */,
+				2B9719372F9D8DB0005134BA /* Auth in Frameworks */,
+				2B9719352F9D8DAB005134BA /* Supabase in Frameworks */,
+			);
+		};
+		2B70BA272F676B7E008EA50F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		2B70BA312F676B7E008EA50F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2B70BA142F676B7C008EA50F = {
+			isa = PBXGroup;
+			children = (
+				2B70BA1F2F676B7C008EA50F /* Homvi */,
+				2B70BA2D2F676B7E008EA50F /* HomviTests */,
+				2B9719332F9D8DAB005134BA /* Frameworks */,
+				2B70BA1E2F676B7C008EA50F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		2B70BA1E2F676B7C008EA50F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2B70BA1D2F676B7C008EA50F /* Homvi.app */,
+				2B70BA2A2F676B7E008EA50F /* HomviTests.xctest */,
+				2B70BA342F676B7E008EA50F /* HomviUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2B9719332F9D8DAB005134BA /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2B70BA1C2F676B7C008EA50F /* Homvi */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2B70BA3E2F676B7E008EA50F /* Build configuration list for PBXNativeTarget "Homvi" */;
+			buildPhases = (
+				2B70BA192F676B7C008EA50F /* Sources */,
+				2B70BA1A2F676B7C008EA50F /* Frameworks */,
+				2B70BA1B2F676B7C008EA50F /* Resources */,
+				AB2B70BA2F676B7C00000001 /* Set Build Number from Git */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				2B70BA1F2F676B7C008EA50F /* Homvi */,
+			);
+			name = Homvi;
+			packageProductDependencies = (
+				2B9719342F9D8DAB005134BA /* Supabase */,
+				2B9719362F9D8DB0005134BA /* Auth */,
+				2B9719382F9D8DBC005134BA /* Realtime */,
+				2B97193A2F9D8DC3005134BA /* PostgREST */,
+			);
+			productName = Homvi;
+			productReference = 2B70BA1D2F676B7C008EA50F /* Homvi.app */;
+			productType = "com.apple.product-type.application";
+		};
+		2B70BA292F676B7E008EA50F /* HomviTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2B70BA412F676B7E008EA50F /* Build configuration list for PBXNativeTarget "HomviTests" */;
+			buildPhases = (
+				2B70BA262F676B7E008EA50F /* Sources */,
+				2B70BA272F676B7E008EA50F /* Frameworks */,
+				2B70BA282F676B7E008EA50F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2B70BA2C2F676B7E008EA50F /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				2B70BA2D2F676B7E008EA50F /* HomviTests */,
+			);
+			name = HomviTests;
+			productName = HomviTests;
+			productReference = 2B70BA2A2F676B7E008EA50F /* HomviTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		2B70BA332F676B7E008EA50F /* HomviUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2B70BA442F676B7E008EA50F /* Build configuration list for PBXNativeTarget "HomviUITests" */;
+			buildPhases = (
+				2B70BA302F676B7E008EA50F /* Sources */,
+				2B70BA312F676B7E008EA50F /* Frameworks */,
+				2B70BA322F676B7E008EA50F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2B70BA362F676B7E008EA50F /* PBXTargetDependency */,
+			);
+			name = HomviUITests;
+			productName = HomviUITests;
+			productReference = 2B70BA342F676B7E008EA50F /* HomviUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		2B70BA152F676B7C008EA50F /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2620;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					2B70BA1C2F676B7C008EA50F = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					2B70BA292F676B7E008EA50F = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 2B70BA1C2F676B7C008EA50F;
+					};
+					2B70BA332F676B7E008EA50F = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 2B70BA1C2F676B7C008EA50F;
+					};
+				};
+			};
+			buildConfigurationList = 2B70BA182F676B7C008EA50F /* Build configuration list for PBXProject "Homvi" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 2B70BA142F676B7C008EA50F;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				2B9719322F9D8D13005134BA /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
+			preferredProjectObjectVersion = 90;
+			productRefGroup = 2B70BA1E2F676B7C008EA50F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				2B70BA1C2F676B7C008EA50F /* Homvi */,
+				2B70BA292F676B7E008EA50F /* HomviTests */,
+				2B70BA332F676B7E008EA50F /* HomviUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		2B70BA1B2F676B7C008EA50F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		2B70BA282F676B7E008EA50F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		2B70BA322F676B7E008EA50F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		AB2B70BA2F676B7C00000001 /* Set Build Number from Git */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			name = "Set Build Number from Git";
+			shellPath = /bin/sh;
+			shellScript = (
+				"BUILD_NUMBER=$(git -C \"${SRCROOT}\" rev-list --count HEAD 2>/dev/null || echo \"1\")",
+				"INFO_PLIST=\"${BUILT_PRODUCTS_DIR}/${INFOPLIST_PATH}\"",
+				"[ -f \"$INFO_PLIST\" ] && /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $BUILD_NUMBER\" \"$INFO_PLIST\"",
+				"exit 0",
+				"",
+			);
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2B70BA192F676B7C008EA50F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		2B70BA262F676B7E008EA50F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		2B70BA302F676B7E008EA50F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		2B70BA2C2F676B7E008EA50F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2B70BA1C2F676B7C008EA50F /* Homvi */;
+			targetProxy = 2B70BA2B2F676B7E008EA50F /* PBXContainerItemProxy */;
+		};
+		2B70BA362F676B7E008EA50F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2B70BA1C2F676B7C008EA50F /* Homvi */;
+			targetProxy = 2B70BA352F676B7E008EA50F /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2B70BA3C2F676B7E008EA50F /* Debug configuration for PBXProject "Homvi" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		2B70BA3D2F676B7E008EA50F /* Release configuration for PBXProject "Homvi" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		2B70BA3F2F676B7E008EA50F /* Debug configuration for PBXNativeTarget "Homvi" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Homvi/Homvi.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = 545XYWBM95;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Homvi;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Homvi uses Face ID to sign you in securely.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.1.0;
+				NEW_SETTING = "";
+				PRODUCT_BUNDLE_IDENTIFIER = com.issammerhej.Homvi;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		2B70BA402F676B7E008EA50F /* Release configuration for PBXNativeTarget "Homvi" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Homvi/HomviRelease.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = 545XYWBM95;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Homvi;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Homvi uses Face ID to sign you in securely.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.1.0;
+				NEW_SETTING = "";
+				PRODUCT_BUNDLE_IDENTIFIER = com.issammerhej.Homvi;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		2B70BA422F676B7E008EA50F /* Debug configuration for PBXNativeTarget "HomviTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 545XYWBM95;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.issammerhej.Homvi;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Homvi.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Homvi";
+			};
+			name = Debug;
+		};
+		2B70BA432F676B7E008EA50F /* Release configuration for PBXNativeTarget "HomviTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 545XYWBM95;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.issammerhej.Homvi;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Homvi.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Homvi";
+			};
+			name = Release;
+		};
+		2B70BA452F676B7E008EA50F /* Debug configuration for PBXNativeTarget "HomviUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 545XYWBM95;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.webstitching.HomviUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Homvi;
+			};
+			name = Debug;
+		};
+		2B70BA462F676B7E008EA50F /* Release configuration for PBXNativeTarget "HomviUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 545XYWBM95;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.webstitching.HomviUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Homvi;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2B70BA182F676B7C008EA50F /* Build configuration list for PBXProject "Homvi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2B70BA3C2F676B7E008EA50F /* Debug configuration for PBXProject "Homvi" */,
+				2B70BA3D2F676B7E008EA50F /* Release configuration for PBXProject "Homvi" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		2B70BA3E2F676B7E008EA50F /* Build configuration list for PBXNativeTarget "Homvi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2B70BA3F2F676B7E008EA50F /* Debug configuration for PBXNativeTarget "Homvi" */,
+				2B70BA402F676B7E008EA50F /* Release configuration for PBXNativeTarget "Homvi" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		2B70BA412F676B7E008EA50F /* Build configuration list for PBXNativeTarget "HomviTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2B70BA422F676B7E008EA50F /* Debug configuration for PBXNativeTarget "HomviTests" */,
+				2B70BA432F676B7E008EA50F /* Release configuration for PBXNativeTarget "HomviTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		2B70BA442F676B7E008EA50F /* Build configuration list for PBXNativeTarget "HomviUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2B70BA452F676B7E008EA50F /* Debug configuration for PBXNativeTarget "HomviUITests" */,
+				2B70BA462F676B7E008EA50F /* Release configuration for PBXNativeTarget "HomviUITests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		2B9719322F9D8D13005134BA /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		2B9719342F9D8DAB005134BA /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2B9719322F9D8D13005134BA /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+		2B9719362F9D8DB0005134BA /* Auth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2B9719322F9D8D13005134BA /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Auth;
+		};
+		2B9719382F9D8DBC005134BA /* Realtime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2B9719322F9D8D13005134BA /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Realtime;
+		};
+		2B97193A2F9D8DC3005134BA /* PostgREST */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2B9719322F9D8D13005134BA /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = PostgREST;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 2B70BA152F676B7C008EA50F /* Project object */;
+}

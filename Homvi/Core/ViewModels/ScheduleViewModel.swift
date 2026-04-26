@@ -1,0 +1,399 @@
+//  ScheduleViewModel.swift
+//  Homvi
+//  Manages family calendar events and household tasks.
+//  Supabase `events` table: id, household_id, title, date, end_date,
+//    assigned_to_id, is_all_day, notes, category, color_hex, repeat_rule,
+//    travel_time, alert_option, created_by, created_at
+//  Supabase `house_tasks` table: id, household_id, title, assigned_to_id,
+//    due_date, is_complete, priority, notes, completed_date, created_by, created_at
+
+internal import SwiftUI
+internal import StoreKit
+internal import CoreData
+internal import CloudKit
+internal import Foundation
+internal import Combine
+internal import UserNotifications
+internal import Supabase
+
+@MainActor
+final class ScheduleViewModel: ObservableObject {
+
+    @Published var events:           [CalendarEvent]   = []
+    @Published var tasks:            [HouseTask]       = []
+    @Published var householdMembers: [HouseholdMember] = []
+
+    private var cachedUserID:      UUID?
+    private var cachedHouseholdID: UUID?
+
+    // MARK: - Computed
+    var upcomingEvents: [CalendarEvent] {
+        events.filter { $0.date >= Calendar.current.startOfDay(for: Date()) }
+              .sorted { $0.date < $1.date }
+    }
+
+    var tasksDueToday: [HouseTask] {
+        tasks.filter { $0.isDueToday && !$0.isComplete }
+              .sorted { $0.priority.sortValue < $1.priority.sortValue }
+    }
+
+    var overdueTasks: [HouseTask] {
+        tasks.filter { $0.isOverdue }
+              .sorted { $0.dueDate < $1.dueDate }
+    }
+
+    func events(on date: Date) -> [CalendarEvent] {
+        let cal = Calendar.current
+        var result: [CalendarEvent] = []
+        for ev in events {
+            if cal.isDate(ev.date, inSameDayAs: date) {
+                result.append(ev)
+            } else if ev.occursOn(date: date) {
+                var occurrence = ev
+                let h = cal.component(.hour, from: ev.date)
+                let m = cal.component(.minute, from: ev.date)
+                if let newStart = cal.date(bySettingHour: h, minute: m, second: 0, of: date) {
+                    occurrence.date = newStart
+                    if let end = ev.endDate {
+                        occurrence.endDate = newStart.addingTimeInterval(end.timeIntervalSince(ev.date))
+                    }
+                }
+                result.append(occurrence)
+            }
+        }
+        return result.sorted { $0.date < $1.date }
+    }
+
+    func tasks(on date: Date) -> [HouseTask] {
+        tasks.filter { Calendar.current.isDate($0.dueDate, inSameDayAs: date) }
+              .sorted { $0.priority.sortValue < $1.priority.sortValue }
+    }
+
+    func hasActivity(on date: Date) -> Bool {
+        !events(on: date).isEmpty || !tasks(on: date).isEmpty
+    }
+
+    // MARK: - Member Lookup
+    func member(for id: UUID?) -> HouseholdMember? {
+        guard let id else { return nil }
+        return householdMembers.first { $0.id == id }
+    }
+
+    private let notif = NotificationService.shared
+
+    // MARK: - Event CRUD
+    func addEvent(_ event: CalendarEvent) {
+        events.append(event)
+        persist()
+        if UserDefaults.standard.bool(forKey: "notif_schedule") {
+            notif.scheduleEventReminders(for: [event])
+        }
+        Task { await supabaseUpsertEvent(event) }
+    }
+
+    func updateEvent(_ event: CalendarEvent) {
+        if let idx = events.firstIndex(where: { $0.id == event.id }) {
+            events[idx] = event
+            persist()
+            notif.cancelEventReminders(for: event.id)
+            if UserDefaults.standard.bool(forKey: "notif_schedule") {
+                notif.scheduleEventReminders(for: [event])
+            }
+            Task { await supabaseUpsertEvent(event) }
+        }
+    }
+
+    func deleteEvent(_ event: CalendarEvent) {
+        events.removeAll { $0.id == event.id }
+        persist()
+        notif.cancelEventReminders(for: event.id)
+        Task { await supabaseDeleteEvent(id: event.id) }
+    }
+
+    // MARK: - Task CRUD
+    func addTask(_ task: HouseTask) {
+        tasks.append(task)
+        persist()
+        Task { await supabaseUpsertTask(task) }
+    }
+
+    func toggleTask(_ task: HouseTask) {
+        if let idx = tasks.firstIndex(where: { $0.id == task.id }) {
+            tasks[idx].isComplete.toggle()
+            tasks[idx].completedDate = tasks[idx].isComplete ? Date() : nil
+            persist()
+            Task { await supabaseUpsertTask(tasks[idx]) }
+        }
+    }
+
+    func deleteTask(_ task: HouseTask) {
+        tasks.removeAll { $0.id == task.id }
+        persist()
+        Task { await supabaseDeleteTask(id: task.id) }
+    }
+
+    func deleteTasks(at offsets: IndexSet) {
+        let toDelete = offsets.map { tasks[$0] }
+        tasks.remove(atOffsets: offsets)
+        persist()
+        for t in toDelete { Task { await supabaseDeleteTask(id: t.id) } }
+    }
+
+    // MARK: - Member CRUD (local only — members are managed by HouseholdService)
+    func addMember(_ member: HouseholdMember) {
+        householdMembers.append(member); persist()
+    }
+    func deleteMember(_ member: HouseholdMember) {
+        householdMembers.removeAll { $0.id == member.id }; persist()
+    }
+
+    // MARK: - Persistence
+    private let eventsKey  = "hb_events"
+    private let tasksKey   = "hb_tasks"
+    private let membersKey = "hb_members"
+
+    init() {
+        load()
+        if UserDefaults.standard.bool(forKey: "notif_schedule") {
+            notif.scheduleEventReminders(for: events)
+        }
+        Task { await loadFromSupabase() }
+    }
+
+    private func load() {
+        if let d = UserDefaults.standard.data(forKey: eventsKey),
+           let v = try? JSONDecoder().decode([CalendarEvent].self, from: d) { events = v }
+        if let d = UserDefaults.standard.data(forKey: tasksKey),
+           let v = try? JSONDecoder().decode([HouseTask].self, from: d) { tasks = v }
+        if let d = UserDefaults.standard.data(forKey: membersKey),
+           let v = try? JSONDecoder().decode([HouseholdMember].self, from: d) { householdMembers = v }
+    }
+
+    private func persist() {
+        if let d = try? JSONEncoder().encode(events)          { UserDefaults.standard.set(d, forKey: eventsKey) }
+        if let d = try? JSONEncoder().encode(tasks)           { UserDefaults.standard.set(d, forKey: tasksKey) }
+        if let d = try? JSONEncoder().encode(householdMembers){ UserDefaults.standard.set(d, forKey: membersKey) }
+    }
+
+    // MARK: - Supabase Sync
+
+    func loadFromSupabase() async {
+        guard let uid = await AuthService.shared.currentUserID() else { return }
+        cachedUserID = uid
+
+        if let profile = try? await AuthService.shared.loadProfile() {
+            cachedHouseholdID = profile.householdId
+        }
+
+        await loadEventsFromSupabase(uid: uid)
+        await loadTasksFromSupabase(uid: uid)
+    }
+
+    private func loadEventsFromSupabase(uid: UUID) async {
+        do {
+            var query = supabase.from("events").select()
+            if let hid = cachedHouseholdID {
+                query = query.eq("household_id", value: hid.uuidString)
+            } else {
+                query = query.eq("created_by", value: uid.uuidString)
+            }
+            let rows: [SupabaseEventRow] = try await query.execute().value
+            events = rows.map { $0.toEvent() }
+            if let d = try? JSONEncoder().encode(events) {
+                UserDefaults.standard.set(d, forKey: eventsKey)
+            }
+            if UserDefaults.standard.bool(forKey: "notif_schedule") {
+                notif.scheduleEventReminders(for: events)
+            }
+        } catch {
+            print("[Supabase] fetch events error: \(error)")
+        }
+    }
+
+    private func loadTasksFromSupabase(uid: UUID) async {
+        do {
+            var query = supabase.from("house_tasks").select()
+            if let hid = cachedHouseholdID {
+                query = query.eq("household_id", value: hid.uuidString)
+            } else {
+                query = query.eq("created_by", value: uid.uuidString)
+            }
+            let rows: [SupabaseTaskRow] = try await query.execute().value
+            tasks = rows.map { $0.toTask() }
+            if let d = try? JSONEncoder().encode(tasks) {
+                UserDefaults.standard.set(d, forKey: tasksKey)
+            }
+        } catch {
+            print("[Supabase] fetch tasks error: \(error)")
+        }
+    }
+
+    private func resolveIDs() async {
+        if cachedUserID == nil {
+            cachedUserID = await AuthService.shared.currentUserID()
+        }
+        if cachedHouseholdID == nil, let profile = try? await AuthService.shared.loadProfile() {
+            cachedHouseholdID = profile.householdId
+        }
+    }
+
+    private func supabaseUpsertEvent(_ event: CalendarEvent) async {
+        await resolveIDs()
+        guard let uid = cachedUserID else { return }
+        let row = SupabaseEventRow(from: event, userId: uid, householdId: cachedHouseholdID)
+        do {
+            try await supabase.from("events").upsert(row, onConflict: "id").execute()
+        } catch {
+            print("[Supabase] upsert event error: \(error)")
+        }
+    }
+
+    private func supabaseDeleteEvent(id: UUID) async {
+        do {
+            try await supabase.from("events").delete().eq("id", value: id.uuidString).execute()
+        } catch {
+            print("[Supabase] delete event error: \(error)")
+        }
+    }
+
+    private func supabaseUpsertTask(_ task: HouseTask) async {
+        await resolveIDs()
+        guard let uid = cachedUserID else { return }
+        let row = SupabaseTaskRow(from: task, userId: uid, householdId: cachedHouseholdID)
+        do {
+            try await supabase.from("house_tasks").upsert(row, onConflict: "id").execute()
+        } catch {
+            print("[Supabase] upsert task error: \(error)")
+        }
+    }
+
+    private func supabaseDeleteTask(id: UUID) async {
+        do {
+            try await supabase.from("house_tasks").delete().eq("id", value: id.uuidString).execute()
+        } catch {
+            print("[Supabase] delete task error: \(error)")
+        }
+    }
+}
+
+// MARK: - Event row mapping
+private struct SupabaseEventRow: Codable {
+    let id:           UUID
+    let householdId:  UUID?
+    var title:        String
+    var date:         Date
+    var endDate:      Date?
+    var assignedToId: UUID?
+    var isAllDay:     Bool
+    var notes:        String
+    var category:     String
+    var colorHex:     String
+    var repeatRule:   String
+    var travelTime:   String
+    var alertOption:  String
+    let createdBy:    UUID
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case householdId  = "household_id"
+        case title
+        case date
+        case endDate      = "end_date"
+        case assignedToId = "assigned_to_id"
+        case isAllDay     = "is_all_day"
+        case notes
+        case category
+        case colorHex     = "color_hex"
+        case repeatRule   = "repeat_rule"
+        case travelTime   = "travel_time"
+        case alertOption  = "alert_option"
+        case createdBy    = "created_by"
+    }
+
+    init(from event: CalendarEvent, userId: UUID, householdId: UUID?) {
+        id               = event.id
+        createdBy        = userId
+        self.householdId = householdId
+        title            = event.title
+        date             = event.date
+        endDate          = event.endDate
+        assignedToId     = event.assignedToID
+        isAllDay         = event.isAllDay
+        notes            = event.notes
+        category         = event.category.rawValue
+        colorHex         = event.colorHex
+        repeatRule       = event.repeatRule.rawValue
+        travelTime       = event.travelTime
+        alertOption      = event.alertOption
+    }
+
+    func toEvent() -> CalendarEvent {
+        CalendarEvent(
+            id:           id,
+            title:        title,
+            date:         date,
+            endDate:      endDate,
+            assignedToID: assignedToId,
+            isAllDay:     isAllDay,
+            notes:        notes,
+            category:     CalendarEvent.EventCategory(rawValue: category) ?? .general,
+            colorHex:     colorHex,
+            repeatRule:   CalendarEvent.RecurrenceRule(rawValue: repeatRule) ?? .never,
+            travelTime:   travelTime,
+            alertOption:  alertOption
+        )
+    }
+}
+
+// MARK: - Task row mapping
+private struct SupabaseTaskRow: Codable {
+    let id:            UUID
+    let householdId:   UUID?
+    var title:         String
+    var assignedToId:  UUID?
+    var dueDate:       Date
+    var isComplete:    Bool
+    var priority:      String
+    var notes:         String
+    var completedDate: Date?
+    let createdBy:     UUID
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case householdId  = "household_id"
+        case title
+        case assignedToId = "assigned_to_id"
+        case dueDate      = "due_date"
+        case isComplete   = "is_complete"
+        case priority
+        case notes
+        case completedDate = "completed_date"
+        case createdBy    = "created_by"
+    }
+
+    init(from task: HouseTask, userId: UUID, householdId: UUID?) {
+        id               = task.id
+        createdBy        = userId
+        self.householdId = householdId
+        title            = task.title
+        assignedToId     = task.assignedToID
+        dueDate          = task.dueDate
+        isComplete       = task.isComplete
+        priority         = task.priority.rawValue
+        notes            = task.notes
+        completedDate    = task.completedDate
+    }
+
+    func toTask() -> HouseTask {
+        HouseTask(
+            id:            id,
+            title:         title,
+            assignedToID:  assignedToId,
+            dueDate:       dueDate,
+            isComplete:    isComplete,
+            priority:      HouseTask.Priority(rawValue: priority) ?? .medium,
+            notes:         notes,
+            completedDate: completedDate
+        )
+    }
+}
