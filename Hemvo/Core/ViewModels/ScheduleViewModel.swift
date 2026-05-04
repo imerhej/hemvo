@@ -175,7 +175,12 @@ final class ScheduleViewModel: ObservableObject {
             tasks[idx].isComplete.toggle()
             tasks[idx].completedDate = tasks[idx].isComplete ? Date() : nil
             persist()
-            Task { await supabaseUpsertTask(tasks[idx]) }
+            // Use a targeted partial UPDATE (not upsert) so we only touch
+            // is_complete + completed_date. A full upsert would stamp
+            // created_by = current user, corrupting ownership and breaking
+            // the RLS policy for tasks owned by another household member.
+            let updated = tasks[idx]
+            Task { await supabaseToggleTask(updated) }
         }
     }
 
@@ -361,6 +366,28 @@ final class ScheduleViewModel: ObservableObject {
             try await supabase.from("house_tasks").upsert(row, onConflict: "id").execute()
         } catch {
             print("[Supabase] upsert task error: \(error)")
+        }
+    }
+
+    /// Partial UPDATE of only is_complete + completed_date.
+    /// Works for both the creator and the assigned member under the RLS policy
+    /// `USING (created_by = auth.uid() OR assigned_to_id = auth.uid())`.
+    private func supabaseToggleTask(_ task: HouseTask) async {
+        struct Toggle: Encodable {
+            let isComplete:    Bool
+            let completedDate: Date?
+            enum CodingKeys: String, CodingKey {
+                case isComplete    = "is_complete"
+                case completedDate = "completed_date"
+            }
+        }
+        do {
+            try await supabase.from("house_tasks")
+                .update(Toggle(isComplete: task.isComplete, completedDate: task.completedDate))
+                .eq("id", value: task.id.uuidString)
+                .execute()
+        } catch {
+            print("[Supabase] toggle task error: \(error)")
         }
     }
 
