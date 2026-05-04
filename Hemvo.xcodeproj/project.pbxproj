@@ -109,7 +109,7 @@
 				2B70BA192F676B7C008EA50F /* Sources */,
 				2B70BA1A2F676B7C008EA50F /* Frameworks */,
 				2B70BA1B2F676B7C008EA50F /* Resources */,
-				AB2B70BA2F676B7C00000001 /* Set Build Number from Git */,
+				AB2B70BA2F676B7C00000001 /* Version + Build Number from Git */,
 			);
 			buildRules = (
 			);
@@ -232,16 +232,31 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		AB2B70BA2F676B7C00000001 /* Set Build Number from Git */ = {
+		AB2B70BA2F676B7C00000001 /* Version + Build Number from Git */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
-			name = "Set Build Number from Git";
-			shellPath = /bin/sh;
+			name = "Version + Build Number from Git";
+			shellPath = /bin/bash;
 			shellScript = (
-				"BUILD_NUMBER=$(git -C \"${SRCROOT}\" rev-list --count HEAD 2>/dev/null || echo \"1\")",
+				"#!/bin/bash",
+				"set -e",
+				"",
 				"INFO_PLIST=\"${BUILT_PRODUCTS_DIR}/${INFOPLIST_PATH}\"",
-				"[ -f \"$INFO_PLIST\" ] && /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $BUILD_NUMBER\" \"$INFO_PLIST\"",
-				"exit 0",
+				"",
+				"BUILD=$(git -C \"${SRCROOT}\" rev-list --count HEAD 2>/dev/null || echo \"1\")",
+				"/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $BUILD\" \"$INFO_PLIST\"",
+				"echo \"✅ Build number set to: $BUILD\"",
+				"",
+				"GIT_TAG=$(git -C \"${SRCROOT}\" describe --tags --match \"v[0-9]*\" --abbrev=0 2>/dev/null || echo \"\")",
+				"",
+				"if [ -n \"$GIT_TAG\" ]; then",
+				"    VERSION=\"${GIT_TAG#v}\"",
+				"    /usr/libexec/PlistBuddy -c \"Set :CFBundleShortVersionString $VERSION\" \"$INFO_PLIST\"",
+				"    echo \"✅ Version set to: $VERSION (from tag $GIT_TAG)\"",
+				"else",
+				"    CURRENT=$(/usr/libexec/PlistBuddy -c \"Print :CFBundleShortVersionString\" \"$INFO_PLIST\" 2>/dev/null || echo \"1.0.0\")",
+				"    echo \"⚠️  No git tag found. Keeping version: $CURRENT\"",
+				"fi",
 				"",
 			);
 			showEnvVarsInLog = 0;
@@ -411,6 +426,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 545XYWBM95;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Hemvo;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
@@ -449,6 +465,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 545XYWBM95;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Hemvo;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";

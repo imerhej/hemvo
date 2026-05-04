@@ -1,0 +1,246 @@
+// AuthService.swift — Hemvo
+// All auth operations go through Supabase.
+// login() accepts email OR username — if no "@" is present it resolves
+// the username to an email via the profiles table first.
+
+internal import Foundation
+internal import Supabase
+
+@MainActor
+final class AuthService {
+
+    // MARK: - Singleton
+    static let shared = AuthService()
+    private init() {}
+
+    // MARK: - Sign Up
+    /// Creates a new Supabase auth user. Username is stored in user_metadata
+    /// so the `handle_new_user` DB trigger can write it to the profiles table.
+    func createAccount(email: String, password: String,
+                       fullName: String, username: String) async throws {
+        // Reject immediately if the username is already taken (avoids a
+        // partial-failure where auth.users gets a row but profiles doesn't).
+        guard try await isUsernameAvailable(username) else {
+            throw AuthError.usernameTaken
+        }
+        try await supabase.auth.signUp(
+            email: email,
+            password: password,
+            data: [
+                "full_name": .string(fullName),
+                "username":  .string(username.lowercased().trimmingCharacters(in: .whitespaces))
+            ]
+        )
+    }
+
+    // MARK: - Login (email or username)
+    func login(emailOrUsername: String, password: String) async throws {
+        let email: String
+        if emailOrUsername.contains("@") {
+            email = emailOrUsername.lowercased().trimmingCharacters(in: .whitespaces)
+        } else {
+            email = try await emailForUsername(emailOrUsername)
+        }
+        try await supabase.auth.signIn(email: email, password: password)
+    }
+
+    // MARK: - Sign Out
+    func signOut() async throws {
+        try await supabase.auth.signOut()
+    }
+
+    // MARK: - Current User ID
+    // nonisolated — same reason as changePassword: calling supabase.auth.session
+    // from the main actor can deadlock when a token refresh network call is needed.
+    nonisolated func currentUserID() async -> UUID? {
+        try? await supabase.auth.session.user.id
+    }
+
+    // MARK: - Current User Email
+    nonisolated func currentUserEmail() async -> String? {
+        try? await supabase.auth.session.user.email
+    }
+
+    // MARK: - Session Restore
+    // nonisolated — Supabase token refresh posts callbacks that may need the main
+    // actor; calling this FROM the main actor causes a deadlock in those cases.
+    nonisolated func restoreSession() async -> Bool {
+        do {
+            _ = try await supabase.auth.session
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    // MARK: - Change Password (authenticated user, requires current password)
+    // nonisolated so this runs on the global concurrent executor (background thread),
+    // not the main actor. The Supabase SDK posts session-state callbacks back to the
+    // main actor internally; calling these SDK methods FROM the main actor causes the
+    // SDK to deadlock waiting for the very actor that's blocked waiting for the SDK.
+    nonisolated func changePassword(currentPassword: String, to newPassword: String) async throws {
+        guard let email = try? await supabase.auth.session.user.email else {
+            throw AuthError.notLoggedIn
+        }
+        try await supabase.auth.signIn(email: email, password: currentPassword)
+        _ = try await supabase.auth.update(user: UserAttributes(password: newPassword))
+    }
+
+    // MARK: - Reset Password (deep-link recovery session, no current password needed)
+    // Called from ResetPasswordView after Supabase has validated the reset token.
+    // nonisolated for the same reason as changePassword above.
+    nonisolated func resetPassword(to newPassword: String) async throws {
+        _ = try await supabase.auth.update(user: UserAttributes(password: newPassword))
+    }
+
+    // MARK: - Delete Account
+    // Deletes all rows owned by the current user across every table that holds a
+    // foreign-key reference to auth.users, then calls the `delete_my_account` RPC
+    // (SECURITY DEFINER) which removes the profile and the auth.users row.
+    // The client-side cleanup is a safety net: ideally the RPC itself should CASCADE
+    // these deletes, but until the DB function is updated this prevents FK violations.
+    func deleteAccount() async throws {
+        guard let uid = await currentUserID() else { throw AuthError.notLoggedIn }
+
+        let tables: [(table: String, column: String)] = [
+            ("expenses",       "created_by"),
+            ("events",         "created_by"),
+            ("meals",          "created_by"),
+            ("house_tasks",    "created_by"),
+            ("grocery_items",  "created_by"),
+            ("shopping_items", "created_by"),
+            ("shopping_lists", "created_by"),
+            ("device_tokens",  "user_id"),
+        ]
+
+        for entry in tables {
+            _ = try? await supabase
+                .from(entry.table)
+                .delete()
+                .eq(entry.column, value: uid)
+                .execute()
+        }
+
+        try await supabase.rpc("delete_my_account").execute()
+    }
+
+    // MARK: - Password Reset Email
+    func sendPasswordReset(to email: String) async throws {
+        try await supabase.auth.resetPasswordForEmail(email)
+    }
+
+    // MARK: - Load Profile
+    func loadProfile() async throws -> HemvoProfile {
+        guard let uid = await currentUserID() else { throw AuthError.notLoggedIn }
+        let profile: HemvoProfile = try await supabase
+            .from("profiles")
+            .select()
+            .eq("id", value: uid)
+            .single()
+            .execute()
+            .value
+        return profile
+    }
+
+    // MARK: - Update Profile
+    func updateProfile(fullName: String, username: String, avatarColor: String) async throws {
+        guard let uid = await currentUserID() else { throw AuthError.notLoggedIn }
+        let trimmedUsername = username.lowercased().trimmingCharacters(in: .whitespaces)
+        var payload: [String: String] = ["full_name": fullName, "avatar_color": avatarColor]
+        if !trimmedUsername.isEmpty { payload["username"] = trimmedUsername }
+        try await supabase
+            .from("profiles")
+            .update(payload)
+            .eq("id", value: uid)
+            .execute()
+    }
+
+    // MARK: - Username helpers (private)
+
+    /// Calls the `is_username_available` Postgres function (security definer,
+    /// so it bypasses RLS and works for unauthenticated callers).
+    private func isUsernameAvailable(_ username: String) async throws -> Bool {
+        let available: Bool = try await supabase
+            .rpc("is_username_available",
+                 params: ["p_username": username.lowercased().trimmingCharacters(in: .whitespaces)])
+            .execute()
+            .value
+        return available
+    }
+
+    /// Looks up the email address for a given username.
+    /// Throws `AuthError.usernameNotFound` if no match.
+    private func emailForUsername(_ username: String) async throws -> String {
+        struct Row: Decodable { let email: String? }
+        let rows: [Row] = try await supabase
+            .from("profiles")
+            .select("email")
+            .eq("username", value: username.lowercased().trimmingCharacters(in: .whitespaces))
+            .limit(1)
+            .execute()
+            .value
+        guard let email = rows.first?.email else {
+            throw AuthError.usernameNotFound
+        }
+        return email
+    }
+}
+
+// MARK: - HemvoProfile Model
+struct HemvoProfile: Codable, Identifiable, Equatable {
+    let id: UUID
+    var fullName: String?
+    var email: String?
+    var username: String?
+    var avatarColor: String?
+    var householdId: UUID?
+    var role: String?
+    var subscriptionStatus: String?
+    var trialEndDate: Date?
+    var createdAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case fullName           = "full_name"
+        case email
+        case username
+        case avatarColor        = "avatar_color"
+        case householdId        = "household_id"
+        case role
+        case subscriptionStatus = "subscription_status"
+        case trialEndDate       = "trial_end_date"
+        case createdAt          = "created_at"
+    }
+
+    var isInTrial: Bool {
+        guard subscriptionStatus == "trial", let end = trialEndDate else { return false }
+        return end > Date.now
+    }
+
+    var isSubscriptionActive: Bool {
+        if isInTrial { return true }
+        return subscriptionStatus == "active"
+    }
+
+    var trialDaysRemaining: Int {
+        guard let end = trialEndDate, isInTrial else { return 0 }
+        return Calendar.current.dateComponents([.day], from: .now, to: end).day ?? 0
+    }
+}
+
+// MARK: - Auth Errors
+enum AuthError: LocalizedError {
+    case notLoggedIn
+    case profileNotFound
+    case usernameTaken
+    case usernameNotFound
+
+    var errorDescription: String? {
+        switch self {
+        case .notLoggedIn:      return "You are not logged in."
+        case .profileNotFound:  return "Your profile could not be found."
+        case .usernameTaken:    return "That username is already taken. Please choose another."
+        case .usernameNotFound: return "No account found with that username. Check your spelling or sign in with your email."
+        }
+    }
+}

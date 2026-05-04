@@ -1,0 +1,31 @@
+# ── Secrets ──────────────────────────────────────────────────────────────────
+# After initial setup, run:
+#   git rm --cached Hemvo/AppSecrets.swift
+# to stop tracking the filled-in file. This line then prevents re-committing it.
+Hemvo/AppSecrets.swift
+
+# ── Xcode ─────────────────────────────────────────────────────────────────────
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# ── Swift Package Manager ─────────────────────────────────────────────────────
+.build/
+Packages/
+*.resolved
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── Supabase ──────────────────────────────────────────────────────────────────
+supabase/.env
+supabase/.branches/
+supabase/.temp/
