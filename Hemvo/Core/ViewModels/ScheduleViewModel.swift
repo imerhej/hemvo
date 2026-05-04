@@ -154,19 +154,46 @@ final class ScheduleViewModel: ObservableObject {
         tasks.append(stamped)
         persist()
         Task { await supabaseUpsertTask(stamped) }
-        Task {
-            let dateStr = stamped.dueDate.formatted(.dateTime.month(.abbreviated).day())
+        Task { await sendTaskNotification(for: stamped) }
+    }
+
+    /// Sends the right notification depending on whether the task is assigned.
+    ///
+    /// - Assigned task: personal alert to the assignee only. The household-wide
+    ///   broadcast is intentionally skipped — the assignee is already a member
+    ///   and would get a duplicate otherwise.
+    /// - Unassigned task: broadcast to all household members except the creator.
+    private func sendTaskNotification(for task: HouseTask) async {
+        let dateStr = task.dueDate.formatted(.dateTime.month(.abbreviated).day())
+
+        if let assignedID = task.assignedToID {
+            // Look up the assigner's first name for a personalised message.
+            let assignerName: String
+            if let uid = cachedUserID,
+               let me = householdMembers.first(where: { $0.id == uid }) {
+                assignerName = me.name.components(separatedBy: " ").first ?? me.name
+            } else {
+                assignerName = "Someone"
+            }
+
+            let priorityTag: String
+            switch task.priority {
+            case .high:   priorityTag = " 🔴"
+            case .medium: priorityTag = " 🟡"
+            case .low:    priorityTag = ""
+            }
+
+            await PushNotificationService.shared.notifyUsers(
+                [assignedID],
+                title: "📋 \(assignerName) assigned you a task\(priorityTag)",
+                body:  "\(task.title) · Due \(dateStr)"
+            )
+        } else {
+            // No specific assignee — let the whole household know.
             await PushNotificationService.shared.notifyHousehold(
                 title: "✅ New Task",
-                body: "\(stamped.title) · Due \(dateStr)"
+                body:  "\(task.title) · Due \(dateStr)"
             )
-            if let assignedID = stamped.assignedToID {
-                await PushNotificationService.shared.notifyUsers(
-                    [assignedID],
-                    title: "📋 Task assigned to you",
-                    body: "\(stamped.title) · Due \(dateStr)"
-                )
-            }
         }
     }
 
