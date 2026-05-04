@@ -109,7 +109,8 @@ serve(async (req: Request) => {
 
   const errBody = await res.text();
   console.error(`Resend ${res.status}: ${errBody}`);
-  return new Response(JSON.stringify({ error: "Email delivery failed" }), {
+  // Bubble the actual Resend error back so the client can log it.
+  return new Response(JSON.stringify({ error: "Email delivery failed", resendStatus: res.status, resendError: errBody }), {
     status: 502,
     headers: { "Content-Type": "application/json" },
   });

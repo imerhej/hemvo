@@ -8,7 +8,7 @@
 // Deploy the function once:
 //   supabase functions deploy send-invite-email
 //   supabase secrets set RESEND_API_KEY=re_xxxx
-//   supabase secrets set FROM_ADDRESS="Hemvo <noreply@yourdomain.com>"
+//   supabase secrets set FROM_ADDRESS="Hemvo <noreply@webstitching.com>"
 
 internal import Foundation
 internal import Supabase
@@ -35,6 +35,7 @@ final class EmailService {
         }
 
         do {
+            // Void overload — throws FunctionsError.httpError on non-2xx.
             try await supabase.functions.invoke(
                 "send-invite-email",
                 options: FunctionInvokeOptions(
@@ -48,8 +49,19 @@ final class EmailService {
             )
             print("EmailService: ✅ invite dispatched to \(email)")
             return true
+        } catch let fnError as FunctionsError {
+            // FunctionsError.httpError carries the raw response body from the Edge Function,
+            // which now includes the actual Resend error message (resendStatus + resendError).
+            switch fnError {
+            case let .httpError(code, data):
+                let body = String(data: data, encoding: .utf8) ?? "<unreadable>"
+                print("EmailService: ❌ HTTP \(code) — \(body)")
+            case .relayError:
+                print("EmailService: ❌ Relay error (network/timeout reaching Edge Function)")
+            }
+            return false
         } catch {
-            print("EmailService: ❌ Edge Function error — \(error.localizedDescription)")
+            print("EmailService: ❌ Unexpected error — \(error)")
             return false
         }
     }
