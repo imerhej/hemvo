@@ -480,7 +480,7 @@ struct HouseholdInviteSheet: View {
             Text("Invite Sent!")
                 .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(brown)
-            Text("An email with the invite code was opened in your Mail app. Once \(email) enters the code in Hemvo, they'll join your household automatically.")
+            Text("An invitation email has been sent to \(email). Once they enter the code in Hemvo they'll join your household automatically.")
                 .font(.system(size: 14))
                 .foregroundStyle(muted)
                 .multilineTextAlignment(.center)
@@ -514,6 +514,11 @@ struct HouseholdInviteSheet: View {
                     currentUserID:   inviterID
                 )
                 withAnimation { didSend = true }
+            } catch HouseholdError.emailFailed(let code) {
+                // Invite was saved — show success but surface the code so
+                // the owner can share it manually if email didn't arrive.
+                withAnimation { didSend = true }
+                errorMessage = "Email delivery failed. Share this code with \(email): \(code)"
             } catch {
                 errorMessage = error.localizedDescription
             }

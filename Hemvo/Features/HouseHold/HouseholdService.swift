@@ -17,14 +17,16 @@ enum HouseholdError: LocalizedError {
     case alreadyMember
     case notFound
     case notOwner
+    case emailFailed(code: String) // invite was saved but email delivery failed
 
     var errorDescription: String? {
         switch self {
-        case .invalidCode:   return "That invite code doesn't match any pending invitation."
-        case .expiredCode:   return "This invite code has expired. Ask the owner for a new one."
-        case .alreadyMember: return "You're already a member of a household."
-        case .notFound:      return "Household not found."
-        case .notOwner:      return "Only an owner or adult member can do that."
+        case .invalidCode:        return "That invite code doesn't match any pending invitation."
+        case .expiredCode:        return "This invite code has expired. Ask the owner for a new one."
+        case .alreadyMember:      return "You're already a member of a household."
+        case .notFound:           return "Household not found."
+        case .notOwner:           return "Only an owner or adult member can do that."
+        case .emailFailed(let c): return "Invite saved, but the email couldn't be delivered. Share this code manually: \(c)"
         }
     }
 }
@@ -188,12 +190,15 @@ final class HouseholdService: ObservableObject {
         )
         pendingInvites.append(invite)
         saveInvites()
-        _ = await EmailService.shared.sendHouseholdInvite(
+        let sent = await EmailService.shared.sendHouseholdInvite(
             to: email,
             inviterName: inviterName,
             householdName: h.displayName,
             token: invite.token
         )
+        // Invite record is always persisted so the invitee can still join via code.
+        // Throw only if email delivery failed so the UI can surface a fallback message.
+        if !sent { throw HouseholdError.emailFailed(code: invite.displayCode) }
         return invite
     }
 

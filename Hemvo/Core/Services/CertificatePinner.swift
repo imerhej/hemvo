@@ -39,6 +39,7 @@
 
 internal import Foundation
 internal import Security
+internal import CryptoKit
 
 // MARK: - CertificatePinner
 
@@ -79,9 +80,12 @@ final class CertificatePinner: NSObject, URLSessionDelegate {
         }
 
         // Walk the chain looking for a pinned hash.
-        let certCount = SecTrustGetCertificateCount(serverTrust)
-        for index in 0 ..< certCount {
-            guard let cert = SecTrustGetCertificateAtIndex(serverTrust, index) else { continue }
+        // SecTrustCopyCertificateChain replaces the deprecated SecTrustGetCertificateAtIndex (iOS 15+).
+        guard let chain = SecTrustCopyCertificateChain(serverTrust) as? [SecCertificate] else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        for cert in chain {
             if let spkiHash = spkiSHA256(of: cert), CertificatePinner.pinnedHashes.contains(spkiHash) {
                 completionHandler(.useCredential, URLCredential(trust: serverTrust))
                 return
@@ -110,9 +114,8 @@ final class CertificatePinner: NSObject, URLSessionDelegate {
         // correct ASN.1 header based on key type and size before hashing.
         guard let spkiDER = addSPKIHeader(to: spkiData, key: publicKey) else { return nil }
 
-        // SHA-256 and base64-encode.
-        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-        spkiDER.withUnsafeBytes { CC_SHA256($0.baseAddress, CC_LONG(spkiDER.count), &hash) }
+        // SHA-256 and base64-encode using CryptoKit (replaces deprecated CC_SHA256).
+        let hash = SHA256.hash(data: spkiDER)
         return Data(hash).base64EncodedString()
     }
 
@@ -181,5 +184,3 @@ final class CertificatePinner: NSObject, URLSessionDelegate {
     }
 }
 
-// CommonCrypto is available without import on Apple platforms.
-import CommonCrypto

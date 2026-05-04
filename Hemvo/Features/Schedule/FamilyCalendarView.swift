@@ -481,14 +481,14 @@ struct FamilyCalendarView: View {
         HStack(spacing: 0) {
             ForEach(["S","M","T","W","T","F","S"], id: \.self) { d in
                 Text(d)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundColor(Color(.systemGray2))
                     .frame(maxWidth: .infinity)
             }
         }
         .padding(.horizontal, 4)
-        .padding(.top, 6)
-        .padding(.bottom, 4)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
     }
 
     // MARK: - Month grid
@@ -531,13 +531,13 @@ struct FamilyCalendarView: View {
                 } label: {
                     ZStack {
                         if isToday {
-                            Circle().fill(Color.systemRed).frame(width: 24, height: 24)
+                            Circle().fill(Color.systemRed).frame(width: 32, height: 32)
                         } else if isSelected {
-                            Circle().fill(Color(.systemGray4)).frame(width: 24, height: 24)
+                            Circle().fill(Color(.systemGray4)).frame(width: 32, height: 32)
                         }
                         if let d = day {
                             Text("\(cal.component(.day, from: d))")
-                                .font(.system(size: 13, weight: isToday ? .bold : .medium))
+                                .font(.system(size: 16, weight: isToday ? .bold : .semibold))
                                 .foregroundColor(
                                     isToday          ? .white :
                                     !inMonth         ? Color(.systemGray4) :
@@ -546,13 +546,13 @@ struct FamilyCalendarView: View {
                                 )
                         }
                     }
-                    .frame(width: 24, height: 24)
+                    .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.plain)
                 Spacer()
             }
-            .padding(.top, 4)
-            .padding(.leading, 3)
+            .padding(.top, 6)
+            .padding(.leading, 4)
 
             // Event pills — native EK pills are display-only; HB pills are tappable
             VStack(alignment: .leading, spacing: 2) {
@@ -589,31 +589,31 @@ struct FamilyCalendarView: View {
 
             Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, minHeight: 74, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 96, maxHeight: .infinity)
         .disabled(day == nil)
     }
 
     private func eventPill(title: String, color: Color, isAllDay: Bool, icon: String? = nil) -> some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 4) {
             if isAllDay {
                 Image(systemName: "star.circle.fill")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundColor(.white)
             } else if let icon {
                 Image(systemName: icon)
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundColor(color)
             }
             Text(title)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .lineLimit(1)
                 .foregroundColor(isAllDay ? .white : color)
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 2)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 3)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(isAllDay ? color : color.opacity(0.18))
-        .cornerRadius(3)
+        .cornerRadius(5)
     }
 
     // MARK: - Selected day events list
@@ -889,12 +889,12 @@ struct FamilyCalendarView: View {
 
                         ZStack {
                             if isToday && isSelected {
-                                Circle().fill(Color.systemRed).frame(width: 26, height: 26)
+                                Circle().fill(Color.systemRed).frame(width: 34, height: 34)
                             } else if isSelected {
-                                Circle().fill(Color(.systemGray4)).frame(width: 26, height: 26)
+                                Circle().fill(Color(.systemGray4)).frame(width: 34, height: 34)
                             }
                             Text("\(cal.component(.day, from: day))")
-                                .font(.system(size: 15, weight: isToday ? .bold : .regular))
+                                .font(.system(size: 17, weight: isToday ? .bold : .semibold))
                                 .foregroundColor(
                                     (isToday && isSelected) ? .white :
                                     isToday ? .systemRed : .primary

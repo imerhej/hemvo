@@ -130,10 +130,16 @@ final class AuthViewModel: ObservableObject {
     // MARK: - Friendly error messages
     private func friendlyAuthError(_ error: Error) -> String {
         let raw = error.localizedDescription.lowercased()
-        if raw.contains("rate limit") || raw.contains("too many") || raw.contains("429") {
+        if raw.contains("rate limit") || raw.contains("too many") || raw.contains("429")
+            || raw.contains("over_email_send_rate_limit") || raw.contains("email rate limit") {
             return "Too many sign-up attempts. Please wait a few minutes and try again."
         }
-        if raw.contains("already registered") || raw.contains("already been registered") {
+        if raw.contains("error sending") || raw.contains("sending confirmation")
+            || raw.contains("email could not") || raw.contains("failed to send") {
+            return "We couldn't send a confirmation email right now. Please try again in a moment."
+        }
+        if raw.contains("already registered") || raw.contains("already been registered")
+            || raw.contains("user already exists") {
             return "An account with this email already exists. Please sign in instead."
         }
         if raw.contains("invalid email") {
