@@ -100,6 +100,48 @@ final class PushNotificationService {
         }
     }
 
+    /// Sends a push to all household members EXCEPT the creator AND the given user IDs.
+    /// Used when invitees already receive a personalised push so they don't get two.
+    func notifyHouseholdExcluding(userIDs: [UUID], title: String, body: String) async {
+        guard !userIDs.isEmpty else {
+            await notifyHousehold(title: title, body: body)
+            return
+        }
+        guard let uid = await AuthService.shared.currentUserID() else { return }
+        guard let householdID = HouseholdService.shared.household?.id else { return }
+
+        struct Payload: Encodable {
+            let householdId:    String
+            let creatorId:      String
+            let excludeUserIds: [String]
+            let title:          String
+            let body:           String
+            enum CodingKeys: String, CodingKey {
+                case householdId    = "household_id"
+                case creatorId      = "creator_id"
+                case excludeUserIds = "exclude_user_ids"
+                case title, body
+            }
+        }
+
+        do {
+            try await supabase.functions.invoke(
+                "notify-household",
+                options: FunctionInvokeOptions(
+                    body: Payload(
+                        householdId:    householdID,
+                        creatorId:      uid.uuidString,
+                        excludeUserIds: userIDs.map { $0.uuidString },
+                        title:          title,
+                        body:           body
+                    )
+                )
+            )
+        } catch {
+            print("[Push] notify-household-excluding error: \(error)")
+        }
+    }
+
     /// Sends a push notification to every household member except the creator.
     /// Fire-and-forget — errors are logged but never surface to the UI.
     func notifyHousehold(title: String, body: String) async {

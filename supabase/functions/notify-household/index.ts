@@ -102,11 +102,12 @@ serve(async (req: Request) => {
 
   let household_id: string | undefined,
       user_ids: string[] | undefined,
+      exclude_user_ids: string[] | undefined,
       creator_id: string,
       title: string,
       body: string;
   try {
-    ({ household_id, user_ids, creator_id, title, body } = await req.json());
+    ({ household_id, user_ids, exclude_user_ids, creator_id, title, body } = await req.json());
   } catch {
     return new Response(JSON.stringify({ error: "invalid JSON" }), {
       status: 400,
@@ -137,6 +138,10 @@ serve(async (req: Request) => {
     query = query.in("user_id", user_ids);
   } else {
     query = query.eq("household_id", household_id!);
+    // Optionally exclude specific users (e.g. invitees who already got a personal push).
+    if (exclude_user_ids && exclude_user_ids.length > 0) {
+      query = query.not("user_id", "in", `(${exclude_user_ids.join(",")})`);
+    }
   }
 
   const { data: rows, error } = await query;

@@ -98,31 +98,18 @@ final class ScheduleViewModel: ObservableObject {
     private let notif = NotificationService.shared
 
     // MARK: - Event CRUD
+
     func addEvent(_ event: CalendarEvent) {
         var stamped = event
         if stamped.createdBy == nil { stamped.createdBy = cachedUserID?.uuidString }
         events.append(stamped)
         persist()
         if UserDefaults.standard.bool(forKey: "notif_schedule") {
-            notif.scheduleEventReminders(for: [stamped])
+            notif.scheduleEventReminders(for: [stamped])   // local notifications for this device
         }
         Task { await supabaseUpsertEvent(stamped) }
-        Task {
-            let dateStr = stamped.isAllDay
-                ? stamped.date.formatted(.dateTime.month(.abbreviated).day())
-                : stamped.date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
-            await PushNotificationService.shared.notifyHousehold(
-                title: "📅 New Event",
-                body: "\(stamped.title) · \(dateStr)"
-            )
-            if !stamped.inviteeIDs.isEmpty {
-                await PushNotificationService.shared.notifyUsers(
-                    stamped.inviteeIDs,
-                    title: "📅 You're invited",
-                    body: "\(stamped.title) · \(dateStr)"
-                )
-            }
-        }
+        Task { await sendEventCreationPush(for: stamped) }
+        Task { await scheduleEventPushes(for: stamped) }   // server-side pushes for all members
     }
 
     func updateEvent(_ event: CalendarEvent) {
@@ -134,6 +121,8 @@ final class ScheduleViewModel: ObservableObject {
                 notif.scheduleEventReminders(for: [event])
             }
             Task { await supabaseUpsertEvent(event) }
+            // Rebuild server-side push schedule (cancels old ones, inserts new).
+            Task { await scheduleEventPushes(for: event) }
         }
     }
 
@@ -145,6 +134,133 @@ final class ScheduleViewModel: ObservableObject {
         persist()
         notif.cancelEventReminders(for: event.id)
         Task { await supabaseDeleteEvent(id: event.id) }
+        Task { await cancelEventPushSchedule(for: event.id) }
+    }
+
+    // MARK: - Event Push Helpers
+
+    /// Immediate push to household on creation.
+    /// Invitees get a personalised "you're invited" message;
+    /// all other members get the generic "new event" broadcast.
+    private func sendEventCreationPush(for event: CalendarEvent) async {
+        let dateStr = event.isAllDay
+            ? event.date.formatted(.dateTime.month(.abbreviated).day())
+            : event.date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+
+        if event.inviteeIDs.isEmpty {
+            // No specific invitees — broadcast to the whole household.
+            await PushNotificationService.shared.notifyHousehold(
+                title: "📅 New Event",
+                body:  "\(event.title) · \(dateStr)"
+            )
+        } else {
+            // Send a personal "invited" alert to invitees.
+            await PushNotificationService.shared.notifyUsers(
+                event.inviteeIDs,
+                title: "📅 You're invited: \(event.title)",
+                body:  dateStr
+            )
+            // Broadcast to the rest of the household (non-invitees).
+            await PushNotificationService.shared.notifyHouseholdExcluding(
+                userIDs: event.inviteeIDs,
+                title:  "📅 New Event",
+                body:   "\(event.title) · \(dateStr)"
+            )
+        }
+    }
+
+    /// Writes rows into `notification_schedule` so the cron Edge Function
+    /// (`process-scheduled-push`, running every minute) can deliver APNs
+    /// pushes at the right times to all household members.
+    ///
+    /// Rows written:
+    ///   1. At event start time  — "Starting now"
+    ///   2. At alert offset time — e.g. "15 minutes before" (if set)
+    private func scheduleEventPushes(for event: CalendarEvent) async {
+        guard let hid = cachedHouseholdID, event.date > Date() else { return }
+
+        struct ScheduleRow: Encodable {
+            let householdId: UUID
+            let eventId:     UUID
+            let fireAt:      Date
+            let title:       String
+            let body:        String
+            enum CodingKeys: String, CodingKey {
+                case householdId = "household_id"
+                case eventId     = "event_id"
+                case fireAt      = "fire_at"
+                case title, body
+            }
+        }
+
+        // Cancel any unsent schedules for this event before inserting new ones.
+        try? await supabase
+            .from("notification_schedule")
+            .delete()
+            .eq("event_id", value: event.id.uuidString)
+            .eq("sent",     value: false)
+            .execute()
+
+        let timeStr = event.isAllDay
+            ? event.date.formatted(.dateTime.month(.abbreviated).day())
+            : event.date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+
+        var rows: [ScheduleRow] = []
+
+        // 1. At event start time.
+        rows.append(ScheduleRow(
+            householdId: hid,
+            eventId:     event.id,
+            fireAt:      event.date,
+            title:       "📅 \(event.title)",
+            body:        event.isAllDay ? "All-day event is today." : "Starting now."
+        ))
+
+        // 2. Alert-based notification (before event).
+        if event.alertOption != "None",
+           let offset = eventAlertOffset(for: event.alertOption) {
+            let alertFireAt = event.date.addingTimeInterval(-offset)
+            if alertFireAt > Date() {
+                rows.append(ScheduleRow(
+                    householdId: hid,
+                    eventId:     event.id,
+                    fireAt:      alertFireAt,
+                    title:       "📅 \(event.title)",
+                    body:        "\(event.alertOption) · \(timeStr)"
+                ))
+            }
+        }
+
+        do {
+            try await supabase
+                .from("notification_schedule")
+                .insert(rows)
+                .execute()
+        } catch {
+            print("[Supabase] scheduleEventPushes error: \(error)")
+        }
+    }
+
+    /// Removes any unsent push schedule rows for a deleted/cancelled event.
+    private func cancelEventPushSchedule(for eventID: UUID) async {
+        try? await supabase
+            .from("notification_schedule")
+            .delete()
+            .eq("event_id", value: eventID.uuidString)
+            .eq("sent",     value: false)
+            .execute()
+    }
+
+    /// Converts an alertOption string to a TimeInterval offset (seconds before event).
+    private func eventAlertOffset(for option: String) -> TimeInterval? {
+        switch option {
+        case "5 minutes before":  return 5  * 60
+        case "15 minutes before": return 15 * 60
+        case "30 minutes before": return 30 * 60
+        case "1 hour before":     return 60 * 60
+        case "1 day before":      return 24 * 60 * 60
+        default:                  return nil
+        }
     }
 
     // MARK: - Task CRUD
