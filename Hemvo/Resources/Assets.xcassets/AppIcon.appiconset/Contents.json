@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "homvi_warm_sand.png",
+      "filename" : "A4_warm_sand_4.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -13,7 +13,7 @@
           "value" : "dark"
         }
       ],
-      "filename" : "homvi_icon_1024.png",
+      "filename" : "A8_midnight_purple_3.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -25,7 +25,7 @@
           "value" : "tinted"
         }
       ],
-      "filename" : "homvi_amber_glow.png",
+      "filename" : "A7_terracotta_4.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
