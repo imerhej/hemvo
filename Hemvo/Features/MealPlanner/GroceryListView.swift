@@ -10,6 +10,15 @@ struct GroceryListView: View {
 
     @ObservedObject var groceryVM: GroceryViewModel
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject private var authVM: AuthViewModel
+    @EnvironmentObject private var householdService: HouseholdService
+
+    private var canWrite: Bool {
+        guard let uid = authVM.userID?.uuidString,
+              let member = householdService.household?.members.first(where: { $0.id == uid })
+        else { return true }
+        return member.role.canWrite
+    }
 
     @State private var showAddItem    = false
     @State private var showClearAlert = false
@@ -67,7 +76,7 @@ struct GroceryListView: View {
                                             checked:   checked,
                                             onToggle:  { groceryVM.toggleItem(id: $0) },
                                             onDelete:  { groceryVM.deleteItem(id: $0) },
-                                            canDelete: { groceryVM.canDelete(id: $0) }
+                                            canDelete: { canWrite && groceryVM.canDelete(id: $0) }
                                         )
                                     }
                                 }
@@ -79,15 +88,17 @@ struct GroceryListView: View {
                     }
                 }
 
-                // Floating + button
-                VStack {
-                    Spacer()
-                    HStack {
+                // Floating + button — only for write-enabled roles
+                if canWrite {
+                    VStack {
                         Spacer()
-                        fabButton
-                        Spacer()
+                        HStack {
+                            Spacer()
+                            fabButton
+                            Spacer()
+                        }
+                        .padding(.bottom, 32)
                     }
-                    .padding(.bottom, 32)
                 }
             }
             .navigationBarHidden(true)
@@ -117,8 +128,8 @@ struct GroceryListView: View {
                 }
                 Spacer()
                 HStack(spacing: 10) {
-                    // Clear checked — only shown when there are checked items
-                    if !groceryVM.checkedItems.isEmpty {
+                    // Clear checked — only for write-enabled roles with checked items
+                    if canWrite && !groceryVM.checkedItems.isEmpty {
                         Button { showClearAlert = true } label: {
                             HStack(spacing: 5) {
                                 Image(systemName: "trash.fill")

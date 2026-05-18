@@ -30,12 +30,12 @@ extension Date {
 
     /// "9:30 AM"
     var timeDisplay: String {
-        formatted(.dateTime.hour().minute())
+        formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits))
     }
 
     /// "Mar 15, 9:30 AM"
     var shortDateTimeDisplay: String {
-        formatted(.dateTime.month(.abbreviated).day().hour().minute())
+        formatted(.dateTime.month(.abbreviated).day().hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits))
     }
 
     // MARK: - Calendar Helpers

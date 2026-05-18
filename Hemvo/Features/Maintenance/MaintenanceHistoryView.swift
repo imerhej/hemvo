@@ -54,8 +54,9 @@ struct MaintenanceHistoryView: View {
                             VStack(spacing: 10) {
                                 ForEach(filtered) { task in
                                     HistoryTaskCard(
-                                        task:     task,
-                                        onDelete: { taskToDelete = task; showDeleteAlert = true }
+                                        task:      task,
+                                        canDelete: vm.canDeleteHistory(task),
+                                        onDelete:  { taskToDelete = task; showDeleteAlert = true }
                                     )
                                 }
                             }
@@ -228,8 +229,9 @@ struct MaintenanceHistoryView: View {
 
 // MARK: - HistoryTaskCard
 struct HistoryTaskCard: View {
-    let task:     CompletedTask
-    let onDelete: () -> Void
+    let task:      CompletedTask
+    let canDelete: Bool
+    let onDelete:  () -> Void
 
     private let brown   = Color(hex: "#1A1208")!
     private let muted   = Color(hex: "#7A6A55")!
@@ -312,12 +314,14 @@ struct HistoryTaskCard: View {
 
                 Spacer()
 
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 12, weight: .semibold)).foregroundColor(.red.opacity(0.7))
-                        .frame(width: 28, height: 28).background(Color.red.opacity(0.07)).clipShape(Circle())
+                if canDelete {
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12, weight: .semibold)).foregroundColor(.red.opacity(0.7))
+                            .frame(width: 28, height: 28).background(Color.red.opacity(0.07)).clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
         }

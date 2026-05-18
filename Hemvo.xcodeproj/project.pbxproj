@@ -243,20 +243,14 @@
 				"",
 				"INFO_PLIST=\"${BUILT_PRODUCTS_DIR}/${INFOPLIST_PATH}\"",
 				"",
+				"# Build number: auto-increments with each git commit",
 				"BUILD=$(git -C \"${SRCROOT}\" rev-list --count HEAD 2>/dev/null || echo \"1\")",
 				"/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $BUILD\" \"$INFO_PLIST\"",
 				"echo \"✅ Build number set to: $BUILD\"",
 				"",
-				"GIT_TAG=$(git -C \"${SRCROOT}\" describe --tags --match \"v[0-9]*\" --abbrev=0 2>/dev/null || echo \"\")",
-				"",
-				"if [ -n \"$GIT_TAG\" ]; then",
-				"    VERSION=\"${GIT_TAG#v}\"",
-				"    /usr/libexec/PlistBuddy -c \"Set :CFBundleShortVersionString $VERSION\" \"$INFO_PLIST\"",
-				"    echo \"✅ Version set to: $VERSION (from tag $GIT_TAG)\"",
-				"else",
-				"    CURRENT=$(/usr/libexec/PlistBuddy -c \"Print :CFBundleShortVersionString\" \"$INFO_PLIST\" 2>/dev/null || echo \"1.0.0\")",
-				"    echo \"⚠️  No git tag found. Keeping version: $CURRENT\"",
-				"fi",
+				"# Version: reads MARKETING_VERSION from Xcode build settings (Target → General → Version)",
+				"/usr/libexec/PlistBuddy -c \"Set :CFBundleShortVersionString ${MARKETING_VERSION}\" \"$INFO_PLIST\"",
+				"echo \"✅ Version set to: ${MARKETING_VERSION}\"",
 				"",
 			);
 			showEnvVarsInLog = 0;
@@ -423,14 +417,14 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Hemvo/Hemvo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 545XYWBM95;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Hemvo;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hemvo uses Face ID to sign you in securely.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -441,7 +435,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.1;
+				MARKETING_VERSION = 1.2.4;
 				NEW_SETTING = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.issamnmerhej.Hemvo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -463,14 +457,14 @@
 				CODE_SIGN_ENTITLEMENTS = Hemvo/HemvoRelease.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 545XYWBM95;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Hemvo;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hemvo uses Face ID to sign you in securely.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -481,7 +475,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.1;
+				MARKETING_VERSION = 1.2.4;
 				NEW_SETTING = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.issamnmerhej.Hemvo;
 				PRODUCT_NAME = "$(TARGET_NAME)";

@@ -11,7 +11,7 @@ struct BudgetEditorView: View {
     @Environment(\.dismiss) var dismiss
 
     @State private var incomeText: String = ""
-    @State private var categoryLimits: [UUID: String] = [:]
+    @State private var categoryLimits: [String: String] = [:]
     @State private var showSavedToast  = false
     @State private var shakeTrigger: CGFloat = 0
     @FocusState private var incomeFocused: Bool
@@ -22,7 +22,7 @@ struct BudgetEditorView: View {
     var income: Double          { Double(incomeText) ?? 0 }
     var totalAllocated: Double  {
         vm.budgetCategories.reduce(0) { sum, cat in
-            sum + (Double(categoryLimits[cat.id] ?? "") ?? cat.limit)
+            sum + (Double(categoryLimits[cat.name] ?? "") ?? cat.limit)
         }
     }
     var unallocated: Double     { income - totalAllocated }
@@ -85,6 +85,11 @@ struct BudgetEditorView: View {
                 }
             }
             .onAppear { prefill() }
+            .onChange(of: vm.budget.categories.count) { _, _ in
+                for cat in vm.budgetCategories where categoryLimits[cat.name] == nil {
+                    categoryLimits[cat.name] = String(Int(cat.limit))
+                }
+            }
             .onTapGesture { incomeFocused = false }
         }
     }
@@ -235,8 +240,8 @@ struct BudgetEditorView: View {
             VStack(spacing: 1) {
                 ForEach(Array(vm.budgetCategories.enumerated()), id: \.element.id) { idx, cat in
                     let limitStr = Binding<String>(
-                        get: { categoryLimits[cat.id] ?? String(Int(cat.limit)) },
-                        set: { categoryLimits[cat.id] = $0 }
+                        get: { categoryLimits[cat.name] ?? String(Int(cat.limit)) },
+                        set: { categoryLimits[cat.name] = $0 }
                     )
                     let limit    = Double(limitStr.wrappedValue) ?? cat.limit
                     let pct      = income > 0 ? min(limit / income, 1.0) : 0
@@ -320,7 +325,7 @@ struct BudgetEditorView: View {
     private func prefill() {
         incomeText = String(format: "%.0f", vm.budget.monthlyIncome)
         for cat in vm.budgetCategories {
-            categoryLimits[cat.id] = String(Int(cat.limit))
+            categoryLimits[cat.name] = String(Int(cat.limit))
         }
     }
 
@@ -331,7 +336,8 @@ struct BudgetEditorView: View {
         }
         var limits: [UUID: Double] = [:]
         for cat in vm.budgetCategories {
-            if let s = categoryLimits[cat.id], let lim = Double(s) {
+            let s = categoryLimits[cat.name] ?? String(Int(cat.limit))
+            if let lim = Double(s) {
                 limits[cat.id] = lim
             }
         }

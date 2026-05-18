@@ -14,13 +14,13 @@ struct AddMealView: View {
     @ObservedObject var mealVM: MealPlanViewModel
     @Environment(\.dismiss) var dismiss
 
-    var preselectedDay:  Meal.Weekday  = .monday
-    var preselectedType: Meal.MealType = .breakfast   // ← new param
+    var preselectedDate: Date          = Date()
+    var preselectedType: Meal.MealType = .breakfast
     var editingMeal:     Meal?         = nil
 
     @State private var name           = ""
-    @State private var day            = Meal.Weekday.monday
-    @State private var mealType       = Meal.MealType.breakfast   // default breakfast
+    @State private var selectedDate   = Date()
+    @State private var mealType       = Meal.MealType.breakfast
     @State private var notes          = ""
     @State private var prepTime       = 30
     @State private var servings       = 4
@@ -37,13 +37,8 @@ struct AddMealView: View {
                     TextField("Meal name (e.g. Pasta Primavera)", text: $name)
                         .foregroundColor(.primary)
 
-                    Picker("Day", selection: $day) {
-                        ForEach(Meal.Weekday.allCases) { d in
-                            Text(d.label).tag(d)
-                        }
-                    }
-                    .foregroundColor(.blue)
-                    .pickerStyle(.menu)
+                    DatePicker("Date", selection: $selectedDate, displayedComponents: .date)
+                        .foregroundColor(.blue)
 
                     Picker("Meal Type", selection: $mealType) {
                         ForEach(Meal.MealType.allCases) { t in
@@ -108,18 +103,16 @@ struct AddMealView: View {
 
     private func prefill() {
         if let m = editingMeal {
-            // Editing an existing meal — restore all fields
-            name        = m.name
-            day         = m.day
-            mealType    = m.mealType
-            notes       = m.notes
-            prepTime    = m.prepTimeMinutes
-            servings    = m.servings
-            ingredients = m.ingredients
+            name         = m.name
+            selectedDate = m.date
+            mealType     = m.mealType
+            notes        = m.notes
+            prepTime     = m.prepTimeMinutes
+            servings     = m.servings
+            ingredients  = m.ingredients
         } else {
-            // New meal — apply preselected day AND type from the tapped slot
-            day      = preselectedDay
-            mealType = preselectedType
+            selectedDate = preselectedDate
+            mealType     = preselectedType
         }
     }
 
@@ -128,7 +121,7 @@ struct AddMealView: View {
         let meal = Meal(
             id:              editingMeal?.id ?? UUID(),
             name:            name,
-            day:             day,
+            date:            selectedDate,
             mealType:        mealType,
             ingredients:     ingredients,
             notes:           notes,

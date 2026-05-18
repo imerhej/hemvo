@@ -17,6 +17,7 @@ struct EditExpenseView: View {
     @State private var isRecurring = false
     @State private var isPaid      = false
     @State private var notes       = ""
+    @State private var scope       = BudgetScope.household
     @FocusState private var amountFocused: Bool
 
     var amount: Double { Double(amountText) ?? 0 }
@@ -81,6 +82,52 @@ struct EditExpenseView: View {
                         .cornerRadius(14)
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.bpDivider, lineWidth: 1))
 
+                        // ── Scope ─────────────────────────────
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "person.2.fill")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(Color.bpSlate)
+                                Text("VISIBILITY")
+                                    .font(.system(size: 9, weight: .heavy))
+                                    .kerning(1.4)
+                                    .foregroundColor(Color.bpTextSub)
+                                if !vm.canChangeScope(expense) {
+                                    Spacer()
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "lock.fill")
+                                            .font(.system(size: 8, weight: .bold))
+                                        Text("Only the creator can change this")
+                                            .font(.system(size: 9, weight: .semibold))
+                                    }
+                                    .foregroundColor(Color.bpTextSub.opacity(0.7))
+                                }
+                            }
+                            HStack(spacing: 8) {
+                                ForEach(BudgetScope.allCases, id: \.self) { s in
+                                    Button { scope = s } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: s == .household ? "house.fill" : "person.fill")
+                                                .font(.system(size: 11, weight: .bold))
+                                            Text(s.displayName)
+                                                .font(.system(size: 13, weight: .bold))
+                                        }
+                                        .foregroundColor(scope == s ? .white : Color.bpNavy)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 9)
+                                        .background(scope == s ? Color.bpNavy : Color.bpSurface)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                        .overlay(RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color.bpNavy.opacity(scope == s ? 0 : 0.3), lineWidth: 1))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(!vm.canChangeScope(expense))
+                                    .opacity(!vm.canChangeScope(expense) && scope != s ? 0.4 : 1)
+                                    .animation(.easeInOut(duration: 0.15), value: scope)
+                                }
+                            }
+                        }
+
                         // ── Notes ────────────────────────────
                         FieldCard(label: "Notes", icon: "note.text") {
                             TextField("Optional notes…", text: $notes, axis: .vertical)
@@ -109,26 +156,28 @@ struct EditExpenseView: View {
                             }
                             .disabled(!isValid)
 
-                            // Delete — outlined red, always visible
-                            Button {
-                                vm.deleteExpense(expense)
-                                dismiss()
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "trash.fill")
-                                        .font(.system(size: 14, weight: .semibold))
-                                    Text("Delete Expense")
-                                        .font(.system(size: 15, weight: .semibold))
+                            // Delete — only shown to the creator
+                            if vm.canDelete(expense) {
+                                Button {
+                                    vm.deleteExpense(expense)
+                                    dismiss()
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "trash.fill")
+                                            .font(.system(size: 14, weight: .semibold))
+                                        Text("Delete Expense")
+                                            .font(.system(size: 15, weight: .semibold))
+                                    }
+                                    .foregroundColor(.red)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 15)
+                                    .background(Color.red.opacity(0.07))
+                                    .cornerRadius(16)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 16)
+                                            .stroke(Color.red.opacity(0.25), lineWidth: 1)
+                                    )
                                 }
-                                .foregroundColor(.red)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 15)
-                                .background(Color.red.opacity(0.07))
-                                .cornerRadius(16)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .stroke(Color.red.opacity(0.25), lineWidth: 1)
-                                )
                             }
                         }
                     }
@@ -159,6 +208,7 @@ struct EditExpenseView: View {
         isRecurring = expense.isRecurring
         isPaid      = expense.isPaid
         notes       = expense.notes
+        scope       = expense.scope
     }
 
     private func save() {
@@ -171,6 +221,7 @@ struct EditExpenseView: View {
         updated.isRecurring = isRecurring
         updated.isPaid      = isPaid
         updated.notes       = notes
+        updated.scope       = vm.canChangeScope(expense) ? scope : expense.scope
         vm.updateExpense(updated)
         dismiss()
     }

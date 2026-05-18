@@ -21,6 +21,13 @@ final class PushNotificationService {
     static let shared = PushNotificationService()
     private init() {}
 
+    // Debug builds use sandbox APNs; release / TestFlight use production.
+    #if DEBUG
+    static let apnsEnvironment = "sandbox"
+    #else
+    static let apnsEnvironment = "production"
+    #endif
+
     // MARK: - Token Registration
 
     /// Called from AppDelegate.didRegisterForRemoteNotificationsWithDeviceToken.
@@ -39,23 +46,29 @@ final class PushNotificationService {
 
     private func saveTokenToSupabase(_ token: String) async {
         guard let uid = await AuthService.shared.currentUserID() else { return }
-        let householdID = HouseholdService.shared.household.map { UUID(uuidString: $0.id) } ?? nil
+        // HouseholdService is @MainActor — read it on the main actor to avoid a data race.
+        let householdID: UUID? = await MainActor.run {
+            HouseholdService.shared.household.flatMap { UUID(uuidString: $0.id) }
+        }
 
         struct Row: Encodable {
-            let userId:      UUID
-            let householdId: UUID?
-            let token:       String
+            let userId:          UUID
+            let householdId:     UUID?
+            let token:           String
+            let apnsEnvironment: String
             enum CodingKeys: String, CodingKey {
-                case userId      = "user_id"
-                case householdId = "household_id"
+                case userId          = "user_id"
+                case householdId     = "household_id"
                 case token
+                case apnsEnvironment = "apns_environment"
             }
         }
 
         do {
             try await supabase
                 .from("device_tokens")
-                .upsert(Row(userId: uid, householdId: householdID, token: token),
+                .upsert(Row(userId: uid, householdId: householdID, token: token,
+                            apnsEnvironment: PushNotificationService.apnsEnvironment),
                         onConflict: "user_id,token")
                 .execute()
         } catch {
@@ -108,7 +121,11 @@ final class PushNotificationService {
             return
         }
         guard let uid = await AuthService.shared.currentUserID() else { return }
-        guard let householdID = HouseholdService.shared.household?.id else { return }
+        let householdID: String? = await MainActor.run { HouseholdService.shared.household?.id }
+        guard let householdID else {
+            print("[Push] notifyHouseholdExcluding skipped — household not set")
+            return
+        }
 
         struct Payload: Encodable {
             let householdId:    String
@@ -142,11 +159,53 @@ final class PushNotificationService {
         }
     }
 
+    /// Sends a push notification only to household members whose permissions
+    /// include the given flag. Falls back to notifyHousehold when no member
+    /// list is available (e.g. solo user without a household).
+    func notifyHouseholdFiltered(
+        permission: KeyPath<MemberPermissions, Bool>,
+        title: String, body: String
+    ) async {
+        let members = await MainActor.run { HouseholdService.shared.household?.members ?? [] }
+        guard !members.isEmpty else {
+            await notifyHousehold(title: title, body: body)
+            return
+        }
+        let targetIDs = members
+            .filter { $0.permissions[keyPath: permission] }
+            .compactMap { UUID(uuidString: $0.id) }
+        guard !targetIDs.isEmpty else { return }
+        await notifyUsers(targetIDs, title: title, body: body)
+    }
+
+    /// Sends a push to household members who have the given permission enabled,
+    /// excluding the specified user IDs (e.g. invitees who already got a personalised push).
+    func notifyHouseholdExcludingFiltered(
+        userIDs: [UUID], permission: KeyPath<MemberPermissions, Bool>,
+        title: String, body: String
+    ) async {
+        let members = await MainActor.run { HouseholdService.shared.household?.members ?? [] }
+        guard !members.isEmpty else {
+            await notifyHouseholdExcluding(userIDs: userIDs, title: title, body: body)
+            return
+        }
+        let excludeSet = Set(userIDs.map { $0.uuidString.lowercased() })
+        let targetIDs = members
+            .filter { !excludeSet.contains($0.id.lowercased()) && $0.permissions[keyPath: permission] }
+            .compactMap { UUID(uuidString: $0.id) }
+        guard !targetIDs.isEmpty else { return }
+        await notifyUsers(targetIDs, title: title, body: body)
+    }
+
     /// Sends a push notification to every household member except the creator.
     /// Fire-and-forget — errors are logged but never surface to the UI.
     func notifyHousehold(title: String, body: String) async {
         guard let uid = await AuthService.shared.currentUserID() else { return }
-        guard let householdID = HouseholdService.shared.household?.id else { return }
+        let householdID: String? = await MainActor.run { HouseholdService.shared.household?.id }
+        guard let householdID else {
+            print("[Push] notifyHousehold skipped — household not set")
+            return
+        }
 
         struct Payload: Encodable {
             let householdId: String

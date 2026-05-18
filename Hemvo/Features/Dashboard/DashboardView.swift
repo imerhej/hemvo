@@ -8,7 +8,8 @@ internal import Combine
 
 struct DashboardView: View {
 
-    @EnvironmentObject var authVM: AuthViewModel
+    @EnvironmentObject var authVM:           AuthViewModel
+    @EnvironmentObject var householdService: HouseholdService
     @StateObject private var mealVM        = MealPlanViewModel()
     @StateObject private var groceryVM     = GroceryViewModel()
     @StateObject private var budgetVM      = BudgetViewModel()
@@ -35,6 +36,17 @@ struct DashboardView: View {
     private let divider = Color(hex: "#E6DDD0")!
     private let cream   = Color(hex: "#FAF7F2")!
 
+    private var currentUserID: String {
+        authVM.profile?.id.uuidString ?? authVM.userID?.uuidString ?? ""
+    }
+    private var currentMemberRole: HouseholdRole? {
+        householdService.household?.members.first { $0.id == currentUserID }?.role
+    }
+    private var canSeeTrial: Bool {
+        let role = currentMemberRole
+        return role == nil || role == .owner || role == .adult
+    }
+
     // First name derived from the Supabase profile
     private var firstName: String {
         let full = authVM.profile?.fullName ?? ""
@@ -44,15 +56,17 @@ struct DashboardView: View {
     var body: some View {
         ZStack {
             cream.ignoresSafeArea()
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    heroHeader
+            VStack(spacing: 0) {
+                // ── Hero header + calendar strip (fixed) ──
+                heroHeader
+
+                ScrollView(showsIndicators: false) {
                     VStack(spacing: 18) {
                         summaryGrid
                             .padding(.horizontal, 18)
                             .padding(.top, 20)
 
-                        if authVM.trialDaysRemaining > 0 {
+                        if authVM.trialDaysRemaining > 0 && canSeeTrial {
                             trialBanner.padding(.horizontal, 18)
                         }
 
@@ -77,66 +91,69 @@ struct DashboardView: View {
 
     // MARK: - Hero Header
     private var heroHeader: some View {
-        ZStack(alignment: .top) {
+        VStack(spacing: 0) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(greeting)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.8))
+                    Text(firstName)
+                        .font(.system(size: 22, weight: .black))
+                        .foregroundColor(.white)
+                }
+                Spacer()
+                Button { showMenu = true } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.2))
+                            .frame(width: 42, height: 42)
+                        VStack(spacing: 5) {
+                            ForEach(0..<3, id: \.self) { _ in
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.white)
+                                    .frame(width: 18, height: 2)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+
+            VStack(spacing: 6) {
+                HStack {
+                    Text(Date().monthYearDisplay)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.75))
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 14)
+
+                WarmMiniCalendarStrip(
+                    scheduleVM: scheduleVM,
+                    onDayTap: { date, _ in
+                        onSwitchToSchedule?(date)
+                    }
+                )
+                .padding(.bottom, 12)
+            }
+        }
+        .background {
             LinearGradient(
                 colors: [Color(hex: "#A0681A")!, Color(hex: "#C8922A")!, Color(hex: "#E6A83A")!],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             )
             .ignoresSafeArea(edges: .top)
-
-            Circle().fill(Color.white.opacity(0.06)).frame(width: 220).offset(x: 140, y: -40)
-            Circle().fill(Color.white.opacity(0.04)).frame(width: 140).offset(x: -60, y: 110)
-
-            VStack(spacing: 0) {
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(greeting)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white.opacity(0.8))
-                        Text(firstName)
-                            .font(.system(size: 22, weight: .black))
-                            .foregroundColor(.white)
-                    }
-                    Spacer()
-                    Button { showMenu = true } label: {
-                        ZStack {
-                            Circle()
-                                .fill(Color.white.opacity(0.2))
-                                .frame(width: 42, height: 42)
-                            VStack(spacing: 5) {
-                                ForEach(0..<3, id: \.self) { _ in
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color.white)
-                                        .frame(width: 18, height: 2)
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
-
-                VStack(spacing: 6) {
-                    HStack {
-                        Text(Date().monthYearDisplay)
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white.opacity(0.75))
-                        Spacer()
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 14)
-
-                    WarmMiniCalendarStrip(
-                        scheduleVM: scheduleVM,
-                        onDayTap: { date, _ in
-                            onSwitchToSchedule?(date)
-                        }
-                    )
-                    .padding(.bottom, 3)
-                }
-            }
         }
-        .frame(minHeight: 200)
+        .overlay {
+            Circle().fill(Color.white.opacity(0.06)).frame(width: 220).offset(x: 140, y: -40)
+                .allowsHitTesting(false)
+            Circle().fill(Color.white.opacity(0.04)).frame(width: 140).offset(x: -60, y: 110)
+                .allowsHitTesting(false)
+        }
+
+        .clipped()
     }
 
     // MARK: - Trial Banner
@@ -169,7 +186,7 @@ struct DashboardView: View {
                 action: { onSwitchToMeals?() }
             )
             WarmStatCard(
-                value: "\(budgetVM.upcomingBills.count) bills",
+                value: "\(budgetVM.allUpcomingBills.count) bills",
                 label: "Upcoming Bills",
                 icon: "calendar.badge.exclamationmark",
                 color: Color(hex: "#3949AB")!,
@@ -289,7 +306,8 @@ struct DashboardView: View {
         switch Calendar.current.component(.hour, from: Date()) {
         case 5..<12:  return "Good morning,"
         case 12..<17: return "Good afternoon,"
-        default:      return "Good evening,"
+        case 17..<21: return "Good evening,"
+        default:      return "Good night,"
         }
     }
 }
@@ -314,7 +332,7 @@ struct WarmMiniCalendarStrip: View {
                     let isSelected = day.isSameDay(as: selectedDate)
                     let isToday    = day.isToday
                     let events     = scheduleVM.events(on: day)
-                    let hasEvent   = scheduleVM.hasActivity(on: day)
+                    let hasEvent   = !scheduleVM.events(on: day).isEmpty
 
                     Button {
                         selectedDate = day
@@ -622,5 +640,7 @@ typealias DashboardCard   = WarmCard
 typealias MiniCalendarStrip = WarmMiniCalendarStrip
 
 #Preview {
-    DashboardView().environmentObject(AuthViewModel())
+    DashboardView()
+        .environmentObject(AuthViewModel())
+        .environmentObject(HouseholdService.shared)
 }

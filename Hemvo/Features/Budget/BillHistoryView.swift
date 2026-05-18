@@ -8,7 +8,16 @@ internal import Combine
 struct BillHistoryView: View {
 
     @ObservedObject var vm: BudgetViewModel
+    @EnvironmentObject private var authVM: AuthViewModel
+    @EnvironmentObject private var householdService: HouseholdService
     @Environment(\.dismiss) var dismiss
+
+    private var canWrite: Bool {
+        guard let uid = authVM.userID?.uuidString,
+              let member = householdService.household?.members.first(where: { $0.id == uid })
+        else { return true }
+        return member.role.canWrite
+    }
 
     enum Filter: String, CaseIterable {
         case week  = "This Week"
@@ -27,29 +36,45 @@ struct BillHistoryView: View {
     @State private var billToEdit: Expense?  = nil
     @State private var billToDelete: Expense? = nil
     @State private var showDeleteAlert       = false
+    @State private var selectedCategory: Expense.ExpenseCategory? = nil
 
-    // MARK: - Filtered paid expenses (recurring AND one-time)
-    private var paidBills: [Expense] {
-        let all = vm.expenses.filter { $0.isPaid }
+    // MARK: - All one-time expenses + paid recurring bills (time filter only)
+    // Non-recurring expenses are always included regardless of paid status so they remain
+    // accessible here after being toggled from paid → unpaid (otherwise they fall off the
+    // dashboard's 5-item recent list with no other path to reach them).
+    private var timeFilteredBills: [Expense] {
+        let all = vm.expenses.filter { $0.scope == vm.selectedScope && ($0.isPaid || !$0.isRecurring) }
         switch filter {
         case .week:
             let start = Calendar.current.date(from: Calendar.current.dateComponents(
                 [.yearForWeekOfYear, .weekOfYear], from: Date()))!
             let end   = Calendar.current.date(byAdding: .day, value: 7, to: start)!
             return all.filter {
-                let paid = $0.paidDate ?? $0.date
-                return paid >= start && paid < end
+                let ref = $0.paidDate ?? $0.date
+                return ref >= start && ref < end
             }.sorted { ($0.paidDate ?? $0.date) > ($1.paidDate ?? $1.date) }
 
         case .month:
             return all.filter {
-                let paid = $0.paidDate ?? $0.date
-                return Calendar.current.isDate(paid, equalTo: selectedMonth, toGranularity: .month)
+                let ref = $0.paidDate ?? $0.date
+                return Calendar.current.isDate(ref, equalTo: selectedMonth, toGranularity: .month)
             }.sorted { ($0.paidDate ?? $0.date) > ($1.paidDate ?? $1.date) }
 
         case .all:
             return all.sorted { ($0.paidDate ?? $0.date) > ($1.paidDate ?? $1.date) }
         }
+    }
+
+    // Categories present in the current time window (drives the category chips)
+    private var availableCategories: [Expense.ExpenseCategory] {
+        let cats = Set(timeFilteredBills.map { $0.category })
+        return Expense.ExpenseCategory.allCases.filter { cats.contains($0) }
+    }
+
+    // Time-filtered bills further narrowed by selected category
+    private var paidBills: [Expense] {
+        guard let cat = selectedCategory else { return timeFilteredBills }
+        return timeFilteredBills.filter { $0.category == cat }
     }
 
     private var totalPaid: Double { paidBills.reduce(0) { $0 + $1.amount } }
@@ -84,6 +109,12 @@ struct BillHistoryView: View {
                         monthNavigator.padding(.horizontal, 20).padding(.bottom, 4)
                     }
 
+                    // ── Category filter ───────────────────────────────
+                    // Always show in personal scope; show in household only when 2+ categories exist
+                    if vm.selectedScope == .personal ? !availableCategories.isEmpty : availableCategories.count > 1 {
+                        categoryFilterStrip.padding(.top, 4).padding(.bottom, 4)
+                    }
+
                     // ── Summary strip ─────────────────────────
                     if !paidBills.isEmpty {
                         summaryStrip.padding(.horizontal, 20).padding(.vertical, 10)
@@ -96,7 +127,7 @@ struct BillHistoryView: View {
                         ScrollView(showsIndicators: false) {
                             VStack(spacing: 16) {
                                 if filter == .all {
-                                    ForEach(groupedByMonth, id: \.0) { month, bills in
+                                    ForEach(groupedByMonth, id: \.0) { (month, bills) in
                                         monthGroup(month: month, bills: bills)
                                     }
                                 } else {
@@ -110,6 +141,7 @@ struct BillHistoryView: View {
                 }
             }
             .navigationBarHidden(true)
+            .onChange(of: filter) { selectedCategory = nil }
             .sheet(item: $billToEdit, onDismiss: { vm.objectWillChange.send() }) { bill in
                 EditExpenseView(vm: vm, expense: bill)
             }
@@ -131,10 +163,10 @@ struct BillHistoryView: View {
             Color.white
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("PAYMENT HISTORY")
+                    Text("EXPENSE HISTORY")
                         .font(.system(size: 10, weight: .heavy)).kerning(3)
                         .foregroundColor(Color(hex: "#C8922A")!)
-                    Text("Paid Bills")
+                    Text("History")
                         .font(.system(size: 26, weight: .black))
                         .foregroundColor(Color(hex: "#1A1208")!)
                 }
@@ -178,6 +210,51 @@ struct BillHistoryView: View {
                 .animation(.easeInOut(duration: 0.15), value: isSelected)
             }
             Spacer()
+        }
+    }
+
+    // MARK: - Category Filter Strip
+    private var categoryFilterStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                // "All" chip
+                let allSelected = selectedCategory == nil
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { selectedCategory = nil }
+                } label: {
+                    Text("All")
+                        .font(.system(size: 12, weight: allSelected ? .heavy : .medium))
+                        .foregroundColor(allSelected ? .white : Color(hex: "#7A6A55")!)
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(Capsule().fill(allSelected ? Color(hex: "#C8922A")! : Color(hex: "#F5E4C3")!))
+                        .shadow(color: allSelected ? Color(hex: "#C8922A")!.opacity(0.3) : .clear, radius: 6, y: 2)
+                }
+                .buttonStyle(.plain)
+
+                ForEach(availableCategories, id: \.self) { cat in
+                    let isSelected = selectedCategory == cat
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedCategory = isSelected ? nil : cat
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: cat.iconName)
+                                .font(.system(size: 10, weight: .bold))
+                            Text(cat.rawValue)
+                                .font(.system(size: 12, weight: isSelected ? .heavy : .medium))
+                        }
+                        .foregroundColor(isSelected ? .white : cat.displayColor)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(Capsule().fill(isSelected ? cat.displayColor : cat.displayColor.opacity(0.12)))
+                        .overlay(Capsule().stroke(cat.displayColor.opacity(isSelected ? 0 : 0.25), lineWidth: 1))
+                        .shadow(color: isSelected ? cat.displayColor.opacity(0.3) : .clear, radius: 6, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                    .animation(.easeInOut(duration: 0.15), value: isSelected)
+                }
+            }
+            .padding(.horizontal, 20)
         }
     }
 
@@ -251,7 +328,8 @@ struct BillHistoryView: View {
             ForEach(Array(bills.enumerated()), id: \.element.id) { idx, bill in
                 HistoryBillRow(
                     bill:      bill,
-                    canDelete: vm.canDelete(bill),
+                    canEdit:   canWrite,
+                    canDelete: canWrite && vm.canDelete(bill),
                     onEdit:    { billToEdit   = bill },
                     onDelete:  { billToDelete = bill; showDeleteAlert = true }
                 )
@@ -299,10 +377,10 @@ struct BillHistoryView: View {
                     .foregroundColor(Color(hex: "#C8922A")!)
             }
             VStack(spacing: 8) {
-                Text("No Paid Bills")
+                Text("No Expenses")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(Color(hex: "#1A1208")!)
-                Text("Bills you mark as paid will\nappear here for your records.")
+                Text("Your one-time expenses and paid bills will appear here.")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(Color(hex: "#7A6A55")!)
                     .multilineTextAlignment(.center)
@@ -317,90 +395,118 @@ struct BillHistoryView: View {
 struct HistoryBillRow: View {
 
     let bill:      Expense
+    var canEdit:   Bool = true
     var canDelete: Bool = true
     let onEdit:    () -> Void
     let onDelete:  () -> Void
 
-    var body: some View {
-        HStack(spacing: 12) {
-            // Green checkmark icon
-            ZStack {
-                RoundedRectangle(cornerRadius: 9)
-                    .fill(Color(hex: "#3D7A52")!.opacity(0.1))
-                    .frame(width: 38, height: 38)
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(Color(hex: "#3D7A52")!)
-            }
+    private var createdByName: String? {
+        guard let id = bill.createdBy,
+              let member = HouseholdService.shared.household?.members
+                  .first(where: { $0.id == id }) else { return nil }
+        return member.username.components(separatedBy: " ").first ?? member.username
+    }
 
-            // Title + paid date + category
-            VStack(alignment: .leading, spacing: 4) {
+    private var paidByLabel: String? { bill.formattedPaidDate }
+
+    private var paidByFirstName: String? {
+        guard let paidByID = bill.paidBy,
+              let member = HouseholdService.shared.household?.members
+                  .first(where: { $0.id == paidByID }) else { return nil }
+        return member.username.components(separatedBy: " ").first ?? member.username
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                // Icon — green checkmark when paid, category icon when unpaid
+                ZStack {
+                    RoundedRectangle(cornerRadius: 9)
+                        .fill(bill.isPaid
+                              ? Color(hex: "#3D7A52")!.opacity(0.1)
+                              : bill.category.displayColor.opacity(0.12))
+                        .frame(width: 38, height: 38)
+                    Image(systemName: bill.isPaid ? "checkmark.circle.fill" : bill.category.iconName)
+                        .font(.system(size: bill.isPaid ? 18 : 14, weight: .semibold))
+                        .foregroundColor(bill.isPaid ? Color(hex: "#3D7A52")! : bill.category.displayColor)
+                }
+
+                // Title
                 Text(bill.title)
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(Color(hex: "#1A1208")!)
-                    .strikethrough(true, color: Color(hex: "#7A6A55")!.opacity(0.5))
+                    .foregroundColor(bill.isPaid ? Color(hex: "#7A6A55")! : Color(hex: "#1A1208")!)
+                    .strikethrough(bill.isPaid, color: Color(hex: "#7A6A55")!.opacity(0.5))
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                HStack(spacing: 6) {
-                    if let paidStr = bill.formattedPaidDate {
-                        HStack(spacing: 3) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 9))
-                                .foregroundColor(Color(hex: "#3D7A52")!)
-                            Text(paidStr)
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(Color(hex: "#3D7A52")!)
-                        }
-                        .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background(Color(hex: "#3D7A52")!.opacity(0.1))
-                        .cornerRadius(20)
-                    }
+                // Amount + category label
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(bill.formattedAmount)
+                        .font(.system(size: 14, weight: .black))
+                        .foregroundColor(bill.isPaid ? Color(hex: "#7A6A55")! : Color(hex: "#C0392B")!)
+                        .strikethrough(bill.isPaid, color: Color(hex: "#7A6A55")!.opacity(0.4))
                     Text(bill.category.rawValue)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(Color(hex: "#7A6A55")!)
                 }
-            }
 
-            Spacer()
-
-            // Amount + PAID badge
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(bill.formattedAmount)
-                    .font(.system(size: 14, weight: .black))
-                    .foregroundColor(Color(hex: "#7A6A55")!)
-                    .strikethrough(true, color: Color(hex: "#7A6A55")!.opacity(0.4))
-                Text("PAID")
-                    .font(.system(size: 8, weight: .heavy)).kerning(1)
-                    .foregroundColor(Color(hex: "#3D7A52")!)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Color(hex: "#3D7A52")!.opacity(0.1))
-                    .cornerRadius(20)
-            }
-
-            // ── Action buttons ───────────────────────────────
-            VStack(spacing: 6) {
-                // Edit
-                Button { onEdit() } label: {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Color(hex: "#C8922A")!)
-                        .frame(width: 28, height: 28)
-                        .background(Color(hex: "#F5E4C3")!)
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-
-                if canDelete {
-                    Button { onDelete() } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.red)
-                            .frame(width: 28, height: 28)
-                            .background(Color.red.opacity(0.08))
-                            .clipShape(Circle())
+                // ── Action buttons ───────────────────────────────
+                VStack(spacing: 6) {
+                    if canEdit {
+                        Button { onEdit() } label: {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(hex: "#C8922A")!)
+                                .frame(width: 28, height: 28)
+                                .background(Color(hex: "#F5E4C3")!)
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+
+                    if canDelete {
+                        Button { onDelete() } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.red)
+                                .frame(width: 28, height: 28)
+                                .background(Color.red.opacity(0.08))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
+
+            // ── Pills row (paid date · people) ───────────
+            HStack(spacing: 6) {
+                if let label = paidByLabel {
+                    Label(label, systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color(hex: "#3D7A52")!)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color(hex: "#3D7A52")!.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+                if let name = paidByFirstName {
+                    Label("paid by \(name)", systemImage: "person.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color(hex: "#3D7A52")!)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color(hex: "#3D7A52")!.opacity(0.08))
+                        .clipShape(Capsule())
+                }
+                if let name = createdByName {
+                    Label("by \(name)", systemImage: "person.circle.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color(hex: "#7A6A55")!)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color(hex: "#7A6A55")!.opacity(0.08))
+                        .clipShape(Capsule())
+                }
+                Spacer()
+            }
+            .padding(.leading, 50)
+            .padding(.top, 6)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
         .background(Color.white)

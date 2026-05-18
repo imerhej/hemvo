@@ -15,6 +15,7 @@ internal import Foundation
 internal import Combine
 internal import UserNotifications
 internal import Supabase
+internal import UIKit
 
 @MainActor
 final class ScheduleViewModel: ObservableObject {
@@ -26,8 +27,16 @@ final class ScheduleViewModel: ObservableObject {
     private var cachedUserID:      UUID?
     private var cachedHouseholdID: UUID?
 
-    private var deletedEventIDs: Set<UUID> = []
-    private var deletedTaskIDs:  Set<UUID> = []
+    private var deletedEventIDs:       Set<UUID> = []
+    private var deletedTaskIDs:        Set<UUID> = []
+    private var pendingUploadEventIDs: Set<UUID> = []
+    private var pendingUploadTaskIDs:  Set<UUID> = []
+
+    // Real-time sync
+    private var cancellables:     Set<AnyCancellable> = []
+    private var realtimeTask:     Task<Void, Never>?
+    private var realtimeDebounce: Task<Void, Never>?
+    private var realtimeChannel:  RealtimeChannelV2?
 
     // MARK: - Computed
     var upcomingEvents: [CalendarEvent] {
@@ -103,33 +112,47 @@ final class ScheduleViewModel: ObservableObject {
         var stamped = event
         if stamped.createdBy == nil { stamped.createdBy = cachedUserID?.uuidString }
         events.append(stamped)
+        pendingUploadEventIDs.insert(stamped.id)
+        persistPendingUploadIDs()
         persist()
         if UserDefaults.standard.bool(forKey: "notif_schedule") {
             notif.scheduleEventReminders(for: [stamped])   // local notifications for this device
         }
         Task { await supabaseUpsertEvent(stamped) }
         Task { await sendEventCreationPush(for: stamped) }
-        Task { await scheduleEventPushes(for: stamped) }   // server-side pushes for all members
+        // Scheduled server-side pushes go to the whole household, so only
+        // fire them for household events. Personal events rely on the local
+        // notification scheduled in the sheet and the creation push above.
+        if stamped.scope == .household {
+            Task { await scheduleEventPushes(for: stamped) }
+        }
     }
 
     func updateEvent(_ event: CalendarEvent) {
         if let idx = events.firstIndex(where: { $0.id == event.id }) {
+            let old = events[idx]
             events[idx] = event
             persist()
             notif.cancelEventReminders(for: event.id)
             if UserDefaults.standard.bool(forKey: "notif_schedule") {
                 notif.scheduleEventReminders(for: [event])
             }
-            Task { await supabaseUpsertEvent(event) }
-            // Rebuild server-side push schedule (cancels old ones, inserts new).
-            Task { await scheduleEventPushes(for: event) }
+            Task { await supabaseUpdateEvent(event) }
+            if event.scope == .household {
+                Task { await scheduleEventPushes(for: event) }
+            } else {
+                Task { await cancelEventPushSchedule(for: event.id) }
+            }
+            Task { await sendEventUpdatePush(old: old, new: event) }
         }
     }
 
     func deleteEvent(_ event: CalendarEvent) {
         guard canDelete(event) else { return }
         deletedEventIDs.insert(event.id)
+        pendingUploadEventIDs.remove(event.id)
         persistDeletedIDs()
+        persistPendingUploadIDs()
         events.removeAll { $0.id == event.id }
         persist()
         notif.cancelEventReminders(for: event.id)
@@ -139,33 +162,140 @@ final class ScheduleViewModel: ObservableObject {
 
     // MARK: - Event Push Helpers
 
-    /// Immediate push to household on creation.
-    /// Invitees get a personalised "you're invited" message;
-    /// all other members get the generic "new event" broadcast.
+    /// Immediate push on event creation, gated by scope:
+    ///
+    /// - **Household**: all members notified. Invitees get "You're invited";
+    ///   everyone else gets the generic "New Event" broadcast.
+    /// - **Personal, no invitees**: no push sent (creator gets a local notification only).
+    /// - **Personal, with invitees**: only the selected invitees are notified.
     private func sendEventCreationPush(for event: CalendarEvent) async {
         let dateStr = event.isAllDay
             ? event.date.formatted(.dateTime.month(.abbreviated).day())
-            : event.date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+            : event.date.formatted(.dateTime.month(.abbreviated).day().hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits))
 
-        if event.inviteeIDs.isEmpty {
-            // No specific invitees — broadcast to the whole household.
-            await PushNotificationService.shared.notifyHousehold(
-                title: "📅 New Event",
-                body:  "\(event.title) · \(dateStr)"
-            )
-        } else {
-            // Send a personal "invited" alert to invitees.
+        if event.scope == .personal {
+            guard !event.inviteeIDs.isEmpty else { return }
             await PushNotificationService.shared.notifyUsers(
                 event.inviteeIDs,
                 title: "📅 You're invited: \(event.title)",
                 body:  dateStr
             )
-            // Broadcast to the rest of the household (non-invitees).
-            await PushNotificationService.shared.notifyHouseholdExcluding(
-                userIDs: event.inviteeIDs,
-                title:  "📅 New Event",
-                body:   "\(event.title) · \(dateStr)"
+            return
+        }
+
+        // Household event — notify everyone.
+        if event.inviteeIDs.isEmpty {
+            await PushNotificationService.shared.notifyHouseholdFiltered(
+                permission: \.receiveCalendarAlerts,
+                title: "📅 New Event",
+                body:  "\(event.title) · \(dateStr)"
             )
+        } else {
+            async let inviteePush: Void = PushNotificationService.shared.notifyUsers(
+                event.inviteeIDs,
+                title: "📅 You're invited: \(event.title)",
+                body:  dateStr
+            )
+            async let othersPush: Void = PushNotificationService.shared.notifyHouseholdExcludingFiltered(
+                userIDs:    event.inviteeIDs,
+                permission: \.receiveCalendarAlerts,
+                title:      "📅 New Event",
+                body:       "\(event.title) · \(dateStr)"
+            )
+            _ = await (inviteePush, othersPush)
+        }
+    }
+
+    /// Sends an immediate push when an event is edited, gated by what actually changed
+    /// and who should be notified based on the old and new scope.
+    ///
+    /// - Personal → Household: broadcast to the whole household (new shared event).
+    /// - Household → Personal: no push; the event silently disappears on next sync.
+    /// - Household → Household: notify all members if title, date, or all-day changed.
+    /// - Personal → Personal: "You're invited" to new invitees; "Event Updated" to
+    ///   existing invitees when title, date, or all-day changed.
+    private func sendEventUpdatePush(old: CalendarEvent, new: CalendarEvent) async {
+        let dateStr = new.isAllDay
+            ? new.date.formatted(.dateTime.month(.abbreviated).day())
+            : new.date.formatted(.dateTime.month(.abbreviated).day()
+                .hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits))
+
+        let detailsChanged = old.title != new.title
+            || !Calendar.current.isDate(old.date, equalTo: new.date, toGranularity: .minute)
+            || old.isAllDay != new.isAllDay
+
+        switch (old.scope, new.scope) {
+
+        // Personal → Household: treat like a new shared event.
+        case (.personal, .household):
+            if new.inviteeIDs.isEmpty {
+                await PushNotificationService.shared.notifyHouseholdFiltered(
+                    permission: \.receiveCalendarAlerts,
+                    title: "📅 New Shared Event",
+                    body:  "\(new.title) · \(dateStr)"
+                )
+            } else {
+                async let inviteePush: Void = PushNotificationService.shared.notifyUsers(
+                    new.inviteeIDs,
+                    title: "📅 You're invited: \(new.title)",
+                    body:  dateStr
+                )
+                async let othersPush: Void = PushNotificationService.shared.notifyHouseholdExcludingFiltered(
+                    userIDs:    new.inviteeIDs,
+                    permission: \.receiveCalendarAlerts,
+                    title:      "📅 New Shared Event",
+                    body:       "\(new.title) · \(dateStr)"
+                )
+                _ = await (inviteePush, othersPush)
+            }
+
+        // Household → Personal: event disappears from others on next sync; no push.
+        case (.household, .personal):
+            break
+
+        // Household → Household: notify everyone if anything meaningful changed.
+        case (.household, .household):
+            guard detailsChanged else { return }
+            if new.inviteeIDs.isEmpty {
+                await PushNotificationService.shared.notifyHouseholdFiltered(
+                    permission: \.receiveCalendarAlerts,
+                    title: "📅 Event Updated",
+                    body:  "\(new.title) · \(dateStr)"
+                )
+            } else {
+                async let inviteePush: Void = PushNotificationService.shared.notifyUsers(
+                    new.inviteeIDs,
+                    title: "📅 Event Updated: \(new.title)",
+                    body:  dateStr
+                )
+                async let othersPush: Void = PushNotificationService.shared.notifyHouseholdExcludingFiltered(
+                    userIDs:    new.inviteeIDs,
+                    permission: \.receiveCalendarAlerts,
+                    title:      "📅 Event Updated",
+                    body:       "\(new.title) · \(dateStr)"
+                )
+                _ = await (inviteePush, othersPush)
+            }
+
+        // Personal → Personal: notify new invitees and (if details changed) existing ones.
+        case (.personal, .personal):
+            let newInvitees      = Set(new.inviteeIDs).subtracting(old.inviteeIDs)
+            let existingInvitees = Set(new.inviteeIDs).intersection(old.inviteeIDs)
+
+            if !newInvitees.isEmpty {
+                await PushNotificationService.shared.notifyUsers(
+                    Array(newInvitees),
+                    title: "📅 You're invited: \(new.title)",
+                    body:  dateStr
+                )
+            }
+            if detailsChanged && !existingInvitees.isEmpty {
+                await PushNotificationService.shared.notifyUsers(
+                    Array(existingInvitees),
+                    title: "📅 Event Updated: \(new.title)",
+                    body:  dateStr
+                )
+            }
         }
     }
 
@@ -177,7 +307,9 @@ final class ScheduleViewModel: ObservableObject {
     ///   1. At event start time  — "Starting now"
     ///   2. At alert offset time — e.g. "15 minutes before" (if set)
     private func scheduleEventPushes(for event: CalendarEvent) async {
+        await resolveIDs()
         guard let hid = cachedHouseholdID, event.date > Date() else { return }
+        let creatorID = cachedUserID
 
         struct ScheduleRow: Encodable {
             let householdId: UUID
@@ -185,25 +317,31 @@ final class ScheduleViewModel: ObservableObject {
             let fireAt:      Date
             let title:       String
             let body:        String
+            let creatorId:   UUID?
             enum CodingKeys: String, CodingKey {
                 case householdId = "household_id"
                 case eventId     = "event_id"
                 case fireAt      = "fire_at"
                 case title, body
+                case creatorId   = "creator_id"
             }
         }
 
         // Cancel any unsent schedules for this event before inserting new ones.
-        try? await supabase
-            .from("notification_schedule")
-            .delete()
-            .eq("event_id", value: event.id.uuidString)
-            .eq("sent",     value: false)
-            .execute()
+        do {
+            try await supabase
+                .from("notification_schedule")
+                .delete()
+                .eq("event_id", value: event.id.uuidString)
+                .eq("sent",     value: false)
+                .execute()
+        } catch {
+            print("[Supabase] cancelOldSchedules error: \(error)")
+        }
 
         let timeStr = event.isAllDay
             ? event.date.formatted(.dateTime.month(.abbreviated).day())
-            : event.date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+            : event.date.formatted(.dateTime.month(.abbreviated).day().hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits))
 
         var rows: [ScheduleRow] = []
 
@@ -213,7 +351,8 @@ final class ScheduleViewModel: ObservableObject {
             eventId:     event.id,
             fireAt:      event.date,
             title:       "📅 \(event.title)",
-            body:        event.isAllDay ? "All-day event is today." : "Starting now."
+            body:        event.isAllDay ? "All-day event is today." : "Starting now.",
+            creatorId:   creatorID
         ))
 
         // 2. Alert-based notification (before event).
@@ -226,7 +365,8 @@ final class ScheduleViewModel: ObservableObject {
                     eventId:     event.id,
                     fireAt:      alertFireAt,
                     title:       "📅 \(event.title)",
-                    body:        "\(event.alertOption) · \(timeStr)"
+                    body:        "\(event.alertOption) · \(timeStr)",
+                    creatorId:   creatorID
                 ))
             }
         }
@@ -243,12 +383,16 @@ final class ScheduleViewModel: ObservableObject {
 
     /// Removes any unsent push schedule rows for a deleted/cancelled event.
     private func cancelEventPushSchedule(for eventID: UUID) async {
-        try? await supabase
-            .from("notification_schedule")
-            .delete()
-            .eq("event_id", value: eventID.uuidString)
-            .eq("sent",     value: false)
-            .execute()
+        do {
+            try await supabase
+                .from("notification_schedule")
+                .delete()
+                .eq("event_id", value: eventID.uuidString)
+                .eq("sent",     value: false)
+                .execute()
+        } catch {
+            print("[Supabase] cancelEventPushSchedule error: \(error)")
+        }
     }
 
     /// Converts an alertOption string to a TimeInterval offset (seconds before event).
@@ -268,6 +412,8 @@ final class ScheduleViewModel: ObservableObject {
         var stamped = task
         if stamped.createdBy == nil { stamped.createdBy = cachedUserID?.uuidString }
         tasks.append(stamped)
+        pendingUploadTaskIDs.insert(stamped.id)
+        persistPendingUploadIDs()
         persist()
         Task { await supabaseUpsertTask(stamped) }
         Task { await sendTaskNotification(for: stamped) }
@@ -305,8 +451,9 @@ final class ScheduleViewModel: ObservableObject {
                 body:  "\(task.title) · Due \(dateStr)"
             )
         } else {
-            // No specific assignee — let the whole household know.
-            await PushNotificationService.shared.notifyHousehold(
+            // No specific assignee — broadcast to members who receive calendar/task alerts.
+            await PushNotificationService.shared.notifyHouseholdFiltered(
+                permission: \.receiveCalendarAlerts,
                 title: "✅ New Task",
                 body:  "\(task.title) · Due \(dateStr)"
             )
@@ -330,7 +477,9 @@ final class ScheduleViewModel: ObservableObject {
     func deleteTask(_ task: HouseTask) {
         guard canDelete(task) else { return }
         deletedTaskIDs.insert(task.id)
+        pendingUploadTaskIDs.remove(task.id)
         persistDeletedIDs()
+        persistPendingUploadIDs()
         tasks.removeAll { $0.id == task.id }
         persist()
         Task { await supabaseDeleteTask(id: task.id) }
@@ -338,8 +487,12 @@ final class ScheduleViewModel: ObservableObject {
 
     func deleteTasks(at offsets: IndexSet) {
         let toDelete = offsets.map { tasks[$0] }.filter { canDelete($0) }
-        for t in toDelete { deletedTaskIDs.insert(t.id) }
+        for t in toDelete {
+            deletedTaskIDs.insert(t.id)
+            pendingUploadTaskIDs.remove(t.id)
+        }
         persistDeletedIDs()
+        persistPendingUploadIDs()
         tasks.removeAll { t in toDelete.contains(where: { $0.id == t.id }) }
         persist()
         for t in toDelete { Task { await supabaseDeleteTask(id: t.id) } }
@@ -354,19 +507,36 @@ final class ScheduleViewModel: ObservableObject {
     }
 
     // MARK: - Persistence
-    private let eventsKey          = "hb_events"
-    private let tasksKey           = "hb_tasks"
-    private let membersKey         = "hb_members"
-    private let deletedEventIDsKey = "hb_deletedEventIDs"
-    private let deletedTaskIDsKey  = "hb_deletedTaskIDs"
+    private let eventsKey                = "hb_events"
+    private let tasksKey                 = "hb_tasks"
+    private let membersKey               = "hb_members"
+    private let deletedEventIDsKey       = "hb_deletedEventIDs"
+    private let deletedTaskIDsKey        = "hb_deletedTaskIDs"
+    private let pendingUploadEventIDsKey = "hb_pendingUploadEventIDs"
+    private let pendingUploadTaskIDsKey  = "hb_pendingUploadTaskIDs"
 
     init() {
         loadDeletedIDs()
+        loadPendingUploadIDs()
         load()
         if UserDefaults.standard.bool(forKey: "notif_schedule") {
             notif.scheduleEventReminders(for: events)
         }
         Task { await loadFromSupabase() }
+        NotificationCenter.default
+            .publisher(for: UIApplication.willEnterForegroundNotification)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in await self?.loadFromSupabase() }
+            }
+            .store(in: &cancellables)
+    }
+
+    deinit {
+        realtimeTask?.cancel()
+        realtimeDebounce?.cancel()
+        if let ch = realtimeChannel {
+            Task { await supabase.realtimeV2.removeChannel(ch) }
+        }
     }
 
     private func load() {
@@ -396,11 +566,30 @@ final class ScheduleViewModel: ObservableObject {
         if let d = try? JSONEncoder().encode(Array(deletedTaskIDs))  { UserDefaults.standard.set(d, forKey: deletedTaskIDsKey) }
     }
 
+    private func loadPendingUploadIDs() {
+        if let d = UserDefaults.standard.data(forKey: pendingUploadEventIDsKey),
+           let v = try? JSONDecoder().decode([UUID].self, from: d) { pendingUploadEventIDs = Set(v) }
+        if let d = UserDefaults.standard.data(forKey: pendingUploadTaskIDsKey),
+           let v = try? JSONDecoder().decode([UUID].self, from: d) { pendingUploadTaskIDs = Set(v) }
+    }
+
+    private func persistPendingUploadIDs() {
+        if let d = try? JSONEncoder().encode(Array(pendingUploadEventIDs)) { UserDefaults.standard.set(d, forKey: pendingUploadEventIDsKey) }
+        if let d = try? JSONEncoder().encode(Array(pendingUploadTaskIDs))  { UserDefaults.standard.set(d, forKey: pendingUploadTaskIDsKey) }
+    }
+
     // MARK: - Supabase Sync
 
     func loadFromSupabase() async {
         guard let uid = await AuthService.shared.currentUserID() else { return }
         cachedUserID = uid
+
+        // Evict any personal events that slipped into the local cache (e.g. via stale
+        // UserDefaults written before scope filtering existed). Do this before the Supabase
+        // fetch so the in-memory state is already clean if the network call fails.
+        let before = events.count
+        events = events.filter { isVisible($0, to: uid) }
+        if events.count != before { persist() }
 
         if let profile = try? await AuthService.shared.loadProfile() {
             cachedHouseholdID = profile.householdId
@@ -409,8 +598,190 @@ final class ScheduleViewModel: ObservableObject {
             cachedHouseholdID = UUID(uuidString: HouseholdService.shared.household?.id ?? "")
         }
 
+        if realtimeTask == nil, cachedHouseholdID != nil {
+            startRealtimeSubscription()
+        }
+
+        // Re-upsert the device token with the now-resolved household_id.
+        // First launch can register the token before household_id is known,
+        // leaving household_id = NULL in the DB and causing notifyHousehold
+        // to find zero rows. Refreshing here ensures the token is always
+        // registered with the correct household.
+        if cachedHouseholdID != nil {
+            PushNotificationService.shared.refreshToken()
+        }
+
         await loadEventsFromSupabase(uid: uid)
         await loadTasksFromSupabase(uid: uid)
+    }
+
+    private func startRealtimeSubscription() {
+        guard let hid = cachedHouseholdID else { return }
+
+        let channel = supabase.realtimeV2.channel("schedule:\(hid.uuidString):\(UUID().uuidString)")
+        realtimeChannel = channel
+
+        realtimeTask = Task { [weak self, channel] in
+            let eventStream = channel.postgresChange(
+                AnyAction.self, schema: "public", table: "events",
+                filter: .eq("household_id", value: hid.uuidString.lowercased())
+            )
+            let taskStream = channel.postgresChange(
+                AnyAction.self, schema: "public", table: "house_tasks",
+                filter: .eq("household_id", value: hid.uuidString.lowercased())
+            )
+
+            do {
+                try await channel.subscribeWithError()
+            } catch {
+                print("[Realtime] schedule subscribe error: \(error)")
+                self?.realtimeTask = nil
+                return
+            }
+
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { [weak self] in
+                    for await action in eventStream {
+                        guard !Task.isCancelled, let self else { break }
+                        await self.handleEventChange(action)
+                    }
+                }
+                group.addTask { [weak self] in
+                    for await action in taskStream {
+                        guard !Task.isCancelled, let self else { break }
+                        await self.handleTaskChange(action)
+                    }
+                }
+            }
+
+            if !Task.isCancelled {
+                self?.realtimeTask = nil
+            }
+        }
+    }
+
+    // MARK: - Realtime payload handlers
+
+    // Decodes Supabase CDC timestamp strings — handles both with and without
+    // fractional seconds (e.g. "2026-05-10T12:00:00Z" and "…T12:00:00.123456Z").
+    private static let realtimeDecoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .custom { decoder in
+            let c   = try decoder.singleValueContainer()
+            let s   = try c.decode(String.self)
+            let fmt = ISO8601DateFormatter()
+            fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = fmt.date(from: s) { return date }
+            fmt.formatOptions = [.withInternetDateTime]
+            if let date = fmt.date(from: s) { return date }
+            throw DecodingError.dataCorruptedError(in: c,
+                debugDescription: "Cannot decode date: \(s)")
+        }
+        return d
+    }()
+
+    private func handleEventChange(_ action: AnyAction) async {
+        switch action {
+        case .insert(let a):
+            guard let row = try? a.decodeRecord(as: SupabaseEventRow.self,
+                                                decoder: Self.realtimeDecoder) else {
+                scheduleRealtimeReload(); return
+            }
+            let event = row.toEvent()
+            guard !deletedEventIDs.contains(event.id) else { return }
+            // Skip if already in the list (our own optimistic insert).
+            guard !events.contains(where: { $0.id == event.id }) else { return }
+            // Personal events from other users that didn't invite this user are not shown.
+            guard cachedUserID.map({ isVisible(event, to: $0) }) ?? true else { return }
+            events.append(event)
+            if UserDefaults.standard.bool(forKey: "notif_schedule") {
+                notif.scheduleEventReminders(for: [event])
+            }
+            persist()
+
+        case .update(let a):
+            guard let row = try? a.decodeRecord(as: SupabaseEventRow.self,
+                                                decoder: Self.realtimeDecoder) else {
+                scheduleRealtimeReload(); return
+            }
+            let event = row.toEvent()
+            // If scope/invitees changed and the event is no longer visible, remove it.
+            if let uid = cachedUserID, !isVisible(event, to: uid) {
+                events.removeAll { $0.id == event.id }
+                persist()
+                return
+            }
+            if let idx = events.firstIndex(where: { $0.id == event.id }) {
+                events[idx] = event
+            } else if !deletedEventIDs.contains(event.id) {
+                events.append(event)
+                if UserDefaults.standard.bool(forKey: "notif_schedule") {
+                    notif.scheduleEventReminders(for: [event])
+                }
+            }
+            persist()
+
+        case .delete(let a):
+            // oldRecord["id"] is available because REPLICA IDENTITY FULL is set.
+            guard case .string(let s) = a.oldRecord["id"],
+                  let id = UUID(uuidString: s) else {
+                scheduleRealtimeReload(); return
+            }
+            events.removeAll { $0.id == id }
+            persist()
+
+        @unknown default:
+            break
+        }
+    }
+
+    private func handleTaskChange(_ action: AnyAction) async {
+        switch action {
+        case .insert(let a):
+            guard let row = try? a.decodeRecord(as: SupabaseTaskRow.self,
+                                                decoder: Self.realtimeDecoder) else {
+                scheduleRealtimeReload(); return
+            }
+            let task = row.toTask()
+            guard !deletedTaskIDs.contains(task.id) else { return }
+            guard !tasks.contains(where: { $0.id == task.id }) else { return }
+            tasks.append(task)
+            persist()
+
+        case .update(let a):
+            guard let row = try? a.decodeRecord(as: SupabaseTaskRow.self,
+                                                decoder: Self.realtimeDecoder) else {
+                scheduleRealtimeReload(); return
+            }
+            let task = row.toTask()
+            if let idx = tasks.firstIndex(where: { $0.id == task.id }) {
+                tasks[idx] = task
+            } else if !deletedTaskIDs.contains(task.id) {
+                tasks.append(task)
+            }
+            persist()
+
+        case .delete(let a):
+            guard case .string(let s) = a.oldRecord["id"],
+                  let id = UUID(uuidString: s) else {
+                scheduleRealtimeReload(); return
+            }
+            tasks.removeAll { $0.id == id }
+            persist()
+
+        @unknown default:
+            break
+        }
+    }
+
+    // Fallback: short debounced full-reload when direct payload decode fails.
+    private func scheduleRealtimeReload() {
+        realtimeDebounce?.cancel()
+        realtimeDebounce = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            guard !Task.isCancelled else { return }
+            await self?.loadFromSupabase()
+        }
     }
 
     private func loadEventsFromSupabase(uid: UUID) async {
@@ -422,14 +793,33 @@ final class ScheduleViewModel: ObservableObject {
                 query = query.eq("created_by", value: uid.uuidString)
             }
             let rows: [SupabaseEventRow] = try await query.execute().value
+            let remoteRowIDs = Set(rows.map { $0.id })
 
-            // Re-fire delete for tombstoned events still present remotely.
+            // Tombstones that are no longer in Supabase → delete succeeded; clear them.
+            let clearedTombstones = deletedEventIDs.filter { !remoteRowIDs.contains($0) }
+            if !clearedTombstones.isEmpty {
+                deletedEventIDs.subtract(clearedTombstones)
+                persistDeletedIDs()
+            }
+
+            // Re-fire delete for tombstoned events still present remotely (RLS may have
+            // silently blocked the first attempt when called by a non-creator).
             let staleRows = rows.filter { deletedEventIDs.contains($0.id) }
             for row in staleRows { Task { await supabaseDeleteEvent(id: row.id) } }
 
-            let remoteEvents = rows.filter { !deletedEventIDs.contains($0.id) }.map { $0.toEvent() }
+            let remoteEvents = rows
+                .filter { !deletedEventIDs.contains($0.id) }
+                .map { $0.toEvent() }
+                .filter { isVisible($0, to: uid) }
             let remoteIDs = Set(remoteEvents.map { $0.id })
-            let pendingLocal = events.filter { !remoteIDs.contains($0.id) && !deletedEventIDs.contains($0.id) }
+            // Only re-upload events that were explicitly created offline on this device.
+            // Without this guard, events deleted on another device would be resurrected
+            // because the local cache would treat their absence as a pending upload.
+            let pendingLocal = events.filter {
+                pendingUploadEventIDs.contains($0.id) &&
+                !remoteIDs.contains($0.id) &&
+                !deletedEventIDs.contains($0.id)
+            }
             events = remoteEvents + pendingLocal
             if let d = try? JSONEncoder().encode(events) {
                 UserDefaults.standard.set(d, forKey: eventsKey)
@@ -452,6 +842,14 @@ final class ScheduleViewModel: ObservableObject {
                 query = query.eq("created_by", value: uid.uuidString)
             }
             let rows: [SupabaseTaskRow] = try await query.execute().value
+            let remoteRowIDs = Set(rows.map { $0.id })
+
+            // Tombstones that are no longer in Supabase → delete succeeded; clear them.
+            let clearedTombstones = deletedTaskIDs.filter { !remoteRowIDs.contains($0) }
+            if !clearedTombstones.isEmpty {
+                deletedTaskIDs.subtract(clearedTombstones)
+                persistDeletedIDs()
+            }
 
             // Re-fire delete for tombstoned tasks still present remotely.
             let staleRows = rows.filter { deletedTaskIDs.contains($0.id) }
@@ -459,7 +857,11 @@ final class ScheduleViewModel: ObservableObject {
 
             let remoteTasks = rows.filter { !deletedTaskIDs.contains($0.id) }.map { $0.toTask() }
             let remoteIDs = Set(remoteTasks.map { $0.id })
-            let pendingLocal = tasks.filter { !remoteIDs.contains($0.id) && !deletedTaskIDs.contains($0.id) }
+            let pendingLocal = tasks.filter {
+                pendingUploadTaskIDs.contains($0.id) &&
+                !remoteIDs.contains($0.id) &&
+                !deletedTaskIDs.contains($0.id)
+            }
             tasks = remoteTasks + pendingLocal
             if let d = try? JSONEncoder().encode(tasks) {
                 UserDefaults.standard.set(d, forKey: tasksKey)
@@ -468,6 +870,14 @@ final class ScheduleViewModel: ObservableObject {
         } catch {
             print("[Supabase] fetch tasks error: \(error)")
         }
+    }
+
+    /// Returns false for personal events that don't belong to the given user.
+    /// Household events are always visible. Personal events require the user to
+    /// be the creator or an explicit invitee.
+    private func isVisible(_ event: CalendarEvent, to userID: UUID) -> Bool {
+        if event.scope == .household { return true }
+        return event.createdBy == userID.uuidString || event.inviteeIDs.contains(userID)
     }
 
     private func resolveIDs() async {
@@ -481,32 +891,100 @@ final class ScheduleViewModel: ObservableObject {
     }
 
     private func supabaseUpsertEvent(_ event: CalendarEvent) async {
+        guard !deletedEventIDs.contains(event.id) else { return }
         await resolveIDs()
         guard let uid = cachedUserID else { return }
         let row = SupabaseEventRow(from: event, userId: uid, householdId: cachedHouseholdID)
         do {
             try await supabase.from("events").upsert(row, onConflict: "id").execute()
+            pendingUploadEventIDs.remove(event.id)
+            persistPendingUploadIDs()
         } catch {
             print("[Supabase] upsert event error: \(error)")
+        }
+    }
+
+    /// Plain UPDATE of only the mutable event fields — never touches created_by or household_id.
+    /// This allows any household member (not just the creator) to save edits under the
+    /// new "events_update" RLS policy that checks household membership instead of ownership.
+    private func supabaseUpdateEvent(_ event: CalendarEvent) async {
+        guard !deletedEventIDs.contains(event.id) else { return }
+        struct EventPatch: Encodable {
+            var title:        String
+            var date:         Date
+            var endDate:      Date?
+            var assignedToId: UUID?
+            var isAllDay:     Bool
+            var notes:        String
+            var category:     String
+            var colorHex:     String
+            var repeatRule:   String
+            var travelTime:   String
+            var alertOption:  String
+            var inviteeIds:   [UUID]
+            var scope:        String
+            enum CodingKeys: String, CodingKey {
+                case title
+                case date
+                case endDate      = "end_date"
+                case assignedToId = "assigned_to_id"
+                case isAllDay     = "is_all_day"
+                case notes
+                case category
+                case colorHex     = "color_hex"
+                case repeatRule   = "repeat_rule"
+                case travelTime   = "travel_time"
+                case alertOption  = "alert_option"
+                case inviteeIds   = "invitee_ids"
+                case scope
+            }
+        }
+        let patch = EventPatch(
+            title:        event.title,
+            date:         event.date,
+            endDate:      event.endDate,
+            assignedToId: event.assignedToID,
+            isAllDay:     event.isAllDay,
+            notes:        event.notes,
+            category:     event.category.rawValue,
+            colorHex:     event.colorHex,
+            repeatRule:   event.repeatRule.rawValue,
+            travelTime:   event.travelTime,
+            alertOption:  event.alertOption,
+            inviteeIds:   event.inviteeIDs,
+            scope:        event.scope.rawValue
+        )
+        do {
+            try await supabase.from("events")
+                .update(patch)
+                .eq("id", value: event.id.uuidString)
+                .execute()
+        } catch {
+            print("[Supabase] update event error: \(error)")
         }
     }
 
     private func supabaseDeleteEvent(id: UUID) async {
         do {
             try await supabase.from("events").delete().eq("id", value: id.uuidString).execute()
-            deletedEventIDs.remove(id)
-            persistDeletedIDs()
+            // Do NOT remove from deletedEventIDs here. The tombstone is only cleared
+            // in loadEventsFromSupabase once we confirm the row is absent remotely.
+            // This prevents a silent RLS block (0 rows affected, no error thrown) from
+            // causing the event to re-appear on the next sync.
         } catch {
             print("[Supabase] delete event error: \(error)")
         }
     }
 
     private func supabaseUpsertTask(_ task: HouseTask) async {
+        guard !deletedTaskIDs.contains(task.id) else { return }
         await resolveIDs()
         guard let uid = cachedUserID, let hid = cachedHouseholdID else { return }
         let row = SupabaseTaskRow(from: task, userId: uid, householdId: hid)
         do {
             try await supabase.from("house_tasks").upsert(row, onConflict: "id").execute()
+            pendingUploadTaskIDs.remove(task.id)
+            persistPendingUploadIDs()
         } catch {
             print("[Supabase] upsert task error: \(error)")
         }
@@ -537,8 +1015,7 @@ final class ScheduleViewModel: ObservableObject {
     private func supabaseDeleteTask(id: UUID) async {
         do {
             try await supabase.from("house_tasks").delete().eq("id", value: id.uuidString).execute()
-            deletedTaskIDs.remove(id)
-            persistDeletedIDs()
+            // Tombstone cleared in loadTasksFromSupabase once confirmed absent remotely.
         } catch {
             print("[Supabase] delete task error: \(error)")
         }
@@ -562,6 +1039,8 @@ private struct SupabaseEventRow: Codable {
     var alertOption:  String
     let createdBy:    UUID
     var inviteeIds:   [UUID]
+    // Optional so rows fetched before the scope migration column exists still decode.
+    var scope:        String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -579,11 +1058,13 @@ private struct SupabaseEventRow: Codable {
         case alertOption  = "alert_option"
         case createdBy    = "created_by"
         case inviteeIds   = "invitee_ids"
+        case scope
     }
 
     init(from event: CalendarEvent, userId: UUID, householdId: UUID?) {
         id               = event.id
-        createdBy        = userId
+        // Preserve the original creator; fall back to current user only for new events.
+        createdBy        = event.createdBy.flatMap { UUID(uuidString: $0) } ?? userId
         self.householdId = householdId
         title            = event.title
         date             = event.date
@@ -597,6 +1078,7 @@ private struct SupabaseEventRow: Codable {
         travelTime       = event.travelTime
         alertOption      = event.alertOption
         inviteeIds       = event.inviteeIDs
+        scope            = event.scope.rawValue
     }
 
     func toEvent() -> CalendarEvent {
@@ -614,7 +1096,10 @@ private struct SupabaseEventRow: Codable {
             travelTime:   travelTime,
             alertOption:  alertOption,
             createdBy:    createdBy.uuidString,
-            inviteeIDs:   inviteeIds
+            inviteeIDs:   inviteeIds,
+            // nil scope means the DB row pre-dates the scope column; treat as Household
+            // so existing events remain visible to all household members.
+            scope:        CalendarEvent.EventScope(rawValue: scope ?? "Household") ?? .household
         )
     }
 }
@@ -647,7 +1132,8 @@ private struct SupabaseTaskRow: Codable {
 
     init(from task: HouseTask, userId: UUID, householdId: UUID) {
         id               = task.id
-        createdBy        = userId
+        // Preserve the original creator; fall back to current user only for new tasks.
+        createdBy        = task.createdBy.flatMap { UUID(uuidString: $0) } ?? userId
         self.householdId = householdId
         title            = task.title
         assignedToId     = task.assignedToID

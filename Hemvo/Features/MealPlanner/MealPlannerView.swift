@@ -34,7 +34,7 @@ private func mealAccent(_ type: Meal.MealType) -> Color {
 // MARK: - MealPlannerView
 private struct AddMealRequest: Identifiable {
     let id   = UUID()
-    let day:  Meal.Weekday
+    let date: Date           // actual calendar date — used when creating the meal
     let type: Meal.MealType
 }
 
@@ -42,17 +42,23 @@ struct MealPlannerView: View {
 
     @StateObject private var mealVM    = MealPlanViewModel()
     @StateObject private var groceryVM = GroceryViewModel()
+    @EnvironmentObject private var authVM: AuthViewModel
+    @EnvironmentObject private var householdService: HouseholdService
 
-    @State private var selectedDay: Meal.Weekday = {
-        let wd = Calendar.current.component(.weekday, from: Date())
-        return Meal.Weekday.from(calendarWeekday: wd)
-    }()
+    @State private var selectedDate: Date = Calendar.current.startOfDay(for: Date())
     @State private var addMealRequest: AddMealRequest? = nil
     @State private var showGroceryList     = false
     @State private var selectedMeal: Meal? = nil
     @State private var refreshID = UUID()
 
-    private var mealsForDay: [Meal] { mealVM.meals(for: selectedDay) }
+    private var canWrite: Bool {
+        guard let uid = authVM.userID?.uuidString,
+              let member = householdService.household?.members.first(where: { $0.id == uid })
+        else { return true }
+        return member.role.canWrite
+    }
+
+    private var mealsForDay: [Meal] { mealVM.meals(for: selectedDate) }
 
     var body: some View {
         NavigationStack {
@@ -75,8 +81,12 @@ struct MealPlannerView: View {
                 // (no shopping list FAB)
             }
             .navigationBarHidden(true)
+            .onAppear {
+                // Refresh on every appearance so household members see each other's deletions
+                Task { await mealVM.loadFromSupabase() }
+            }
             .sheet(item: $addMealRequest) { req in
-                AddMealView(mealVM: mealVM, preselectedDay: req.day, preselectedType: req.type)
+                AddMealView(mealVM: mealVM, preselectedDate: req.date, preselectedType: req.type)
                     .onDisappear { refreshID = UUID() }
             }
             .sheet(isPresented: $showGroceryList) {
@@ -89,7 +99,6 @@ struct MealPlannerView: View {
     }
 
     // MARK: - Header
-    // "MEAL PLANNER / This Week" + amber grocery circle button (top-right)
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
@@ -124,10 +133,8 @@ struct MealPlannerView: View {
     }
 
     // MARK: - Date Strip
-    // "APRIL 2026" label + scrollable day cards, selected = amber fill
     private var dateStrip: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Month label
             Text(monthLabel.uppercased())
                 .font(.system(size: 10, weight: .heavy)).kerning(2)
                 .foregroundColor(mpMuted)
@@ -142,24 +149,24 @@ struct MealPlannerView: View {
                             DayCell(
                                 dayShort: item.short,
                                 dayNum:   item.num,
-                                hasMeals: !mealVM.meals(for: item.weekday).isEmpty,
-                                isSelected: selectedDay == item.weekday
+                                hasMeals: !mealVM.meals(for: item.date).isEmpty,
+                                isSelected: Calendar.current.isDate(item.date, inSameDayAs: selectedDate)
                             ) {
                                 withAnimation(.easeInOut(duration: 0.15)) {
-                                    selectedDay = item.weekday
+                                    selectedDate = item.date
                                 }
                             }
-                            .id(item.weekday)
+                            .id(item.date)
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
                 }
                 .onAppear {
-                    proxy.scrollTo(selectedDay, anchor: .center)
+                    proxy.scrollTo(selectedDate, anchor: .center)
                 }
-                .onChange(of: selectedDay) { _, day in
-                    withAnimation { proxy.scrollTo(day, anchor: .center) }
+                .onChange(of: selectedDate) { _, date in
+                    withAnimation { proxy.scrollTo(date, anchor: .center) }
                 }
             }
         }
@@ -169,10 +176,13 @@ struct MealPlannerView: View {
 
     // Builds 14 days centred on today for the strip
     private struct DayItem {
-        let weekday: Meal.Weekday
-        let date:    Date
-        var short:   String { weekday.short }
-        var num:     Int {
+        let date: Date              // start-of-day — stable identity for ScrollViewReader
+        var short: String {
+            Meal.Weekday.from(
+                calendarWeekday: Calendar.current.component(.weekday, from: date)
+            ).short
+        }
+        var num: Int {
             Calendar.current.component(.day, from: date)
         }
     }
@@ -181,48 +191,33 @@ struct MealPlannerView: View {
         let cal   = Calendar.current
         let today = Date()
         return (-3...10).compactMap { offset -> DayItem? in
-            guard let date = cal.date(byAdding: .day, value: offset, to: today) else { return nil }
-            let wd      = cal.component(.weekday, from: date)
-            let mapped2 = wd == 1 ? 7 : wd - 1
-            guard let weekday = Meal.Weekday(rawValue: mapped2) else { return nil }
-            return DayItem(weekday: weekday, date: date)
+            guard let raw = cal.date(byAdding: .day, value: offset, to: today) else { return nil }
+            return DayItem(date: cal.startOfDay(for: raw))
         }
     }
 
     private var monthLabel: String {
-        let cal = Calendar.current
-        let todayWD = cal.component(.weekday, from: Date())
-        let mapped  = todayWD == 1 ? 7 : todayWD - 1
-        let diff    = selectedDay.rawValue - mapped
-        let date    = cal.date(byAdding: .day, value: diff, to: Date()) ?? Date()
-        let fmt = DateFormatter(); fmt.dateFormat = "MMMM yyyy"
-        return fmt.string(from: date)
+        let fmt = DateFormatter()
+        fmt.dateFormat = "MMMM yyyy"
+        return fmt.string(from: selectedDate)
     }
 
-    // MARK: - Day label + Add Meal button
+    // MARK: - Day label
     private var dayLabel: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(selectedDay.label.uppercased())
-                    .font(.system(size: 13, weight: .heavy)).kerning(1.5)
-                    .foregroundColor(mpAmber)
+                Text(
+                    Meal.Weekday.from(
+                        calendarWeekday: Calendar.current.component(.weekday, from: selectedDate)
+                    ).label.uppercased()
+                )
+                .font(.system(size: 13, weight: .heavy)).kerning(1.5)
+                .foregroundColor(mpAmber)
                 Text("\(mealsForDay.count) meal\(mealsForDay.count == 1 ? "" : "s") planned")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(mpMuted)
             }
             Spacer()
-//            Button { addMealRequest = AddMealRequest(day: selectedDay, type: .breakfast) } label: {
-//                HStack(spacing: 5) {
-//                    Image(systemName: "plus")
-//                        .font(.system(size: 12, weight: .bold))
-//                    Text("Add Meal")
-//                        .font(.system(size: 13, weight: .bold))
-//                }
-//                .foregroundColor(mpAmber)
-//                .padding(.horizontal, 14).padding(.vertical, 8)
-//                .background(Color(hex: "#F5E4C3")!)
-//                .cornerRadius(20)
-//            }
         }
         .padding(.horizontal, 20)
         .padding(.top, 18)
@@ -235,8 +230,8 @@ struct MealPlannerView: View {
             ForEach(Meal.MealType.allCases) { type in
                 MealTypeSection(
                     mealType: type,
-                    meals:    mealVM.meals(for: selectedDay, type: type),
-                    onAdd:    { addMealRequest = AddMealRequest(day: selectedDay, type: type) },
+                    meals:    mealVM.meals(for: selectedDate, type: type),
+                    onAdd:    canWrite ? { addMealRequest = AddMealRequest(date: selectedDate, type: type) } : nil,
                     onTap:    { selectedMeal = $0 }
                 )
             }
@@ -327,11 +322,10 @@ struct DayCell: View {
 }
 
 // MARK: - MealTypeSection
-// Shows all meals for one type on the selected day, plus an "Add" button.
 private struct MealTypeSection: View {
     let mealType: Meal.MealType
     let meals:    [Meal]
-    let onAdd:    () -> Void
+    let onAdd:    (() -> Void)?   // nil = read-only; hides add buttons
     let onTap:    (Meal) -> Void
 
     private var accent: Color { mealAccent(mealType) }
@@ -355,37 +349,45 @@ private struct MealTypeSection: View {
                         .foregroundColor(muted)
                 }
                 Spacer()
-                Button(action: onAdd) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 10, weight: .bold))
-                        Text("Add")
-                            .font(.system(size: 11, weight: .bold))
+                if let onAdd {
+                    Button(action: onAdd) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Add")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundColor(accent)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(accent.opacity(0.12))
+                        .cornerRadius(12)
                     }
-                    .foregroundColor(accent)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(accent.opacity(0.12))
-                    .cornerRadius(12)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 10)
 
             if meals.isEmpty {
-                // Empty-state tappable row
-                Button(action: onAdd) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "plus.circle")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(accent.opacity(0.45))
-                        Text("Plan \(mealType.label.lowercased())")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(muted)
-                        Spacer()
+                if let onAdd {
+                    Button(action: onAdd) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "plus.circle")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(accent.opacity(0.45))
+                            Text("Plan \(mealType.label.lowercased())")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(muted)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 14).padding(.bottom, 14)
                     }
-                    .padding(.horizontal, 14).padding(.bottom, 14)
+                    .buttonStyle(.plain)
+                } else {
+                    Text("Nothing planned")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(muted)
+                        .padding(.horizontal, 14).padding(.bottom, 14)
                 }
-                .buttonStyle(.plain)
             } else {
                 VStack(spacing: 0) {
                     ForEach(meals) { meal in
@@ -435,7 +437,6 @@ private struct MealTypeSection: View {
 }
 
 // MARK: - ScreenshotMealCard
-// Dashed border, coloured background, type label + icon on left, + circle on right
 struct ScreenshotMealCard: View {
     let mealType: Meal.MealType
     let meal:     Meal?
@@ -452,13 +453,11 @@ struct ScreenshotMealCard: View {
             if meal != nil { onTap() } else { onAdd() }
         } label: {
             HStack(spacing: 14) {
-                // Icon
                 Image(systemName: mealType.iconName)
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundColor(accent)
                     .frame(width: 32)
 
-                // Text
                 VStack(alignment: .leading, spacing: 3) {
                     Text(mealType.label.uppercased())
                         .font(.system(size: 10, weight: .heavy)).kerning(1.2)
@@ -477,7 +476,6 @@ struct ScreenshotMealCard: View {
 
                 Spacer()
 
-                // Plus / chevron button
                 ZStack {
                     Circle()
                         .fill(accent)

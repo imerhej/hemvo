@@ -8,13 +8,15 @@
 internal import Foundation
 internal import Combine
 internal import Supabase
+internal import UIKit
 
 @MainActor
 final class BudgetViewModel: ObservableObject {
 
-    @Published var budget: Budget      = Budget()
-    @Published var expenses: [Expense] = []
-    @Published var selectedMonth: Date = Date()
+    @Published var budget: Budget        = Budget()
+    @Published var expenses: [Expense]  = []
+    @Published var selectedMonth: Date  = Date()
+    @Published var selectedScope: BudgetScope = .household
 
     // Cached IDs resolved once during loadFromSupabase so every CRUD call is free.
     private var cachedUserID:       UUID?
@@ -22,17 +24,37 @@ final class BudgetViewModel: ObservableObject {
 
     private var deletedExpenseIDs:  Set<UUID> = []
 
-    // MARK: - Ownership check
+    // Real-time sync — expenses
+    private var cancellables:       Set<AnyCancellable> = []
+    private var realtimeTask:       Task<Void, Never>?
+    private var realtimeDebounce:   Task<Void, Never>?
+    private var realtimeChannel:    RealtimeChannelV2?
+
+    // Real-time sync — budget
+    private var budgetRealtimeTask:    Task<Void, Never>?
+    private var budgetRealtimeChannel: RealtimeChannelV2?
+
+    // MARK: - Ownership checks
     func canDelete(_ expense: Expense) -> Bool {
         guard let uid = cachedUserID else { return false }
         guard let createdBy = expense.createdBy else { return true }
         return createdBy == uid.uuidString
     }
 
-    // MARK: - Computed — Month Filter
+    /// Only the creator can move an expense between household and personal scope.
+    func canChangeScope(_ expense: Expense) -> Bool {
+        guard let uid = cachedUserID else { return false }
+        guard let createdBy = expense.createdBy else { return true }
+        return createdBy == uid.uuidString
+    }
+
+    // MARK: - Computed — Month + Scope Filter
     var monthlyExpenses: [Expense] {
         expenses
-            .filter { Calendar.current.isDate($0.date, equalTo: selectedMonth, toGranularity: .month) }
+            .filter {
+                $0.scope == selectedScope &&
+                Calendar.current.isDate($0.date, equalTo: selectedMonth, toGranularity: .month)
+            }
             .sorted { $0.date > $1.date }
     }
 
@@ -47,19 +69,40 @@ final class BudgetViewModel: ObservableObject {
     var upcomingBills:  [Expense] {
         expenses
             .filter {
+                $0.scope == selectedScope &&
                 $0.isRecurring && !$0.isPaid &&
+                Calendar.current.isDate($0.date, equalTo: selectedMonth, toGranularity: .month)
+            }
+            .sorted { $0.date < $1.date }
+    }
+    /// Unpaid recurring bills across both scopes for the current user — used by the Dashboard summary tile.
+    /// Personal bills from other household members are already excluded by the fetch query + RLS.
+    var allUpcomingBills: [Expense] {
+        expenses
+            .filter {
+                $0.isRecurring && !$0.isPaid &&
+                ($0.scope == .household || $0.createdBy == cachedUserID?.uuidString) &&
                 Calendar.current.isDate($0.date, equalTo: selectedMonth, toGranularity: .month)
             }
             .sorted { $0.date < $1.date }
     }
     var budgetCategories: [BudgetCategory] { budget.categories }
 
+    func setScope(_ scope: BudgetScope) {
+        selectedScope = scope
+        updateCategorySpend()
+    }
+
     // MARK: - Expense CRUD
     func addExpense(_ expense: Expense) {
         var stamped = expense
         if stamped.createdBy == nil { stamped.createdBy = cachedUserID?.uuidString }
+        if stamped.isPaid {
+            if stamped.paidDate == nil { stamped.paidDate = Date() }
+            if stamped.paidBy   == nil { stamped.paidBy   = cachedUserID?.uuidString }
+        }
         expenses.append(stamped)
-        autoCreateCategory(for: stamped.category)
+        if stamped.scope == .household { autoCreateCategory(for: stamped.category) }
         updateCategorySpend()
         persist()
         if stamped.isRecurring && !stamped.isPaid &&
@@ -68,28 +111,42 @@ final class BudgetViewModel: ObservableObject {
         }
         objectWillChange.send()
         Task { await supabaseUpsert(stamped) }
-        Task {
-            let label = stamped.isRecurring ? "💸 New Bill" : "💰 New Expense"
-            await PushNotificationService.shared.notifyHousehold(
-                title: label,
-                body: "\(stamped.title) · \(stamped.formattedAmount)"
-            )
+        if stamped.scope == .household {
+            Task {
+                let label = stamped.isRecurring ? "💸 New Bill" : "💰 New Expense"
+                await PushNotificationService.shared.notifyHouseholdFiltered(
+                    permission: \.receiveExpenseAlerts,
+                    title: label,
+                    body: "\(stamped.title) · \(stamped.formattedAmount)"
+                )
+            }
         }
     }
 
     func updateExpense(_ expense: Expense) {
-        if let idx = expenses.firstIndex(where: { $0.id == expense.id }) {
-            expenses[idx] = expense
-            autoCreateCategory(for: expense.category)
+        var stamped = expense
+        if stamped.isPaid {
+            if stamped.paidDate == nil { stamped.paidDate = Date() }
+            if stamped.paidBy   == nil { stamped.paidBy   = cachedUserID?.uuidString }
+        } else {
+            // Explicitly clear paid metadata so Supabase stores NULL for paid_date.
+            // toExpense() derives isPaid from paidDate != nil, so leaving a stale
+            // paidDate would make the row appear paid to every other member on next fetch.
+            stamped.paidDate = nil
+            stamped.paidBy   = nil
+        }
+        if let idx = expenses.firstIndex(where: { $0.id == stamped.id }) {
+            expenses[idx] = stamped
+            if stamped.scope == .household { autoCreateCategory(for: stamped.category) }
             updateCategorySpend()
             persist()
-            NotificationService.shared.cancelBillReminder(for: expense.id)
-            if expense.isRecurring && !expense.isPaid &&
+            NotificationService.shared.cancelBillReminder(for: stamped.id)
+            if stamped.isRecurring && !stamped.isPaid &&
                UserDefaults.standard.bool(forKey: "notif_bills") {
-                NotificationService.shared.scheduleBillReminder(for: expense)
+                NotificationService.shared.scheduleBillReminder(for: stamped)
             }
             objectWillChange.send()
-            Task { await supabaseUpsert(expense) }
+            Task { await supabaseUpdateExpense(stamped) }
         }
     }
 
@@ -109,11 +166,12 @@ final class BudgetViewModel: ObservableObject {
         if let idx = expenses.firstIndex(where: { $0.id == expense.id }) {
             expenses[idx].isPaid   = true
             expenses[idx].paidDate = Date()
+            expenses[idx].paidBy   = cachedUserID?.uuidString
             updateCategorySpend()
             persist()
             NotificationService.shared.cancelBillReminder(for: expense.id)
             objectWillChange.send()
-            Task { await supabaseUpsert(expenses[idx]) }
+            Task { await supabaseMarkPaid(expenses[idx]) }
         }
     }
 
@@ -130,7 +188,9 @@ final class BudgetViewModel: ObservableObject {
             name.lowercased().trimmingCharacters(in: .whitespaces)
         }
         guard !alreadyExists else { return }
-        budget.categories.append(BudgetCategory(name: name, limit: 500))
+        let newCat = BudgetCategory(name: name, limit: 500)
+        budget.categories.append(newCat)
+        Task { await supabaseUpsertCategory(newCat) }
     }
 
     // MARK: - Budget Settings
@@ -143,18 +203,21 @@ final class BudgetViewModel: ObservableObject {
         budget.categories.append(category)
         persist()
         objectWillChange.send()
+        Task { await supabaseUpsertCategory(category) }
     }
 
     func deleteCategory(_ category: BudgetCategory) {
         budget.categories.removeAll { $0.id == category.id }
         persist()
         objectWillChange.send()
+        Task { await supabaseDeleteCategory(id: category.id) }
     }
 
     func updateCategoryLimit(id: UUID, limit: Double) {
         if let idx = budget.categories.firstIndex(where: { $0.id == id }) {
             budget.categories[idx].limit = limit
             persist()
+            Task { await supabaseUpsertCategory(budget.categories[idx]) }
         }
     }
 
@@ -171,6 +234,7 @@ final class BudgetViewModel: ObservableObject {
         }
         updateCategorySpend()
         persist()
+        Task { await supabaseSaveBudget() }
     }
 
     // MARK: - Category Spend Calculator
@@ -182,6 +246,7 @@ final class BudgetViewModel: ObservableObject {
                 .trimmingCharacters(in: .whitespaces)
             budget.categories[i].spent = expenses
                 .filter { expense in
+                    expense.scope == .household &&
                     cal.isDate(expense.date, equalTo: selectedMonth, toGranularity: .month) &&
                     expenseCategoryDisplayName(expense.category)
                         .lowercased()
@@ -234,6 +299,26 @@ final class BudgetViewModel: ObservableObject {
                 NotificationService.shared.rescheduleAllBills(from: self.expenses)
             }
         }
+        // Reload whenever the app returns from background so any changes
+        // made by other household members while inactive are picked up immediately.
+        NotificationCenter.default
+            .publisher(for: UIApplication.willEnterForegroundNotification)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in await self?.loadFromSupabase() }
+            }
+            .store(in: &cancellables)
+    }
+
+    deinit {
+        realtimeTask?.cancel()
+        realtimeDebounce?.cancel()
+        budgetRealtimeTask?.cancel()
+        if let ch = realtimeChannel {
+            Task { await supabase.realtimeV2.removeChannel(ch) }
+        }
+        if let ch = budgetRealtimeChannel {
+            Task { await supabase.realtimeV2.removeChannel(ch) }
+        }
     }
 
     private func load() {
@@ -284,13 +369,32 @@ final class BudgetViewModel: ObservableObject {
             cachedHouseholdID = UUID(uuidString: HouseholdService.shared.household?.id ?? "")
         }
 
+        // Start the Realtime listeners the first time the household ID is resolved.
+        if realtimeTask == nil, cachedHouseholdID != nil {
+            startRealtimeSubscription()
+        }
+        if budgetRealtimeTask == nil, cachedHouseholdID != nil {
+            startBudgetRealtimeSubscription()
+        }
+
+        // Load budget settings + categories from Supabase before processing expenses
+        // so autoCreateCategory sees the full remote list and avoids re-creating
+        // categories that already exist with custom limits.
+        await loadBudgetFromSupabase()
+
         do {
             var query = supabase
                 .from("expenses")
                 .select()
 
             if let hid = cachedHouseholdID {
-                query = query.eq("household_id", value: hid.uuidString)
+                // (household_id=X AND scope=household) OR (created_by=ME AND scope=personal)
+                // The scoped arms mean another user's personal expense — which also has household_id=X —
+                // is never returned, even before RLS kicks in.
+                query = query.or(
+                    "and(household_id.eq.\(hid.uuidString.lowercased()),scope.eq.household)," +
+                    "and(created_by.eq.\(uid.uuidString.lowercased()),scope.eq.personal)"
+                )
             } else {
                 query = query.eq("created_by", value: uid.uuidString)
             }
@@ -302,9 +406,34 @@ final class BudgetViewModel: ObservableObject {
             for row in staleRows { Task { await supabaseDelete(id: row.id) } }
 
             let remoteExpenses = rows.filter { !deletedExpenseIDs.contains($0.id) }.map { $0.toExpense() }
+
+            // Merge: remote is authoritative except for a 10-second window after
+            // this user marks a bill as paid, where the write may still be in flight.
+            // Limiting by paidBy == current user ensures another member's "mark unpaid"
+            // edit propagates correctly instead of being silently discarded.
+            let localByID = Dictionary(uniqueKeysWithValues: expenses.map { ($0.id, $0) })
+            let tenSecondsAgo = Date().addingTimeInterval(-10)
+            let merged = remoteExpenses.map { remote -> Expense in
+                if let local = localByID[remote.id],
+                   local.isPaid, !remote.isPaid,
+                   local.paidBy == cachedUserID?.uuidString,
+                   let pd = local.paidDate, pd > tenSecondsAgo {
+                    return local
+                }
+                return remote
+            }
             let remoteIDs = Set(remoteExpenses.map { $0.id })
-            let pendingLocal = expenses.filter { !remoteIDs.contains($0.id) && !deletedExpenseIDs.contains($0.id) }
-            expenses = remoteExpenses + pendingLocal
+            // Only treat locally-stored expenses as "pending sync" when they were created
+            // by the current user. An expense from another user that is absent from Supabase
+            // was deleted by its creator — keeping it in pendingLocal would resurrect it in
+            // every other member's UI and re-insert it into Supabase on the next upsert loop.
+            let pendingLocal = expenses.filter { local in
+                !remoteIDs.contains(local.id) &&
+                !deletedExpenseIDs.contains(local.id) &&
+                (local.createdBy == nil || local.createdBy == cachedUserID?.uuidString)
+            }
+            expenses = merged + pendingLocal
+            for e in expenses where e.scope == .household { autoCreateCategory(for: e.category) }
             updateCategorySpend()
             persist()
             for e in pendingLocal { Task { await supabaseUpsert(e) } }
@@ -335,22 +464,370 @@ final class BudgetViewModel: ObservableObject {
         }
     }
 
-    private func supabaseDelete(id: UUID) async {
+    // Targeted UPDATE for just the two paid fields — avoids the INSERT RLS check
+    // (created_by = auth.uid()) that a full upsert triggers even on the conflict/update path.
+    // Any household member is allowed to UPDATE per the expenses_update policy.
+    private func supabaseMarkPaid(_ expense: Expense) async {
+        if cachedUserID == nil {
+            cachedUserID = await AuthService.shared.currentUserID()
+        }
+        guard let uid = cachedUserID, let paidDate = expense.paidDate else { return }
+
+        struct PaidFields: Encodable {
+            let paidDate: Date
+            let paidBy: UUID
+            enum CodingKeys: String, CodingKey {
+                case paidDate = "paid_date"
+                case paidBy   = "paid_by"
+            }
+        }
+
         do {
             try await supabase
                 .from("expenses")
+                .update(PaidFields(paidDate: Calendar.current.startOfDay(for: paidDate), paidBy: uid))
+                .eq("id", value: expense.id.uuidString)
+                .execute()
+        } catch {
+            print("[Supabase] mark paid error: \(error)")
+        }
+    }
+
+    // Full-field UPDATE (not upsert) for edits to existing expenses.
+    // Using .update() bypasses the INSERT RLS check (created_by = auth.uid())
+    // that a full upsert triggers, so any household member can edit any expense.
+    private func supabaseUpdateExpense(_ expense: Expense) async {
+        if cachedUserID == nil {
+            cachedUserID = await AuthService.shared.currentUserID()
+        }
+        guard cachedUserID != nil else { return }
+
+        struct EditFields: Encodable {
+            let title:       String
+            let amount:      Double
+            let category:    String
+            let isRecurring: Bool
+            let isBill:      Bool
+            let dueDate:     Date
+            let paidDate:    Date?
+            let paidBy:      UUID?
+            let notes:       String
+            let scope:       String
+            enum CodingKeys: String, CodingKey {
+                case title
+                case amount
+                case category
+                case isRecurring = "is_recurring"
+                case isBill      = "is_bill"
+                case dueDate     = "due_date"
+                case paidDate    = "paid_date"
+                case paidBy      = "paid_by"
+                case notes
+                case scope
+            }
+            // Swift's synthesised Encodable uses encodeIfPresent for optionals,
+            // which omits nil keys from the JSON body. PostgREST treats omitted
+            // fields as "don't update", so paid_date would never be cleared.
+            // Explicit encodeNil ensures the column is set to NULL in Supabase.
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encode(title,       forKey: .title)
+                try c.encode(amount,      forKey: .amount)
+                try c.encode(category,    forKey: .category)
+                try c.encode(isRecurring, forKey: .isRecurring)
+                try c.encode(isBill,      forKey: .isBill)
+                try c.encode(dueDate,     forKey: .dueDate)
+                try c.encode(notes,       forKey: .notes)
+                try c.encode(scope,       forKey: .scope)
+                if let pd = paidDate { try c.encode(pd, forKey: .paidDate) }
+                else                 { try c.encodeNil(forKey: .paidDate)  }
+                if let pb = paidBy   { try c.encode(pb, forKey: .paidBy)   }
+                else                 { try c.encodeNil(forKey: .paidBy)    }
+            }
+        }
+
+        let fields = EditFields(
+            title:       expense.title,
+            amount:      expense.amount,
+            category:    expense.category.rawValue,
+            isRecurring: expense.isRecurring,
+            isBill:      expense.isRecurring,
+            dueDate:     Calendar.current.startOfDay(for: expense.date),
+            paidDate:    expense.paidDate.map { Calendar.current.startOfDay(for: $0) },
+            paidBy:      expense.paidBy.flatMap { UUID(uuidString: $0) },
+            notes:       expense.notes,
+            scope:       expense.scope.rawValue
+        )
+
+        do {
+            try await supabase
+                .from("expenses")
+                .update(fields)
+                .eq("id", value: expense.id.uuidString)
+                .execute()
+        } catch {
+            print("[Supabase] update expense error: \(error)")
+        }
+    }
+
+    // MARK: - Realtime
+
+    private func startRealtimeSubscription() {
+        guard let hid = cachedHouseholdID else { return }
+
+        // Unique suffix avoids getting a cached already-subscribed channel back if the
+        // previous ViewModel's async removeChannel() call hasn't finished yet.
+        let channel = supabase.realtimeV2.channel("expenses:\(hid.uuidString):\(UUID().uuidString)")
+        realtimeChannel = channel
+
+        realtimeTask = Task { [weak self, channel] in
+            // Register the listener BEFORE subscribing (required by the SDK).
+            // UUID.rawValue = uuidString (uppercase). The Realtime server does a
+            // case-sensitive string match against the CDC payload, which delivers
+            // UUIDs in lowercase. Pass an explicit lowercase string so events match.
+            let changes = channel.postgresChange(
+                AnyAction.self,
+                schema: "public",
+                table: "expenses",
+                filter: .eq("household_id", value: hid.uuidString.lowercased())
+            )
+
+            do {
+                try await channel.subscribeWithError()
+            } catch {
+                print("[Realtime] expenses subscribe error: \(error)")
+                // Clear so the next loadFromSupabase() can retry.
+                await MainActor.run { [weak self] in self?.realtimeTask = nil }
+                return
+            }
+
+            for await _ in changes {
+                guard !Task.isCancelled, let self else { break }
+                self.scheduleRealtimeReload()
+            }
+
+            // Channel cleanup is handled by removeChannel() in deinit.
+            // If the subscription dropped naturally (not cancelled by deinit),
+            // clear the reference so the next foreground-refresh can restart it.
+            if !Task.isCancelled {
+                await MainActor.run { [weak self] in self?.realtimeTask = nil }
+            }
+        }
+    }
+
+    // Debounce rapid bursts (e.g. a bulk edit) into a single reload.
+    private func scheduleRealtimeReload() {
+        realtimeDebounce?.cancel()
+        realtimeDebounce = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled else { return }
+            await self?.loadFromSupabase()
+        }
+    }
+
+    private func supabaseDelete(id: UUID) async {
+        do {
+            // `.select()` makes PostgREST return the deleted rows.
+            // An empty result means RLS blocked the delete — keep the tombstone
+            // so the next loadFromSupabase() retries rather than re-adding the row.
+            let deleted: [SupabaseExpenseRow] = try await supabase
+                .from("expenses")
                 .delete()
                 .eq("id", value: id.uuidString)
+                .select()
                 .execute()
-            deletedExpenseIDs.remove(id)
-            persistDeletedIDs()
+                .value
+            if !deleted.isEmpty {
+                deletedExpenseIDs.remove(id)
+                persistDeletedIDs()
+            }
         } catch {
             print("[Supabase] delete expense error: \(error)")
         }
     }
+
+    // MARK: - Budget Supabase sync
+
+    private func loadBudgetFromSupabase() async {
+        guard let hid = cachedHouseholdID else { return }
+        do {
+            async let settingsReq: [SupabaseBudgetSettingsRow] = supabase
+                .from("budget_settings")
+                .select()
+                .eq("household_id", value: hid.uuidString)
+                .execute()
+                .value
+            async let categoriesReq: [SupabaseBudgetCategoryRow] = supabase
+                .from("budget_categories")
+                .select()
+                .eq("household_id", value: hid.uuidString)
+                .execute()
+                .value
+            let (settings, remoteCategories) = try await (settingsReq, categoriesReq)
+
+            if let s = settings.first {
+                budget.monthlyIncome = s.monthlyIncome
+            }
+
+            if !remoteCategories.isEmpty {
+                // Remote is authoritative; carry over in-memory spent amounts so the
+                // progress bars don't flicker before updateCategorySpend() runs.
+                let spentByName = budget.categories.reduce(into: [String: Double]()) {
+                    $0[$1.name.lowercased()] = $1.spent
+                }
+                budget.categories = remoteCategories.map { row in
+                    row.toBudgetCategory(spent: spentByName[row.name.lowercased()] ?? 0)
+                }
+            } else if !budget.categories.isEmpty {
+                // Nothing in Supabase yet — push the local UserDefaults cache up.
+                await migrateBudgetToSupabase()
+            }
+        } catch {
+            print("[Supabase] loadBudget error: \(error)")
+        }
+    }
+
+    /// Pushes existing UserDefaults budget data to Supabase on first launch.
+    private func migrateBudgetToSupabase() async {
+        guard let hid = cachedHouseholdID else { return }
+        do {
+            let settingsRow = SupabaseBudgetSettingsRow(
+                householdId: hid, monthlyIncome: budget.monthlyIncome)
+            try await supabase
+                .from("budget_settings")
+                .upsert(settingsRow, onConflict: "household_id")
+                .execute()
+
+            let rows = budget.categories.map {
+                SupabaseBudgetCategoryRow(id: $0.id, householdId: hid,
+                                          name: $0.name, limitAmount: $0.limit)
+            }
+            if !rows.isEmpty {
+                try await supabase
+                    .from("budget_categories")
+                    .upsert(rows, onConflict: "id")
+                    .execute()
+            }
+            print("[Supabase] budget migrated from UserDefaults")
+        } catch {
+            print("[Supabase] migrateBudget error: \(error)")
+        }
+    }
+
+    /// Saves monthly income + all category limits to Supabase in one shot.
+    private func supabaseSaveBudget() async {
+        guard let hid = cachedHouseholdID else { return }
+        do {
+            let settingsRow = SupabaseBudgetSettingsRow(
+                householdId: hid, monthlyIncome: budget.monthlyIncome)
+            try await supabase
+                .from("budget_settings")
+                .upsert(settingsRow, onConflict: "household_id")
+                .execute()
+
+            let rows = budget.categories.map {
+                SupabaseBudgetCategoryRow(id: $0.id, householdId: hid,
+                                          name: $0.name, limitAmount: $0.limit)
+            }
+            if !rows.isEmpty {
+                try await supabase
+                    .from("budget_categories")
+                    .upsert(rows, onConflict: "id")
+                    .execute()
+            }
+        } catch {
+            print("[Supabase] saveBudget error: \(error)")
+        }
+    }
+
+    private func supabaseUpsertCategory(_ category: BudgetCategory) async {
+        guard let hid = cachedHouseholdID else { return }
+        let row = SupabaseBudgetCategoryRow(
+            id: category.id, householdId: hid,
+            name: category.name, limitAmount: category.limit)
+        do {
+            try await supabase
+                .from("budget_categories")
+                .upsert(row, onConflict: "id")
+                .execute()
+        } catch {
+            print("[Supabase] upsert category error: \(error)")
+        }
+    }
+
+    private func supabaseDeleteCategory(id: UUID) async {
+        do {
+            try await supabase
+                .from("budget_categories")
+                .delete()
+                .eq("id", value: id.uuidString)
+                .execute()
+        } catch {
+            print("[Supabase] delete category error: \(error)")
+        }
+    }
+
+    // MARK: - Budget Realtime
+
+    private func startBudgetRealtimeSubscription() {
+        guard let hid = cachedHouseholdID else { return }
+        let channel = supabase.realtimeV2.channel(
+            "budget_categories:\(hid.uuidString):\(UUID().uuidString)")
+        budgetRealtimeChannel = channel
+
+        budgetRealtimeTask = Task { [weak self, channel] in
+            let changes = channel.postgresChange(
+                AnyAction.self,
+                schema: "public",
+                table: "budget_categories",
+                filter: .eq("household_id", value: hid.uuidString.lowercased())
+            )
+            do {
+                try await channel.subscribeWithError()
+            } catch {
+                print("[Realtime] budget_categories subscribe error: \(error)")
+                await MainActor.run { [weak self] in self?.budgetRealtimeTask = nil }
+                return
+            }
+            for await _ in changes {
+                guard !Task.isCancelled, let self else { break }
+                self.scheduleRealtimeReload()
+            }
+            if !Task.isCancelled {
+                await MainActor.run { [weak self] in self?.budgetRealtimeTask = nil }
+            }
+        }
+    }
 }
 
-// MARK: - Supabase row mapping
+// MARK: - Supabase row mapping — budget
+
+private struct SupabaseBudgetSettingsRow: Codable {
+    let householdId:   UUID
+    var monthlyIncome: Double
+    enum CodingKeys: String, CodingKey {
+        case householdId   = "household_id"
+        case monthlyIncome = "monthly_income"
+    }
+}
+
+private struct SupabaseBudgetCategoryRow: Codable {
+    let id:          UUID
+    let householdId: UUID
+    var name:        String
+    var limitAmount: Double
+    enum CodingKeys: String, CodingKey {
+        case id
+        case householdId = "household_id"
+        case name
+        case limitAmount = "limit_amount"
+    }
+    func toBudgetCategory(spent: Double = 0) -> BudgetCategory {
+        BudgetCategory(id: id, name: name, limit: limitAmount, spent: spent)
+    }
+}
+
+// MARK: - Supabase row mapping — expenses
 /// Column names match the `expenses` table in Supabase exactly.
 private struct SupabaseExpenseRow: Codable {
     let id:          UUID
@@ -362,7 +839,9 @@ private struct SupabaseExpenseRow: Codable {
     var isRecurring: Bool
     var dueDate:     Date?
     var paidDate:    Date?
+    var paidBy:      UUID?
     var notes:       String
+    var scope:       String
     let createdBy:   UUID
 
     enum CodingKeys: String, CodingKey {
@@ -375,22 +854,46 @@ private struct SupabaseExpenseRow: Codable {
         case isRecurring = "is_recurring"
         case dueDate     = "due_date"
         case paidDate    = "paid_date"
+        case paidBy      = "paid_by"
         case notes
+        case scope
         case createdBy   = "created_by"
     }
 
+    // Custom Codable decode so that rows fetched before the scope migration was applied
+    // (which lack the `scope` column in the response) fall back to "household" instead
+    // of throwing keyNotFound and aborting the entire load.
+    init(from decoder: Decoder) throws {
+        let c       = try decoder.container(keyedBy: CodingKeys.self)
+        id          = try  c.decode(UUID.self,   forKey: .id)
+        householdId = try? c.decode(UUID.self,   forKey: .householdId)
+        title       = try  c.decode(String.self, forKey: .title)
+        amount      = try  c.decode(Double.self, forKey: .amount)
+        category    = try? c.decode(String.self, forKey: .category)
+        isBill      = try  c.decode(Bool.self,   forKey: .isBill)
+        isRecurring = try  c.decode(Bool.self,   forKey: .isRecurring)
+        dueDate     = try? c.decode(Date.self,   forKey: .dueDate)
+        paidDate    = try? c.decode(Date.self,   forKey: .paidDate)
+        paidBy      = try? c.decode(UUID.self,   forKey: .paidBy)
+        notes       = (try? c.decode(String.self, forKey: .notes)) ?? ""
+        scope       = (try? c.decode(String.self, forKey: .scope)) ?? "household"
+        createdBy   = try  c.decode(UUID.self,   forKey: .createdBy)
+    }
+
     init(from expense: Expense, userId: UUID, householdId: UUID?) {
-        id             = expense.id
-        createdBy      = userId
+        id               = expense.id
+        createdBy        = expense.createdBy.flatMap { UUID(uuidString: $0) } ?? userId
         self.householdId = householdId
-        title          = expense.title
-        amount         = expense.amount
-        category       = expense.category.rawValue
-        isBill         = expense.isRecurring
-        isRecurring    = expense.isRecurring
-        dueDate        = expense.date
-        paidDate       = expense.paidDate
-        notes          = expense.notes
+        title            = expense.title
+        amount           = expense.amount
+        category         = expense.category.rawValue
+        isBill           = expense.isRecurring
+        isRecurring      = expense.isRecurring
+        dueDate          = Calendar.current.startOfDay(for: expense.date)
+        paidDate         = expense.paidDate.map { Calendar.current.startOfDay(for: $0) }
+        paidBy           = expense.paidBy.flatMap { UUID(uuidString: $0) }
+        notes            = expense.notes
+        scope            = expense.scope.rawValue
     }
 
     func toExpense() -> Expense {
@@ -404,7 +907,9 @@ private struct SupabaseExpenseRow: Codable {
             paidDate:    paidDate,
             isRecurring: isRecurring || isBill,
             notes:       notes,
-            createdBy:   createdBy.uuidString
+            scope:       BudgetScope(rawValue: scope) ?? .household,
+            createdBy:   createdBy.uuidString,
+            paidBy:      paidBy?.uuidString
         )
     }
 }

@@ -29,10 +29,16 @@ struct ShoppingListsView: View {
 
     @StateObject private var vm = ShoppingListViewModel()
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject private var authVM: AuthViewModel
 
     @State private var showNewList     = false
     @State private var listToDelete:   ShoppingList? = nil
     @State private var showDeleteAlert = false
+
+    private var canWrite: Bool {
+        let role = authVM.profile?.role ?? ""
+        return role != "Teen" && role != "Child"
+    }
 
     var body: some View {
         NavigationStack {
@@ -61,23 +67,25 @@ struct ShoppingListsView: View {
                 }
 
                 // FAB
-                Button { showNewList = true } label: {
-                    HStack(spacing: 8) {
-                        ZStack {
-                            Circle().fill(Color.white.opacity(0.25)).frame(width: 28, height: 28)
-                            Image(systemName: "plus")
-                                .font(.system(size: 14, weight: .black))
+                if canWrite {
+                    Button { showNewList = true } label: {
+                        HStack(spacing: 8) {
+                            ZStack {
+                                Circle().fill(Color.white.opacity(0.25)).frame(width: 28, height: 28)
+                                Image(systemName: "plus")
+                                    .font(.system(size: 14, weight: .black))
+                                    .foregroundColor(.white)
+                            }
+                            Text("New List")
+                                .font(.system(size: 15, weight: .bold))
                                 .foregroundColor(.white)
                         }
-                        Text("New List")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(.white)
+                        .padding(.horizontal, 20).padding(.vertical, 13)
+                        .background(Capsule().fill(slAmber)
+                            .shadow(color: slAmber.opacity(0.45), radius: 16, y: 6))
                     }
-                    .padding(.horizontal, 20).padding(.vertical, 13)
-                    .background(Capsule().fill(slAmber)
-                        .shadow(color: slAmber.opacity(0.45), radius: 16, y: 6))
+                    .padding(.trailing, 20).padding(.bottom, 28)
                 }
-                .padding(.trailing, 20).padding(.bottom, 28)
             }
             .navigationTitle("Shopping Lists")
             .navigationBarTitleDisplayMode(.large)
@@ -220,6 +228,7 @@ struct ShoppingListDetailView: View {
     let listID: UUID
     @ObservedObject var vm: ShoppingListViewModel
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject private var authVM: AuthViewModel
 
     @State private var showAddItem     = false
     @State private var itemToEdit:     ShoppingItem? = nil
@@ -227,6 +236,11 @@ struct ShoppingListDetailView: View {
     @State private var showDeleteAlert = false
     @State private var showClearAlert  = false
     @State private var selectedCategory: ShoppingCategory? = nil
+
+    private var canWrite: Bool {
+        let role = authVM.profile?.role ?? ""
+        return role != "Teen" && role != "Child"
+    }
 
     private var list: ShoppingList? { vm.lists.first { $0.id == listID } }
 
@@ -257,6 +271,7 @@ struct ShoppingListDetailView: View {
                                 ShoppingItemRow(
                                     item:      item,
                                     canDelete: vm.canDeleteItem(item),
+                                    canEdit:   canWrite,
                                     onToggle:  { vm.toggleItem(item, in: listID) },
                                     onEdit:    { itemToEdit = item },
                                     onDelete:  { itemToDelete = item; showDeleteAlert = true }
@@ -270,19 +285,21 @@ struct ShoppingListDetailView: View {
                 }
             }
 
-            Button { showAddItem = true } label: {
-                HStack(spacing: 8) {
-                    ZStack {
-                        Circle().fill(Color.white.opacity(0.25)).frame(width: 28, height: 28)
-                        Image(systemName: "plus")
-                            .font(.system(size: 14, weight: .black)).foregroundColor(.white)
+            if canWrite {
+                Button { showAddItem = true } label: {
+                    HStack(spacing: 8) {
+                        ZStack {
+                            Circle().fill(Color.white.opacity(0.25)).frame(width: 28, height: 28)
+                            Image(systemName: "plus")
+                                .font(.system(size: 14, weight: .black)).foregroundColor(.white)
+                        }
+                        Text("Add Item").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
                     }
-                    Text("Add Item").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
+                    .padding(.horizontal, 20).padding(.vertical, 13)
+                    .background(Capsule().fill(slAmber).shadow(color: slAmber.opacity(0.45), radius: 16, y: 6))
                 }
-                .padding(.horizontal, 20).padding(.vertical, 13)
-                .background(Capsule().fill(slAmber).shadow(color: slAmber.opacity(0.45), radius: 16, y: 6))
+                .padding(.trailing, 20).padding(.bottom, 28)
             }
-            .padding(.trailing, 20).padding(.bottom, 28)
         }
         .navigationTitle(list?.name ?? "List")
         .navigationBarTitleDisplayMode(.inline)
@@ -428,6 +445,7 @@ struct ShoppingListDetailView: View {
 struct ShoppingItemRow: View {
     let item:      ShoppingItem
     var canDelete: Bool = true
+    var canEdit:   Bool = true
     let onToggle:  () -> Void
     let onEdit:    () -> Void
     let onDelete:  () -> Void
@@ -485,12 +503,14 @@ struct ShoppingItemRow: View {
 
             Spacer()
 
-            Button(action: onEdit) {
-                Image(systemName: "pencil")
-                    .font(.system(size: 12, weight: .semibold)).foregroundColor(slAmber)
-                    .frame(width: 28, height: 28).background(slAmberBg).clipShape(Circle())
+            if canEdit {
+                Button(action: onEdit) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 12, weight: .semibold)).foregroundColor(slAmber)
+                        .frame(width: 28, height: 28).background(slAmberBg).clipShape(Circle())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             if canDelete {
                 Button(action: onDelete) {

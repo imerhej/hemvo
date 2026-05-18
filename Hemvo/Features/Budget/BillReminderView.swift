@@ -5,16 +5,37 @@
 internal import SwiftUI
 
 // MARK: - BillReminderView
+private enum BillSheet: Identifiable {
+    case add
+    case edit(Expense)
+    var id: String {
+        switch self {
+        case .add:           return "add"
+        case .edit(let e):   return e.id.uuidString
+        }
+    }
+}
+
 struct BillReminderView: View {
     @ObservedObject var vm: BudgetViewModel
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject private var authVM:           AuthViewModel
+    @EnvironmentObject private var householdService: HouseholdService
 
-    @State private var showAdd         = false
-    @State private var billToDelete: Expense? = nil
+    @State private var activeSheet:    BillSheet? = nil
+    @State private var billToDelete:   Expense?   = nil
     @State private var showDeleteAlert = false
+
+    private var canWrite: Bool {
+        guard let uid = authVM.userID?.uuidString,
+              let member = householdService.household?.members.first(where: { $0.id == uid })
+        else { return true }
+        return member.role.canWrite
+    }
 
     private var monthBills: [Expense] {
         vm.expenses.filter {
+            $0.scope == vm.selectedScope &&
             $0.isRecurring &&
             Calendar.current.isDate($0.date, equalTo: vm.selectedMonth, toGranularity: .month)
         }
@@ -34,6 +55,7 @@ struct BillReminderView: View {
 
                     let allBills = vm.expenses
                         .filter {
+                            $0.scope == vm.selectedScope &&
                             $0.isRecurring &&
                             Calendar.current.isDate($0.date, equalTo: vm.selectedMonth, toGranularity: .month)
                         }
@@ -58,7 +80,9 @@ struct BillReminderView: View {
                                         BillCard(
                                             bill:      bill,
                                             canDelete: vm.canDelete(bill),
+                                            canEdit:   canWrite,
                                             onPay:     { vm.markBillPaid(bill) },
+                                            onEdit:    { activeSheet  = .edit(bill) },
                                             onDelete:  { billToDelete = bill; showDeleteAlert = true }
                                         )
                                         .padding(.horizontal, 20)
@@ -74,7 +98,9 @@ struct BillReminderView: View {
                                         BillCard(
                                             bill:      bill,
                                             canDelete: vm.canDelete(bill),
+                                            canEdit:   canWrite,
                                             onPay:     { vm.markBillPaid(bill) },
+                                            onEdit:    { activeSheet  = .edit(bill) },
                                             onDelete:  { billToDelete = bill; showDeleteAlert = true }
                                         )
                                         .padding(.horizontal, 20)
@@ -88,11 +114,20 @@ struct BillReminderView: View {
                 }
 
                 // ── Floating Add Bill button ─────────────────
-                addBillFAB
-                    .padding(.bottom, 32)
+                if canWrite {
+                    addBillFAB
+                        .padding(.bottom, 32)
+                }
             }
             .navigationBarHidden(true)
-            .sheet(isPresented: $showAdd) { AddExpenseView(vm: vm) }
+            .sheet(item: $activeSheet) { sheet in
+                switch sheet {
+                case .add:
+                    AddExpenseView(vm: vm)
+                case .edit(let bill):
+                    EditExpenseView(vm: vm, expense: bill)
+                }
+            }
             .alert("Delete Bill", isPresented: $showDeleteAlert) {
                 Button("Delete", role: .destructive) {
                     if let b = billToDelete { vm.deleteExpense(b) }
@@ -207,7 +242,7 @@ struct BillReminderView: View {
 
     // MARK: - FAB
     private var addBillFAB: some View {
-        Button { showAdd = true } label: {
+        Button { activeSheet = .add } label: {
             HStack(spacing: 8) {
                 ZStack {
                     Circle()
@@ -262,10 +297,28 @@ struct BillReminderView: View {
 struct BillCard: View {
     let bill:      Expense
     var canDelete: Bool = true
+    var canEdit:   Bool = true
     let onPay:     () -> Void
+    let onEdit:    () -> Void
     let onDelete:  () -> Void
 
     @State private var showPayConfirm = false
+
+    private var createdByName: String? {
+        guard let id = bill.createdBy,
+              let member = HouseholdService.shared.household?.members
+                  .first(where: { $0.id == id }) else { return nil }
+        return member.username.components(separatedBy: " ").first ?? member.username
+    }
+
+    private var paidByLabel: String? { bill.formattedPaidDate }
+
+    private var paidByFirstName: String? {
+        guard let paidByID = bill.paidBy,
+              let member = HouseholdService.shared.household?.members
+                  .first(where: { $0.id == paidByID }) else { return nil }
+        return member.username.components(separatedBy: " ").first ?? member.username
+    }
 
     var daysUntilDue: Int {
         let cal      = Calendar.current
@@ -303,54 +356,12 @@ struct BillCard: View {
                         .foregroundColor(urgencyColor)
                 }
 
-                // Title + status
-                VStack(alignment: .leading, spacing: 4) {
-                    // Strikethrough on title when paid
-                    Text(bill.title)
-                        .font(.system(size: 15, weight: .bold))
-                        .strikethrough(bill.isPaid, color: Color.bpTextSub)
-                        .foregroundColor(bill.isPaid ? Color.bpTextSub : Color.bpText)
-
-                    if bill.isPaid, let paidStr = bill.formattedPaidDate {
-                        // Show paid date instead of due status
-                        HStack(spacing: 5) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(Color(hex: "#2E7D32")!)
-                            Text(paidStr)
-                                .font(.system(size: 10, weight: .heavy))
-                                .foregroundColor(Color(hex: "#2E7D32")!)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Color(hex: "#2E7D32")!.opacity(0.1))
-                                .cornerRadius(20)
-                            Text("·")
-                                .foregroundColor(Color.bpTextSub)
-                            // Original due date (struck through)
-                            Text(bill.date.formatted(date: .abbreviated, time: .omitted))
-                                .font(.system(size: 11, weight: .medium))
-                                .strikethrough(true, color: Color.bpTextSub)
-                                .foregroundColor(Color.bpTextSub.opacity(0.6))
-                        }
-                    } else {
-                        HStack(spacing: 5) {
-                            Text(urgencyLabel)
-                                .font(.system(size: 10, weight: .heavy))
-                                .foregroundColor(urgencyColor)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(urgencyColor.opacity(0.1))
-                                .cornerRadius(20)
-                            Text("·")
-                                .foregroundColor(Color.bpTextSub)
-                            Text(bill.date.formatted(date: .abbreviated, time: .omitted))
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(Color.bpTextSub)
-                        }
-                    }
-                }
-
-                Spacer()
+                // Title
+                Text(bill.title)
+                    .font(.system(size: 15, weight: .bold))
+                    .strikethrough(bill.isPaid, color: Color.bpTextSub)
+                    .foregroundColor(bill.isPaid ? Color.bpTextSub : Color.bpText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 // Amount
                 VStack(alignment: .trailing, spacing: 2) {
@@ -365,6 +376,47 @@ struct BillCard: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 16)
+            .padding(.bottom, 8)
+
+            // ── Pills row (status · due date · people) ───
+            HStack(spacing: 6) {
+                if bill.isPaid, let label = paidByLabel {
+                    Label(label, systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color(hex: "#2E7D32")!)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color(hex: "#2E7D32")!.opacity(0.12))
+                        .clipShape(Capsule())
+                    if let name = paidByFirstName {
+                        Label("paid by \(name)", systemImage: "person.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(Color(hex: "#2E7D32")!)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Color(hex: "#2E7D32")!.opacity(0.08))
+                            .clipShape(Capsule())
+                    }
+                } else {
+                    Text(urgencyLabel)
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundColor(urgencyColor)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(urgencyColor.opacity(0.1))
+                        .clipShape(Capsule())
+                    Text(bill.date.formatted(date: .abbreviated, time: .omitted))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Color.bpTextSub)
+                }
+                if let name = createdByName {
+                    Label("by \(name)", systemImage: "person.circle.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color.bpSlate)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.bpSlate.opacity(0.08))
+                        .clipShape(Capsule())
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 16)
             .padding(.bottom, 12)
 
             // ── Divider ──────────────────────────────────
@@ -372,7 +424,7 @@ struct BillCard: View {
 
             // ── Action buttons ───────────────────────────
             HStack(spacing: 10) {
-                // Mark as Paid — always visible, grayed when already paid
+                // Mark as Paid — visible to everyone
                 Button { showPayConfirm = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: bill.isPaid ? "checkmark.circle.fill" : "checkmark.circle")
@@ -399,6 +451,28 @@ struct BillCard: View {
                 }
                 .disabled(bill.isPaid)
 
+                // Edit — hidden for Teen/Child roles
+                if canEdit {
+                    Button { onEdit() } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 13, weight: .bold))
+                            Text("Edit")
+                                .font(.system(size: 13, weight: .bold))
+                        }
+                        .foregroundColor(Color.bpNavy)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(Color.bpNavyLight)
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.bpNavy.opacity(0.2), lineWidth: 1)
+                        )
+                    }
+                }
+
+                // Delete — creator only
                 if canDelete {
                     Button { onDelete() } label: {
                         HStack(spacing: 6) {

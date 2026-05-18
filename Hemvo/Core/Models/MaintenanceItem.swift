@@ -10,11 +10,12 @@ struct MaintenanceItem: Codable, Identifiable, Equatable {
     var title: String
     var area: HomeArea
     var frequency: Frequency
+    var difficulty: Difficulty
     var lastCompleted: Date?
     var nextDue: Date
     var notes: String
     var estimatedMinutes: Int
-    var assignedMemberID: String?
+    var assignedMemberIDs: [String]
 
     var createdBy: String?    // UUID string of the user who created this task
 
@@ -23,23 +24,69 @@ struct MaintenanceItem: Codable, Identifiable, Equatable {
         title: String,
         area: HomeArea = .general,
         frequency: Frequency = .monthly,
+        difficulty: Difficulty = .medium,
         lastCompleted: Date? = nil,
         nextDue: Date = Date(),
         notes: String = "",
         estimatedMinutes: Int = 15,
-        assignedMemberID: String? = nil,
+        assignedMemberIDs: [String] = [],
         createdBy: String? = nil
     ) {
         self.id = id
         self.title = title
         self.area = area
         self.frequency = frequency
+        self.difficulty = difficulty
         self.lastCompleted = lastCompleted
         self.nextDue = nextDue
         self.notes = notes
         self.estimatedMinutes = estimatedMinutes
-        self.assignedMemberID = assignedMemberID
+        self.assignedMemberIDs = assignedMemberIDs
         self.createdBy = createdBy
+    }
+
+    // Migrates old single-ID UserDefaults cache to the new array field.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id               = try c.decode(UUID.self,     forKey: .id)
+        title            = try c.decode(String.self,   forKey: .title)
+        area             = try c.decode(HomeArea.self,  forKey: .area)
+        frequency        = try c.decode(Frequency.self, forKey: .frequency)
+        difficulty       = try c.decodeIfPresent(Difficulty.self, forKey: .difficulty) ?? .medium
+        lastCompleted    = try c.decodeIfPresent(Date.self,   forKey: .lastCompleted)
+        nextDue          = try c.decode(Date.self,     forKey: .nextDue)
+        notes            = try c.decode(String.self,   forKey: .notes)
+        estimatedMinutes = try c.decode(Int.self,      forKey: .estimatedMinutes)
+        createdBy        = try c.decodeIfPresent(String.self, forKey: .createdBy)
+        if let ids = try c.decodeIfPresent([String].self, forKey: .assignedMemberIDs) {
+            assignedMemberIDs = ids
+        } else if let single = try c.decodeIfPresent(String.self, forKey: .assignedMemberID) {
+            assignedMemberIDs = [single]
+        } else {
+            assignedMemberIDs = []
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id,                forKey: .id)
+        try c.encode(title,             forKey: .title)
+        try c.encode(area,              forKey: .area)
+        try c.encode(frequency,         forKey: .frequency)
+        try c.encode(difficulty,        forKey: .difficulty)
+        try c.encodeIfPresent(lastCompleted,    forKey: .lastCompleted)
+        try c.encode(nextDue,           forKey: .nextDue)
+        try c.encode(notes,             forKey: .notes)
+        try c.encode(estimatedMinutes,  forKey: .estimatedMinutes)
+        try c.encodeIfPresent(createdBy,        forKey: .createdBy)
+        try c.encode(assignedMemberIDs, forKey: .assignedMemberIDs)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, area, frequency, difficulty, lastCompleted, nextDue, notes,
+             estimatedMinutes, createdBy
+        case assignedMemberIDs = "assignedMemberIDs"
+        case assignedMemberID  = "assignedMemberID"   // legacy decode-only key
     }
 
     var daysUntilDue: Int {
@@ -108,6 +155,39 @@ struct MaintenanceItem: Codable, Identifiable, Equatable {
             case .monthly:   return 30
             case .quarterly: return 90
             case .annually:  return 365
+            }
+        }
+    }
+
+    // MARK: - Difficulty
+    enum Difficulty: String, Codable, CaseIterable, Identifiable {
+        case easy   = "Easy"
+        case medium = "Medium"
+        case hard   = "Hard"
+
+        var id: String { rawValue }
+
+        var colorHex: String {
+            switch self {
+            case .easy:   return "#4CAF74"
+            case .medium: return "#C8922A"
+            case .hard:   return "#E53935"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .easy:   return "star.fill"
+            case .medium: return "star.leadinghalf.filled"
+            case .hard:   return "flame.fill"
+            }
+        }
+
+        var ageLabel: String {
+            switch self {
+            case .easy:   return "Ages 4+"
+            case .medium: return "Ages 10+"
+            case .hard:   return "Ages 16+"
             }
         }
     }

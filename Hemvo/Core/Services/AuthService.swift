@@ -121,6 +121,20 @@ final class AuthService {
                 .execute()
         }
 
+        // If this user owns a household, delete it before the auth.users row is
+        // removed. The RLS policy (owner_id = auth.uid()) allows this with the
+        // user's own JWT. Deleting the household cascades to events, house_tasks,
+        // notification_schedule, and sets profiles.household_id = NULL for any
+        // remaining members — so no FK violation reaches delete_my_account.
+        if let hh = HouseholdService.shared.household,
+           hh.ownerUserID == uid.uuidString {
+            _ = try? await supabase
+                .from("households")
+                .delete()
+                .eq("id", value: hh.id)
+                .execute()
+        }
+
         try await supabase.rpc("delete_my_account").execute()
     }
 
@@ -198,6 +212,9 @@ struct HemvoProfile: Codable, Identifiable, Equatable {
     var subscriptionStatus: String?
     var trialEndDate: Date?
     var createdAt: Date?
+    /// Per-member notification permissions stored as JSONB in Supabase.
+    /// nil = use role-based defaults (MemberPermissions.defaults(for:)).
+    var permissions: MemberPermissions?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -210,6 +227,7 @@ struct HemvoProfile: Codable, Identifiable, Equatable {
         case subscriptionStatus = "subscription_status"
         case trialEndDate       = "trial_end_date"
         case createdAt          = "created_at"
+        case permissions
     }
 
     var isInTrial: Bool {

@@ -12,9 +12,21 @@ internal import UserNotifications
 
 struct ContentView: View {
 
-    @EnvironmentObject var authVM: AuthViewModel
-    @State private var selectedTab: Tab = .dashboard
+    @EnvironmentObject var authVM:           AuthViewModel
+    @EnvironmentObject var householdService: HouseholdService
+    @State private var selectedTab:      Tab  = .dashboard
     @State private var scheduleJumpDate: Date? = nil
+
+    private var currentRole: HouseholdRole? {
+        let uid = authVM.profile?.id.uuidString ?? authVM.userID?.uuidString ?? ""
+        return householdService.household?.members.first { $0.id == uid }?.role
+    }
+
+    /// Owners and adults can add, edit, and delete. Teens and children are read-only.
+    private var canWrite: Bool {
+        guard let role = currentRole else { return true }
+        return role.canWrite
+    }
 
     enum Tab: Int, CaseIterable {
         case dashboard, meals, budget, schedule, maintenance
@@ -89,7 +101,6 @@ struct ContentView: View {
             // Add bottom padding so content doesn't hide under bar
             .padding(.bottom, 90)
 
-            // Custom liquid tab bar
             LiquidTabBar(selectedTab: $selectedTab)
         }
         .ignoresSafeArea(edges: .bottom)
@@ -99,11 +110,12 @@ struct ContentView: View {
 // MARK: - LiquidTabBar  (iOS 26 Liquid Glass style)
 struct LiquidTabBar: View {
     @Binding var selectedTab: ContentView.Tab
+    var visibleTabs: [ContentView.Tab] = ContentView.Tab.allCases
     @Namespace private var animation
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(ContentView.Tab.allCases, id: \.self) { tab in
+            ForEach(visibleTabs, id: \.self) { tab in
                 LiquidTabItem(
                     tab:        tab,
                     isSelected: selectedTab == tab,
@@ -264,6 +276,7 @@ struct GlassPill: View {
 #Preview {
     ContentView()
         .environmentObject(AuthViewModel())
+        .environmentObject(HouseholdService.shared)
         .environmentObject(StoreKitService.shared)
         .environment(\.managedObjectContext,
                      PersistenceService.preview.container.viewContext)

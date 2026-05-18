@@ -74,7 +74,7 @@ struct AddChoreView: View {
                                         nextDue          = Date.daysFromNow(template.frequency.days)
                                     } label: {
                                         VStack(spacing: 6) {
-                                            Image(systemName: template.icon)
+                                            Image(systemName: template.icon ?? template.difficulty.icon)
                                                 .font(.title3)
                                                 .foregroundColor(.homeBaseGreen)
                                             Text(template.title)
@@ -143,20 +143,35 @@ struct AddChoreView: View {
 
 // MARK: - ChoreTemplate
 struct ChoreTemplate: Identifiable {
-    let id   = UUID()
+    let id: String
     let title: String
     let area: MaintenanceItem.HomeArea
     let frequency: MaintenanceItem.Frequency
+    let difficulty: MaintenanceItem.Difficulty
     let estimatedMinutes: Int
-    let icon: String
+    let icon: String?
+
+    init(
+        id: String = UUID().uuidString,
+        title: String,
+        area: MaintenanceItem.HomeArea,
+        frequency: MaintenanceItem.Frequency,
+        difficulty: MaintenanceItem.Difficulty = .hard,
+        estimatedMinutes: Int,
+        icon: String? = nil
+    ) {
+        self.id = id; self.title = title; self.area = area
+        self.frequency = frequency; self.difficulty = difficulty
+        self.estimatedMinutes = estimatedMinutes; self.icon = icon
+    }
 
     static let all: [ChoreTemplate] = [
-        ChoreTemplate(title: "HVAC Filter",    area: .hvac,     frequency: .monthly,   estimatedMinutes: 10,  icon: "wind"),
-        ChoreTemplate(title: "Clean Gutters",  area: .yard,     frequency: .quarterly, estimatedMinutes: 60,  icon: "leaf.fill"),
-        ChoreTemplate(title: "Test Alarms",    area: .general,  frequency: .monthly,   estimatedMinutes: 10,  icon: "bell.fill"),
-        ChoreTemplate(title: "Deep Kitchen",   area: .kitchen,  frequency: .quarterly, estimatedMinutes: 90,  icon: "fork.knife"),
-        ChoreTemplate(title: "Flush Heater",   area: .general,  frequency: .annually,  estimatedMinutes: 45,  icon: "flame.fill"),
-        ChoreTemplate(title: "Inspect Roof",   area: .general,  frequency: .annually,  estimatedMinutes: 30,  icon: "house.fill"),
+        ChoreTemplate(title: "HVAC Filter",    area: .hvac,     frequency: .monthly,   difficulty: .hard,   estimatedMinutes: 10,  icon: "wind"),
+        ChoreTemplate(title: "Clean Gutters",  area: .yard,     frequency: .quarterly, difficulty: .hard,   estimatedMinutes: 60,  icon: "leaf.fill"),
+        ChoreTemplate(title: "Test Alarms",    area: .general,  frequency: .monthly,   difficulty: .medium, estimatedMinutes: 10,  icon: "bell.fill"),
+        ChoreTemplate(title: "Deep Kitchen",   area: .kitchen,  frequency: .quarterly, difficulty: .hard,   estimatedMinutes: 90,  icon: "fork.knife"),
+        ChoreTemplate(title: "Flush Heater",   area: .general,  frequency: .annually,  difficulty: .hard,   estimatedMinutes: 45,  icon: "flame.fill"),
+        ChoreTemplate(title: "Inspect Roof",   area: .general,  frequency: .annually,  difficulty: .hard,   estimatedMinutes: 30,  icon: "house.fill"),
     ]
 }
 

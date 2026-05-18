@@ -68,6 +68,15 @@ struct FamilyCalendarView: View {
 
     @StateObject private var vm     = ScheduleViewModel()
     @StateObject private var calSvc = NativeCalendarService()
+    @EnvironmentObject private var authVM: AuthViewModel
+    @EnvironmentObject private var householdService: HouseholdService
+
+    private var canWrite: Bool {
+        guard let uid = authVM.userID?.uuidString,
+              let member = householdService.household?.members.first(where: { $0.id == uid })
+        else { return true }
+        return member.role.canWrite
+    }
 
     // Navigation state
     enum CalMode { case year, month, week }
@@ -105,8 +114,8 @@ struct FamilyCalendarView: View {
                 }
                 .background(Color(.systemBackground).ignoresSafeArea())
 
-                // Floating add button (bottom-right, oval)
-                if !showSearch {
+                // Floating add button — owners and adults only
+                if !showSearch && canWrite {
                     VStack {
                         Spacer()
                         HStack {
@@ -149,7 +158,7 @@ struct FamilyCalendarView: View {
                 jumpToDate = nil
             }
             .sheet(isPresented: $showAddEvent) {
-                NativeAddEventSheet(store: calSvc, preselectedDate: selectedDate) { event, cat, repeatRule, travelTime, alertOption, colorHex, inviteeIDs in
+                NativeAddEventSheet(store: calSvc, preselectedDate: selectedDate) { event, cat, repeatRule, travelTime, alertOption, colorHex, inviteeIDs, scope in
                     calSvc.fetchEvents(for: selectedDate)
                     let hbEvent = CalendarEvent(
                         title:       event.title ?? "",
@@ -162,7 +171,8 @@ struct FamilyCalendarView: View {
                         repeatRule:  repeatRule,
                         travelTime:  travelTime,
                         alertOption: alertOption,
-                        inviteeIDs:  inviteeIDs
+                        inviteeIDs:  inviteeIDs,
+                        scope:       scope
                     )
                     vm.addEvent(hbEvent)
                 }
@@ -178,7 +188,8 @@ struct FamilyCalendarView: View {
                     assignedMember: vm.member(for: ev.assignedToID),
                     onEdit:    { eventToEdit = ev },
                     onDelete:  { eventToDelete = ev; showDeleteAlert = true },
-                    canDelete: vm.canDelete(ev))
+                    canDelete: vm.canDelete(ev),
+                    canEdit:   canWrite)
             }
             .alert("Delete Event", isPresented: $showDeleteAlert) {
                 Button("Delete", role: .destructive) {
@@ -554,38 +565,48 @@ struct FamilyCalendarView: View {
             .padding(.top, 6)
             .padding(.leading, 4)
 
-            // Event pills — native EK pills are display-only; HB pills are tappable
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(events.prefix(maxPills), id: \.eventIdentifier) { ev in
-                    eventPill(title: ev.title ?? "",
-                              color: Color(cgColor: ev.calendar.cgColor),
-                              isAllDay: ev.isAllDay)
-                }
-                let remaining = max(0, maxPills - events.count)
-                ForEach(hbEvents.prefix(remaining), id: \.id) { ev in
-                    Button { eventToView = ev } label: {
-                        eventPill(title: ev.title,
-                                  color: Color(hex: ev.colorHex) ?? .purple,
-                                  isAllDay: ev.isAllDay,
-                                  icon: ev.category.iconName)
-                    }
-                    .buttonStyle(.plain)
-                }
-                if allEvents > maxPills {
-                    Button {
-                        if let d = day {
-                            withAnimation(.easeInOut(duration: 0.15)) { selectedDate = d }
+            // Event pills — scrollable when > maxPills events
+            if allEvents > maxPills {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(events, id: \.eventIdentifier) { ev in
+                            eventPill(title: ev.title ?? "",
+                                      color: Color(cgColor: ev.calendar.cgColor),
+                                      isAllDay: ev.isAllDay)
                         }
-                    } label: {
-                        Text("+\(allEvents - maxPills) more")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundColor(Color(.systemGray3))
-                            .padding(.leading, 4)
+                        ForEach(hbEvents, id: \.id) { ev in
+                            Button { eventToView = ev } label: {
+                                eventPill(title: ev.title,
+                                          color: Color(hex: ev.colorHex) ?? .purple,
+                                          isAllDay: ev.isAllDay,
+                                          icon: ev.category.iconName)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .buttonStyle(.plain)
                 }
+                .frame(maxHeight: 60)
+                .padding(.horizontal, 3)
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(events, id: \.eventIdentifier) { ev in
+                        eventPill(title: ev.title ?? "",
+                                  color: Color(cgColor: ev.calendar.cgColor),
+                                  isAllDay: ev.isAllDay)
+                    }
+                    let remaining = max(0, maxPills - events.count)
+                    ForEach(hbEvents.prefix(remaining), id: \.id) { ev in
+                        Button { eventToView = ev } label: {
+                            eventPill(title: ev.title,
+                                      color: Color(hex: ev.colorHex) ?? .purple,
+                                      isAllDay: ev.isAllDay,
+                                      icon: ev.category.iconName)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 3)
             }
-            .padding(.horizontal, 3)
 
             Spacer(minLength: 0)
         }
@@ -594,26 +615,15 @@ struct FamilyCalendarView: View {
     }
 
     private func eventPill(title: String, color: Color, isAllDay: Bool, icon: String? = nil) -> some View {
-        HStack(spacing: 4) {
-            if isAllDay {
-                Image(systemName: "star.circle.fill")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(.white)
-            } else if let icon {
-                Image(systemName: icon)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(color)
-            }
-            Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .lineLimit(1)
-                .foregroundColor(isAllDay ? .white : color)
-        }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 3)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isAllDay ? color : color.opacity(0.18))
-        .cornerRadius(5)
+        Text(title)
+            .font(.system(size: 11, weight: .semibold))
+            .lineLimit(1)
+            .foregroundColor(.white)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(color)
+            .cornerRadius(4)
     }
 
     // MARK: - Selected day events list
@@ -643,7 +653,7 @@ struct FamilyCalendarView: View {
                     ForEach(events, id: \.eventIdentifier) { ev in
                         dayListEventRow(
                             title: ev.title ?? "Untitled",
-                            time:  ev.isAllDay ? "all-day" : ev.startDate.formatted(.dateTime.hour().minute()),
+                            time:  ev.isAllDay ? "all-day" : ev.startDate.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits)),
                             color: Color(cgColor: ev.calendar.cgColor),
                             cal:   ev.calendar?.title ?? "",
                             onEdit:   nil,
@@ -652,7 +662,7 @@ struct FamilyCalendarView: View {
                         Divider().padding(.leading, 16)
                     }
 
-                    // Hemvo events — tappable, editable & deletable
+                    // Hemvo events — tappable; editable & deletable for owners/adults only
                     ForEach(hbEvs, id: \.id) { ev in
                         Button { eventToView = ev } label: {
                             dayListEventRow(
@@ -660,8 +670,8 @@ struct FamilyCalendarView: View {
                                 time:     ev.formattedTime,
                                 color:    Color(hex: ev.colorHex) ?? .purple,
                                 cal:      ev.category.rawValue,
-                                onEdit:   { eventToEdit = ev },
-                                onDelete: vm.canDelete(ev) ? { eventToDelete = ev; showDeleteAlert = true } : nil
+                                onEdit:   canWrite ? { eventToEdit = ev } : nil,
+                                onDelete: canWrite && vm.canDelete(ev) ? { eventToDelete = ev; showDeleteAlert = true } : nil
                             )
                         }
                         .buttonStyle(.plain)
@@ -683,12 +693,18 @@ struct FamilyCalendarView: View {
                                     .font(.system(size: 12)).foregroundColor(.secondary)
                             }
                             Spacer()
-                            Button { vm.toggleTask(task) } label: {
+                            if canWrite {
+                                Button { vm.toggleTask(task) } label: {
+                                    Image(systemName: task.isComplete ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(task.isComplete ? .green : Color(.systemGray3))
+                                }
+                                .buttonStyle(.plain)
+                            } else {
                                 Image(systemName: task.isComplete ? "checkmark.circle.fill" : "circle")
                                     .font(.system(size: 20))
                                     .foregroundColor(task.isComplete ? .green : Color(.systemGray3))
                             }
-                            .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 16).padding(.vertical, 8)
                         Divider().padding(.leading, 16)
@@ -960,7 +976,7 @@ struct FamilyCalendarView: View {
                         VStack(spacing: 0) {
                             ForEach(0..<24, id: \.self) { hour in
                                 HStack(alignment: .top, spacing: 0) {
-                                    Text(hour == 0 ? "" : String(format: "%02d:00", hour))
+                                    Text(hour == 0 ? "" : "\(hour % 12 == 0 ? 12 : hour % 12) \(hour < 12 ? "AM" : "PM")")
                                         .font(.system(size: 11))
                                         .foregroundColor(.secondary)
                                         .frame(width: 52, alignment: .trailing)
@@ -1036,7 +1052,7 @@ struct FamilyCalendarView: View {
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundColor(color)
                                 .lineLimit(2)
-                            Text(ev.startDate.formatted(.dateTime.hour().minute()))
+                            Text(ev.startDate.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits)))
                                 .font(.system(size: 10))
                                 .foregroundColor(color.opacity(0.8))
                         }
@@ -1091,7 +1107,7 @@ struct FamilyCalendarView: View {
     private var currentTimeLine: some View {
         let now = minuteOfDay(Date())
         return HStack(spacing: 0) {
-            Text(Date().formatted(.dateTime.hour().minute()))
+            Text(Date().formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits)))
                 .font(.system(size: 10, weight: .bold))
                 .foregroundColor(.systemRed)
                 .frame(width: 52, alignment: .trailing)
@@ -1121,6 +1137,63 @@ struct FamilyCalendarView: View {
 
     private func minuteOfDay(_ date: Date) -> Int {
         cal.component(.hour, from: date) * 60 + cal.component(.minute, from: date)
+    }
+}
+
+// MARK: - 12-hour wheel time picker (always shows H | MM | AM/PM regardless of device locale)
+private struct TimeWheelPicker: View {
+    @Binding var date: Date
+
+    @State private var hour:   Int = 12
+    @State private var minute: Int = 0
+    @State private var period: Int = 0  // 0 = AM, 1 = PM
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Picker("", selection: $hour) {
+                ForEach(1...12, id: \.self) { h in Text("\(h)").tag(h) }
+            }
+            .pickerStyle(.wheel)
+            .frame(maxWidth: .infinity)
+            .clipped()
+
+            Picker("", selection: $minute) {
+                ForEach(0...59, id: \.self) { m in Text(String(format: "%02d", m)).tag(m) }
+            }
+            .pickerStyle(.wheel)
+            .frame(maxWidth: .infinity)
+            .clipped()
+
+            Picker("", selection: $period) {
+                Text("AM").tag(0)
+                Text("PM").tag(1)
+            }
+            .pickerStyle(.wheel)
+            .frame(maxWidth: .infinity)
+            .clipped()
+        }
+        .frame(height: 180)
+        .onAppear { load() }
+        .onChange(of: hour)   { _, _ in save() }
+        .onChange(of: minute) { _, _ in save() }
+        .onChange(of: period) { _, _ in save() }
+    }
+
+    private func load() {
+        let cal = Calendar.current
+        let h   = cal.component(.hour, from: date)
+        hour   = h == 0 ? 12 : (h > 12 ? h - 12 : h)
+        minute = cal.component(.minute, from: date)
+        period = h < 12 ? 0 : 1
+    }
+
+    private func save() {
+        var h24 = hour % 12          // 12 → 0, 1–11 unchanged
+        if period == 1 { h24 += 12 } // PM → +12
+        let cal = Calendar.current
+        if let updated = cal.date(bySettingHour: h24, minute: minute, second: 0, of: date) {
+            date = updated
+        }
     }
 }
 
@@ -1202,7 +1275,7 @@ struct NativeAddEventSheet: View {
 
     @ObservedObject var store: NativeCalendarService
     var preselectedDate: Date
-    var onSave: (EKEvent, CalendarEvent.EventCategory, CalendarEvent.RecurrenceRule, String, String, String, [UUID]) -> Void
+    var onSave: (EKEvent, CalendarEvent.EventCategory, CalendarEvent.RecurrenceRule, String, String, String, [UUID], CalendarEvent.EventScope) -> Void
 
     @Environment(\.dismiss) var dismiss
 
@@ -1219,9 +1292,11 @@ struct NativeAddEventSheet: View {
     @State private var inviteeIDs: Set<UUID> = []
 
     // Inline pickers
-    @State private var showStartPicker  = false
-    @State private var showEndPicker    = false
-    @State private var showTravelPicker = false
+    @State private var showStartDatePicker = false
+    @State private var showStartTimePicker = false
+    @State private var showEndDatePicker   = false
+    @State private var showEndTimePicker   = false
+    @State private var showTravelPicker    = false
     @State private var showRepeatPicker = false
     @State private var showAlertPicker  = false
 
@@ -1229,6 +1304,7 @@ struct NativeAddEventSheet: View {
     @State private var travelTime  = TravelOption.none
     @State private var repeatRule  = RepeatOption.never
     @State private var alertOption = AlertOption.none
+    @State private var eventScope  = CalendarEvent.EventScope.personal
 
     // Travel options
     enum TravelOption: String, CaseIterable {
@@ -1262,7 +1338,7 @@ struct NativeAddEventSheet: View {
         case oneDay     = "1 day before"
     }
 
-    init(store: NativeCalendarService, preselectedDate: Date, onSave: @escaping (EKEvent, CalendarEvent.EventCategory, CalendarEvent.RecurrenceRule, String, String, String, [UUID]) -> Void) {
+    init(store: NativeCalendarService, preselectedDate: Date, onSave: @escaping (EKEvent, CalendarEvent.EventCategory, CalendarEvent.RecurrenceRule, String, String, String, [UUID], CalendarEvent.EventScope) -> Void) {
         self.store           = store
         self.preselectedDate = preselectedDate
         self.onSave          = onSave
@@ -1286,14 +1362,27 @@ struct NativeAddEventSheet: View {
                         .font(.system(size: 17))
                 }
 
+                // MARK: Scope — required; appears directly under title
+                Section {
+                    Picker("Event Type", selection: $eventScope) {
+                        ForEach(CalendarEvent.EventScope.allCases, id: \.self) { s in
+                            Label(s.rawValue, systemImage: s.iconName).tag(s)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.vertical, 4)
+                }
+
                 // MARK: Time
                 Section {
                     // All-day toggle
                     Toggle("All-day", isOn: $isAllDay.animation())
                         .onChange(of: isAllDay) { _, allDay in
                             if allDay {
-                                showStartPicker = false
-                                showEndPicker   = false
+                                showStartDatePicker = false
+                                showStartTimePicker = false
+                                showEndDatePicker   = false
+                                showEndTimePicker   = false
                             }
                         }
 
@@ -1302,46 +1391,66 @@ struct NativeAddEventSheet: View {
                         Text("Starts")
                             .foregroundColor(.primary)
                         Spacer()
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showStartPicker.toggle()
-                                showEndPicker = false
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
+                        HStack(spacing: 6) {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    showStartDatePicker.toggle()
+                                    showStartTimePicker = false
+                                    showEndDatePicker   = false
+                                    showEndTimePicker   = false
+                                }
+                            } label: {
                                 Text(startDate.formatted(.dateTime.month(.abbreviated).day().year()))
                                     .font(.system(size: 15, weight: .medium))
                                     .padding(.horizontal, 8).padding(.vertical, 4)
-                                    .background(showStartPicker ? Color.systemRed : Color(.systemGray5))
-                                    .foregroundColor(showStartPicker ? .white : .primary)
+                                    .background(showStartDatePicker ? Color.systemRed : Color(.systemGray5))
+                                    .foregroundColor(showStartDatePicker ? .white : .primary)
                                     .cornerRadius(7)
-                                if !isAllDay {
-                                    Text(startDate.formatted(.dateTime.hour().minute()))
+                            }
+                            .buttonStyle(.plain)
+                            if !isAllDay {
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        showStartTimePicker.toggle()
+                                        showStartDatePicker = false
+                                        showEndDatePicker   = false
+                                        showEndTimePicker   = false
+                                    }
+                                } label: {
+                                    Text(startDate.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits)))
                                         .font(.system(size: 15, weight: .medium))
                                         .padding(.horizontal, 8).padding(.vertical, 4)
-                                        .background(showStartPicker ? Color.systemRed : Color(.systemGray5))
-                                        .foregroundColor(showStartPicker ? .white : .primary)
+                                        .background(showStartTimePicker ? Color.systemRed : Color(.systemGray5))
+                                        .foregroundColor(showStartTimePicker ? .white : .primary)
                                         .cornerRadius(7)
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
-                        .buttonStyle(.plain)
                     }
 
-                    if showStartPicker {
+                    if showStartDatePicker {
                         DatePicker(
                             "",
                             selection: $startDate,
-                            displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute]
+                            displayedComponents: [.date]
                         )
                         .datePickerStyle(.graphical)
                         .labelsHidden()
                         .onChange(of: startDate) { _, newStart in
-                            // Auto-adjust end if it's before start
                             if endDate <= newStart {
                                 endDate = Calendar.current.date(byAdding: .hour, value: 1, to: newStart) ?? newStart
                             }
                         }
+                    }
+
+                    if showStartTimePicker {
+                        TimeWheelPicker(date: $startDate)
+                            .onChange(of: startDate) { _, newStart in
+                                if endDate <= newStart {
+                                    endDate = Calendar.current.date(byAdding: .hour, value: 1, to: newStart) ?? newStart
+                                }
+                            }
                     }
 
                     // Ends row
@@ -1349,41 +1458,62 @@ struct NativeAddEventSheet: View {
                         Text("Ends")
                             .foregroundColor(.primary)
                         Spacer()
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showEndPicker.toggle()
-                                showStartPicker = false
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
+                        HStack(spacing: 6) {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    showEndDatePicker.toggle()
+                                    showEndTimePicker   = false
+                                    showStartDatePicker = false
+                                    showStartTimePicker = false
+                                }
+                            } label: {
                                 Text(endDate.formatted(.dateTime.month(.abbreviated).day().year()))
                                     .font(.system(size: 15, weight: .medium))
                                     .padding(.horizontal, 8).padding(.vertical, 4)
-                                    .background(showEndPicker ? Color.systemRed : Color(.systemGray5))
-                                    .foregroundColor(showEndPicker ? .white : .primary)
+                                    .background(showEndDatePicker ? Color.systemRed : Color(.systemGray5))
+                                    .foregroundColor(showEndDatePicker ? .white : .primary)
                                     .cornerRadius(7)
-                                if !isAllDay {
-                                    Text(endDate.formatted(.dateTime.hour().minute()))
+                            }
+                            .buttonStyle(.plain)
+                            if !isAllDay {
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        showEndTimePicker.toggle()
+                                        showEndDatePicker   = false
+                                        showStartDatePicker = false
+                                        showStartTimePicker = false
+                                    }
+                                } label: {
+                                    Text(endDate.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits)))
                                         .font(.system(size: 15, weight: .medium))
                                         .padding(.horizontal, 8).padding(.vertical, 4)
-                                        .background(showEndPicker ? Color.systemRed : Color(.systemGray5))
-                                        .foregroundColor(showEndPicker ? .white : .primary)
+                                        .background(showEndTimePicker ? Color.systemRed : Color(.systemGray5))
+                                        .foregroundColor(showEndTimePicker ? .white : .primary)
                                         .cornerRadius(7)
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
-                        .buttonStyle(.plain)
                     }
 
-                    if showEndPicker {
+                    if showEndDatePicker {
                         DatePicker(
                             "",
                             selection: $endDate,
                             in: startDate...,
-                            displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute]
+                            displayedComponents: [.date]
                         )
                         .datePickerStyle(.graphical)
                         .labelsHidden()
+                    }
+
+                    if showEndTimePicker {
+                        TimeWheelPicker(date: $endDate)
+                            .onChange(of: endDate) { _, newEnd in
+                                if newEnd < startDate {
+                                    endDate = Calendar.current.date(byAdding: .hour, value: 1, to: startDate) ?? startDate
+                                }
+                            }
                     }
 
                     // Travel Time
@@ -1489,37 +1619,6 @@ struct NativeAddEventSheet: View {
                     }
                 }
 
-                // MARK: Color
-                Section("Color") {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(eventColorPalette, id: \.self) { hex in
-                                Button {
-                                    selectedColorHex = hex
-                                } label: {
-                                    ZStack {
-                                        Circle()
-                                            .fill(Color(hex: hex) ?? .gray)
-                                            .frame(width: 30, height: 30)
-                                        if selectedColorHex == hex {
-                                            Image(systemName: "checkmark")
-                                                .font(.system(size: 11, weight: .bold))
-                                                .foregroundColor(.white)
-                                        }
-                                    }
-                                    .overlay(
-                                        Circle()
-                                            .stroke(selectedColorHex == hex ? Color.primary.opacity(0.35) : Color.clear, lineWidth: 2.5)
-                                            .padding(-3)
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-
                 // MARK: Alert
                 Section {
                     VStack(spacing: 0) {
@@ -1549,6 +1648,37 @@ struct NativeAddEventSheet: View {
                             .pickerStyle(.wheel)
                             .frame(height: 150)
                         }
+                    }
+                }
+
+                // MARK: Color
+                Section("Color") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(eventColorPalette, id: \.self) { hex in
+                                Button {
+                                    selectedColorHex = hex
+                                } label: {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color(hex: hex) ?? .gray)
+                                            .frame(width: 30, height: 30)
+                                        if selectedColorHex == hex {
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 11, weight: .bold))
+                                                .foregroundColor(.white)
+                                        }
+                                    }
+                                    .overlay(
+                                        Circle()
+                                            .stroke(selectedColorHex == hex ? Color.primary.opacity(0.35) : Color.clear, lineWidth: 2.5)
+                                            .padding(-3)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 4)
                     }
                 }
 
@@ -1604,7 +1734,7 @@ struct NativeAddEventSheet: View {
         ekEvent.startDate = startDate
         ekEvent.endDate   = endDate
 
-        onSave(ekEvent, category, recurrence, travelTime.rawValue, alertOption.rawValue, selectedColorHex, Array(inviteeIDs))
+        onSave(ekEvent, category, recurrence, travelTime.rawValue, alertOption.rawValue, selectedColorHex, Array(inviteeIDs), eventScope)
         dismiss()
     }
 
@@ -1626,7 +1756,7 @@ struct NativeAddEventSheet: View {
         content.title = "📅 \(title)"
         content.body  = isAllDay
             ? "You have an all-day event today."
-            : "Your event starts at \(date.formatted(.dateTime.hour().minute()))."
+            : "Your event starts at \(date.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits)))."
         content.sound = .default
 
         let cal = Calendar.current
@@ -1674,11 +1804,14 @@ struct EditCalendarEventSheet: View {
     @State private var travelTime        = EditTravelOption.none
     @State private var alertOption       = EditAlertOption.none
     @State private var selectedColorHex  = ""
-    @State private var showStart   = false
-    @State private var showEnd     = false
-    @State private var showRepeat  = false
-    @State private var showTravel  = false
-    @State private var showAlert   = false
+    @State private var eventScope        = CalendarEvent.EventScope.personal
+    @State private var showStartDate = false
+    @State private var showStartTime = false
+    @State private var showEndDate   = false
+    @State private var showEndTime   = false
+    @State private var showRepeat    = false
+    @State private var showTravel    = false
+    @State private var showAlert     = false
 
     enum EditTravelOption: String, CaseIterable {
         case none    = "None"
@@ -1709,36 +1842,76 @@ struct EditCalendarEventSheet: View {
                 }
 
                 Section {
+                    Picker("Event Type", selection: $eventScope) {
+                        ForEach(CalendarEvent.EventScope.allCases, id: \.self) { s in
+                            Label(s.rawValue, systemImage: s.iconName).tag(s)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.vertical, 4)
+                }
+
+                Section {
                     Toggle("All-day", isOn: $isAllDay.animation())
+                        .onChange(of: isAllDay) { _, allDay in
+                            if allDay {
+                                showStartDate = false
+                                showStartTime = false
+                                showEndDate   = false
+                                showEndTime   = false
+                            }
+                        }
 
                     // Starts
                     HStack {
                         Text("Starts")
                         Spacer()
-                        Button {
-                            withAnimation { showStart.toggle(); showEnd = false }
-                        } label: {
-                            HStack(spacing: 6) {
+                        HStack(spacing: 6) {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    showStartDate.toggle()
+                                    showStartTime = false
+                                    showEndDate   = false
+                                    showEndTime   = false
+                                }
+                            } label: {
                                 Text(startDate.formatted(.dateTime.month(.abbreviated).day().year()))
                                     .padding(.horizontal, 8).padding(.vertical, 4)
-                                    .background(showStart ? Color(UIColor.systemRed) : Color(.systemGray5))
-                                    .foregroundColor(showStart ? .white : .primary)
+                                    .background(showStartDate ? Color(UIColor.systemRed) : Color(.systemGray5))
+                                    .foregroundColor(showStartDate ? .white : .primary)
                                     .cornerRadius(7)
-                                if !isAllDay {
-                                    Text(startDate.formatted(.dateTime.hour().minute()))
+                            }
+                            .buttonStyle(.plain)
+                            if !isAllDay {
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        showStartTime.toggle()
+                                        showStartDate = false
+                                        showEndDate   = false
+                                        showEndTime   = false
+                                    }
+                                } label: {
+                                    Text(startDate.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits)))
                                         .padding(.horizontal, 8).padding(.vertical, 4)
-                                        .background(showStart ? Color(UIColor.systemRed) : Color(.systemGray5))
-                                        .foregroundColor(showStart ? .white : .primary)
+                                        .background(showStartTime ? Color(UIColor.systemRed) : Color(.systemGray5))
+                                        .foregroundColor(showStartTime ? .white : .primary)
                                         .cornerRadius(7)
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
-                        .buttonStyle(.plain)
                     }
-                    if showStart {
-                        DatePicker("", selection: $startDate,
-                                   displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
+                    if showStartDate {
+                        DatePicker("", selection: $startDate, displayedComponents: [.date])
                             .datePickerStyle(.graphical).labelsHidden()
+                            .onChange(of: startDate) { _, s in
+                                if endDate <= s {
+                                    endDate = Calendar.current.date(byAdding: .hour, value: 1, to: s) ?? s
+                                }
+                            }
+                    }
+                    if showStartTime {
+                        TimeWheelPicker(date: $startDate)
                             .onChange(of: startDate) { _, s in
                                 if endDate <= s {
                                     endDate = Calendar.current.date(byAdding: .hour, value: 1, to: s) ?? s
@@ -1750,30 +1923,52 @@ struct EditCalendarEventSheet: View {
                     HStack {
                         Text("Ends")
                         Spacer()
-                        Button {
-                            withAnimation { showEnd.toggle(); showStart = false }
-                        } label: {
-                            HStack(spacing: 6) {
+                        HStack(spacing: 6) {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    showEndDate.toggle()
+                                    showEndTime   = false
+                                    showStartDate = false
+                                    showStartTime = false
+                                }
+                            } label: {
                                 Text(endDate.formatted(.dateTime.month(.abbreviated).day().year()))
                                     .padding(.horizontal, 8).padding(.vertical, 4)
-                                    .background(showEnd ? Color(UIColor.systemRed) : Color(.systemGray5))
-                                    .foregroundColor(showEnd ? .white : .primary)
+                                    .background(showEndDate ? Color(UIColor.systemRed) : Color(.systemGray5))
+                                    .foregroundColor(showEndDate ? .white : .primary)
                                     .cornerRadius(7)
-                                if !isAllDay {
-                                    Text(endDate.formatted(.dateTime.hour().minute()))
+                            }
+                            .buttonStyle(.plain)
+                            if !isAllDay {
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        showEndTime.toggle()
+                                        showEndDate   = false
+                                        showStartDate = false
+                                        showStartTime = false
+                                    }
+                                } label: {
+                                    Text(endDate.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits)))
                                         .padding(.horizontal, 8).padding(.vertical, 4)
-                                        .background(showEnd ? Color(UIColor.systemRed) : Color(.systemGray5))
-                                        .foregroundColor(showEnd ? .white : .primary)
+                                        .background(showEndTime ? Color(UIColor.systemRed) : Color(.systemGray5))
+                                        .foregroundColor(showEndTime ? .white : .primary)
                                         .cornerRadius(7)
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
-                        .buttonStyle(.plain)
                     }
-                    if showEnd {
-                        DatePicker("", selection: $endDate, in: startDate...,
-                                   displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
+                    if showEndDate {
+                        DatePicker("", selection: $endDate, in: startDate..., displayedComponents: [.date])
                             .datePickerStyle(.graphical).labelsHidden()
+                    }
+                    if showEndTime {
+                        TimeWheelPicker(date: $endDate)
+                            .onChange(of: endDate) { _, newEnd in
+                                if newEnd < startDate {
+                                    endDate = Calendar.current.date(byAdding: .hour, value: 1, to: startDate) ?? startDate
+                                }
+                            }
                     }
 
                     // Travel Time
@@ -1850,6 +2045,38 @@ struct EditCalendarEventSheet: View {
                     }
                 }
 
+                // MARK: Alert
+                Section {
+                    VStack(spacing: 0) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showAlert.toggle()
+                                showTravel = false
+                                showRepeat = false
+                            }
+                        } label: {
+                            HStack {
+                                Text("Alert").foregroundColor(.primary)
+                                Spacer()
+                                Text(alertOption.rawValue).foregroundColor(.secondary)
+                                Image(systemName: showAlert ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 12)).foregroundColor(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if showAlert {
+                            Picker("Alert", selection: $alertOption) {
+                                ForEach(EditAlertOption.allCases, id: \.self) { opt in
+                                    Text(opt.rawValue).tag(opt)
+                                }
+                            }
+                            .pickerStyle(.wheel)
+                            .frame(height: 150)
+                        }
+                    }
+                }
+
                 // MARK: Color
                 Section("Color") {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -1921,38 +2148,6 @@ struct EditCalendarEventSheet: View {
                     }
                 }
 
-                // MARK: Alert
-                Section {
-                    VStack(spacing: 0) {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showAlert.toggle()
-                                showTravel = false
-                                showRepeat = false
-                            }
-                        } label: {
-                            HStack {
-                                Text("Alert").foregroundColor(.primary)
-                                Spacer()
-                                Text(alertOption.rawValue).foregroundColor(.secondary)
-                                Image(systemName: showAlert ? "chevron.up" : "chevron.down")
-                                    .font(.system(size: 12)).foregroundColor(.secondary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-
-                        if showAlert {
-                            Picker("Alert", selection: $alertOption) {
-                                ForEach(EditAlertOption.allCases, id: \.self) { opt in
-                                    Text(opt.rawValue).tag(opt)
-                                }
-                            }
-                            .pickerStyle(.wheel)
-                            .frame(height: 150)
-                        }
-                    }
-                }
-
                 Section {
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
@@ -1985,6 +2180,7 @@ struct EditCalendarEventSheet: View {
                 travelTime       = EditTravelOption(rawValue: event.travelTime) ?? .none
                 alertOption      = EditAlertOption(rawValue: event.alertOption) ?? .none
                 selectedColorHex = event.colorHex
+                eventScope       = event.scope
             }
         }
     }
@@ -2003,6 +2199,7 @@ struct EditCalendarEventSheet: View {
         updated.repeatRule    = repeatRule
         updated.travelTime    = travelTime.rawValue
         updated.alertOption   = alertOption.rawValue
+        updated.scope         = eventScope
         vm.updateEvent(updated)
         dismiss()
     }
@@ -2015,6 +2212,7 @@ struct EventDetailSheet: View {
     let onEdit:         () -> Void
     let onDelete:       () -> Void
     var canDelete:      Bool = true
+    var canEdit:        Bool = true
 
     @Environment(\.dismiss) var dismiss
 
@@ -2041,6 +2239,17 @@ struct EventDetailSheet: View {
                                 Text(event.category.rawValue.uppercased())
                                     .font(.system(size: 10, weight: .heavy)).kerning(1.2)
                                     .foregroundColor(.white.opacity(0.85))
+                                Spacer()
+                                HStack(spacing: 4) {
+                                    Image(systemName: event.scope.iconName)
+                                        .font(.system(size: 9, weight: .bold))
+                                    Text(event.scope.rawValue.uppercased())
+                                        .font(.system(size: 9, weight: .heavy)).kerning(1.0)
+                                }
+                                .foregroundColor(.white.opacity(0.9))
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Color.white.opacity(0.2))
+                                .clipShape(Capsule())
                             }
                             Text(event.title)
                                 .font(.system(size: 22, weight: .black))
@@ -2072,13 +2281,13 @@ struct EventDetailSheet: View {
                         if !event.isAllDay {
                             infoRow(icon: "clock.fill", iconColor: color) {
                                 HStack(spacing: 8) {
-                                    Text(event.date.formatted(.dateTime.hour().minute()))
+                                    Text(event.date.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits)))
                                         .font(.system(size: 15, weight: .semibold))
                                     if let end = event.endDate {
                                         Image(systemName: "arrow.right")
                                             .font(.system(size: 11))
                                             .foregroundColor(.secondary)
-                                        Text(end.formatted(.dateTime.hour().minute()))
+                                        Text(end.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits)))
                                             .font(.system(size: 15, weight: .semibold))
                                         let mins = Int(end.timeIntervalSince(event.date) / 60)
                                         Text("(\(mins) min)")
@@ -2100,6 +2309,17 @@ struct EventDetailSheet: View {
                                     .background(color.opacity(0.1))
                                     .cornerRadius(20)
                             }
+                        }
+
+                        // Scope
+                        divRow
+                        infoRow(icon: event.scope.iconName, iconColor: color) {
+                            Text(event.scope.rawValue)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(color)
+                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .background(color.opacity(0.1))
+                                .cornerRadius(20)
                         }
 
                         // Repeat
@@ -2183,21 +2403,23 @@ struct EventDetailSheet: View {
 
                     // ── Action buttons ────────────────────────────
                     HStack(spacing: 12) {
-                        // Edit — always available to all household members
-                        Button {
-                            dismiss()
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { onEdit() }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "pencil").font(.system(size: 14, weight: .semibold))
-                                Text("Edit").font(.system(size: 15, weight: .semibold))
+                        // Edit — hidden for Teen/Child roles
+                        if canEdit {
+                            Button {
+                                dismiss()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { onEdit() }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "pencil").font(.system(size: 14, weight: .semibold))
+                                    Text("Edit").font(.system(size: 15, weight: .semibold))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity).padding(.vertical, 14)
+                                .background(color)
+                                .cornerRadius(14)
                             }
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity).padding(.vertical, 14)
-                            .background(color)
-                            .cornerRadius(14)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
 
                         // Delete — only for the creator
                         if canDelete {

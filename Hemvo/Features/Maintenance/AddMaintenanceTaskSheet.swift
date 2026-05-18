@@ -15,17 +15,37 @@ struct AddMaintenanceTaskSheet: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject private var householdService = HouseholdService.shared
 
-    @State private var title:            String                    = ""
-    @State private var area:             MaintenanceItem.HomeArea  = .general
-    @State private var frequency:        MaintenanceItem.Frequency = .monthly
-    @State private var estimatedMinutes: Int                       = 30
-    @State private var notes:            String                    = ""
-    @State private var nextDueDate:      Date                      = Date()
-    @State private var assignedMemberID: String?                   = nil
+    @State private var title:            String                       = ""
+    @State private var area:             MaintenanceItem.HomeArea    = .general
+    @State private var frequency:        MaintenanceItem.Frequency   = .monthly
+    @State private var difficulty:       MaintenanceItem.Difficulty  = .medium
+    @State private var estimatedMinutes: Int                         = 30
+    @State private var notes:            String                      = ""
+    @State private var nextDueDate:      Date                        = Date()
+    @State private var assignedMemberIDs: [String]                   = []
+    @State private var showDatePicker:   Bool                        = false
+    @State private var showChoreLibrary: Bool                        = false
     @FocusState private var titleFocused: Bool
 
     private var isEditing: Bool { editing != nil }
     private var isValid:   Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    private var youngestAssignedRole: HouseholdRole? {
+        guard let members = householdService.household?.members,
+              !assignedMemberIDs.isEmpty else { return nil }
+        let roles = assignedMemberIDs.compactMap { id in members.first(where: { $0.id == id })?.role }
+        if roles.contains(.child) { return .child }
+        if roles.contains(.teen)  { return .teen }
+        return nil
+    }
+
+    private var libraryMaxDifficulty: MaintenanceItem.Difficulty {
+        switch youngestAssignedRole {
+        case .child: return .easy
+        case .teen:  return .medium
+        default:     return .hard
+        }
+    }
 
     private let amber   = Color(hex: "#C8922A")!
     private let amberBg = Color(hex: "#F5E4C3")!
@@ -92,6 +112,46 @@ struct AddMaintenanceTaskSheet: View {
                             .stroke(titleFocused ? amber.opacity(0.6) : divider,
                                     lineWidth: titleFocused ? 2 : 1))
                         .animation(.easeInOut(duration: 0.15), value: titleFocused)
+
+                        // ── Difficulty ─────────────────────────────────
+                        VStack(alignment: .leading, spacing: 12) {
+                            sectionLabel(icon: "chart.bar.fill", text: "DIFFICULTY")
+                            HStack(spacing: 10) {
+                                ForEach(MaintenanceItem.Difficulty.allCases) { diff in
+                                    let isSel = difficulty == diff
+                                    let diffColor = Color(hex: diff.colorHex)!
+                                    Button {
+                                        withAnimation(.spring(response: 0.25)) { difficulty = diff }
+                                    } label: {
+                                        VStack(spacing: 5) {
+                                            ZStack {
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .fill(isSel ? diffColor : diffColor.opacity(0.1))
+                                                    .frame(height: 44)
+                                                HStack(spacing: 5) {
+                                                    Image(systemName: diff.icon)
+                                                        .font(.system(size: 13, weight: .bold))
+                                                    Text(diff.rawValue)
+                                                        .font(.system(size: 13, weight: .bold))
+                                                }
+                                                .foregroundColor(isSel ? .white : diffColor)
+                                            }
+                                            Text(diff.ageLabel)
+                                                .font(.system(size: 10, weight: .medium))
+                                                .foregroundColor(isSel ? diffColor : muted)
+                                        }
+                                        .scaleEffect(isSel ? 1.04 : 1.0)
+                                        .animation(.spring(response: 0.25), value: isSel)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .frame(maxWidth: .infinity)
+                                }
+                            }
+                        }
+                        .padding(16)
+                        .background(Color.white)
+                        .cornerRadius(18)
+                        .overlay(RoundedRectangle(cornerRadius: 18).stroke(divider, lineWidth: 1))
 
                         // ── Frequency ──────────────────────────────────
                         VStack(alignment: .leading, spacing: 12) {
@@ -180,32 +240,45 @@ struct AddMaintenanceTaskSheet: View {
                         .overlay(RoundedRectangle(cornerRadius: 18).stroke(divider, lineWidth: 1))
 
                         // ── Next Due Date ──────────────────────────────
-                        VStack(alignment: .leading, spacing: 12) {
-                            sectionLabel(icon: "calendar", text: "NEXT DUE DATE")
-                            HStack {
-                                Text("Due on")
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(brown)
-                                Spacer()
-                                DatePicker("", selection: $nextDueDate, displayedComponents: .date)
-                                    .datePickerStyle(.compact)
-                                    .accentColor(amber)
-                                    .labelsHidden()
+                        Button { showDatePicker = true } label: {
+                            VStack(alignment: .leading, spacing: 12) {
+                                sectionLabel(icon: "calendar", text: "NEXT DUE DATE")
+                                HStack {
+                                    Text("Due on")
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(brown)
+                                    Spacer()
+                                    Text(nextDueDate.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year()))
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(amber)
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(muted.opacity(0.5))
+                                }
                             }
+                            .padding(16)
+                            .background(Color.white)
+                            .cornerRadius(18)
+                            .overlay(RoundedRectangle(cornerRadius: 18).stroke(divider, lineWidth: 1))
                         }
-                        .padding(16)
-                        .background(Color.white)
-                        .cornerRadius(18)
-                        .overlay(RoundedRectangle(cornerRadius: 18).stroke(divider, lineWidth: 1))
+                        .buttonStyle(.plain)
 
                         // ── Assigned To ────────────────────────────────
                         if let members = householdService.household?.members, !members.isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
-                                sectionLabel(icon: "person.fill", text: "ASSIGNED TO")
+                                HStack {
+                                    sectionLabel(icon: "person.2.fill", text: "ASSIGNED TO")
+                                    Spacer()
+                                    if !assignedMemberIDs.isEmpty {
+                                        Text("\(assignedMemberIDs.count) selected")
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .foregroundColor(amber)
+                                    }
+                                }
                                 VStack(spacing: 0) {
-                                    let unassignedSel = assignedMemberID == nil
+                                    let unassignedSel = assignedMemberIDs.isEmpty
                                     Button {
-                                        withAnimation(.easeInOut(duration: 0.15)) { assignedMemberID = nil }
+                                        withAnimation(.easeInOut(duration: 0.15)) { assignedMemberIDs = [] }
                                     } label: {
                                         HStack(spacing: 12) {
                                             ZStack {
@@ -235,11 +308,17 @@ struct AddMaintenanceTaskSheet: View {
                                     }
                                     .buttonStyle(.plain)
 
-                                    ForEach(Array(members.enumerated()), id: \.element.id) { idx, member in
-                                        let isSel = assignedMemberID == member.id
+                                    ForEach(Array(members.enumerated()), id: \.element.id) { _, member in
+                                        let isSel = assignedMemberIDs.contains(member.id)
                                         divider.frame(height: 1).padding(.horizontal, 16)
                                         Button {
-                                            withAnimation(.easeInOut(duration: 0.15)) { assignedMemberID = member.id }
+                                            withAnimation(.easeInOut(duration: 0.15)) {
+                                                if isSel {
+                                                    assignedMemberIDs.removeAll { $0 == member.id }
+                                                } else {
+                                                    assignedMemberIDs.append(member.id)
+                                                }
+                                            }
                                         } label: {
                                             HStack(spacing: 12) {
                                                 ZStack {
@@ -259,9 +338,11 @@ struct AddMaintenanceTaskSheet: View {
                                                         .foregroundColor(muted)
                                                 }
                                                 Spacer()
-                                                if isSel {
-                                                    ZStack {
-                                                        Circle().fill(amber).frame(width: 22, height: 22)
+                                                ZStack {
+                                                    RoundedRectangle(cornerRadius: 6)
+                                                        .fill(isSel ? amber : Color(hex: "#EFEFEF")!)
+                                                        .frame(width: 22, height: 22)
+                                                    if isSel {
                                                         Image(systemName: "checkmark")
                                                             .font(.system(size: 10, weight: .black))
                                                             .foregroundColor(.white)
@@ -282,6 +363,40 @@ struct AddMaintenanceTaskSheet: View {
                             .background(Color.white)
                             .cornerRadius(18)
                             .overlay(RoundedRectangle(cornerRadius: 18).stroke(divider, lineWidth: 1))
+                        }
+
+                        // ── Suggested Chores Banner ────────────────────
+                        if let role = youngestAssignedRole {
+                            Button { showChoreLibrary = true } label: {
+                                HStack(spacing: 14) {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(amber.opacity(0.12))
+                                            .frame(width: 44, height: 44)
+                                        Image(systemName: "sparkles")
+                                            .font(.system(size: 18, weight: .semibold))
+                                            .foregroundColor(amber)
+                                    }
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text("Suggested Chores")
+                                            .font(.system(size: 15, weight: .bold))
+                                            .foregroundColor(brown)
+                                        Text("Browse tasks suitable for \(role == .child ? "children" : "teens")")
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundColor(muted)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(muted.opacity(0.5))
+                                }
+                                .padding(16)
+                                .background(Color.white)
+                                .cornerRadius(18)
+                                .overlay(RoundedRectangle(cornerRadius: 18).stroke(amber.opacity(0.35), lineWidth: 1.5))
+                            }
+                            .buttonStyle(.plain)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
 
                         // ── Notes ──────────────────────────────────────
@@ -325,15 +440,41 @@ struct AddMaintenanceTaskSheet: View {
                         .foregroundColor(amber)
                 }
             }
+            .sheet(isPresented: $showChoreLibrary) {
+                ChoreLibrarySheet(maxDifficulty: libraryMaxDifficulty) { template in
+                    applyTemplate(template)
+                }
+            }
+            .sheet(isPresented: $showDatePicker) {
+                NavigationStack {
+                    DatePicker("", selection: $nextDueDate, displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                        .tint(amber)
+                        .labelsHidden()
+                        .padding(.horizontal)
+                        .navigationTitle("Select Date")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { showDatePicker = false }
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(amber)
+                            }
+                        }
+                }
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+            }
             .onAppear {
                 if let item = editing {
-                    title            = item.title
-                    area             = item.area
-                    frequency        = item.frequency
-                    estimatedMinutes = item.estimatedMinutes
-                    notes            = item.notes
-                    nextDueDate      = item.nextDue
-                    assignedMemberID = item.assignedMemberID
+                    title             = item.title
+                    area              = item.area
+                    frequency         = item.frequency
+                    difficulty        = item.difficulty
+                    estimatedMinutes  = item.estimatedMinutes
+                    notes             = item.notes
+                    nextDueDate       = item.nextDue
+                    assignedMemberIDs = item.assignedMemberIDs
                 } else {
                     nextDueDate  = Calendar.current.date(byAdding: .day, value: frequency.days, to: Date()) ?? Date()
                     titleFocused = true
@@ -352,27 +493,40 @@ struct AddMaintenanceTaskSheet: View {
     // MARK: - Helpers
     private func save() {
         if isEditing, var updated = editing {
-            updated.title            = title.trimmingCharacters(in: .whitespaces)
-            updated.area             = area
-            updated.frequency        = frequency
-            updated.estimatedMinutes = estimatedMinutes
-            updated.notes            = notes
-            updated.nextDue          = nextDueDate
-            updated.assignedMemberID = assignedMemberID
+            updated.title             = title.trimmingCharacters(in: .whitespaces)
+            updated.area              = area
+            updated.frequency         = frequency
+            updated.difficulty        = difficulty
+            updated.estimatedMinutes  = estimatedMinutes
+            updated.notes             = notes
+            updated.nextDue           = nextDueDate
+            updated.assignedMemberIDs = assignedMemberIDs
             vm.updateItem(updated)
         } else {
             let item = MaintenanceItem(
-                title:            title.trimmingCharacters(in: .whitespaces),
-                area:             area,
-                frequency:        frequency,
-                nextDue:          nextDueDate,
-                notes:            notes,
-                estimatedMinutes: estimatedMinutes,
-                assignedMemberID: assignedMemberID
+                title:             title.trimmingCharacters(in: .whitespaces),
+                area:              area,
+                frequency:         frequency,
+                difficulty:        difficulty,
+                nextDue:           nextDueDate,
+                notes:             notes,
+                estimatedMinutes:  estimatedMinutes,
+                assignedMemberIDs: assignedMemberIDs
             )
             vm.addItem(item)
         }
         dismiss()
+    }
+
+    private func applyTemplate(_ template: ChoreTemplate) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            title            = template.title
+            area             = template.area
+            frequency        = template.frequency
+            difficulty       = template.difficulty
+            estimatedMinutes = template.estimatedMinutes
+            nextDueDate      = Calendar.current.date(byAdding: .day, value: template.frequency.days, to: Date()) ?? Date()
+        }
     }
 
     private func sectionLabel(icon: String, text: String) -> some View {

@@ -1,8 +1,8 @@
 // process-scheduled-push — Supabase Edge Function
 //
 // Polls `notification_schedule` for rows where fire_at <= now() and sends
-// an APNs push to every household member. Designed to run every minute via
-// Supabase's built-in cron scheduler.
+// an APNs push to every household member except the event creator. Designed
+// to run every minute via Supabase's built-in cron scheduler.
 //
 // Schedule via Supabase Dashboard:
 //   Edge Functions → process-scheduled-push → Schedule → "* * * * *"
@@ -17,11 +17,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const APNS_KEY_ID   = Deno.env.get("APNS_KEY_ID")!;
-const APNS_TEAM_ID  = Deno.env.get("APNS_TEAM_ID")!;
-const APNS_PRIV_KEY = Deno.env.get("APNS_PRIVATE_KEY")!;
-const BUNDLE_ID     = "com.issammerhej.Hemvo";
-const APNS_HOST     = "https://api.push.apple.com";
+const APNS_KEY_ID       = Deno.env.get("APNS_KEY_ID")!;
+const APNS_TEAM_ID      = Deno.env.get("APNS_TEAM_ID")!;
+const APNS_PRIV_KEY     = Deno.env.get("APNS_PRIVATE_KEY")!;
+const BUNDLE_ID         = "com.issamnmerhej.Hemvo";
+const APNS_HOST_PROD    = "https://api.push.apple.com";
+const APNS_HOST_SANDBOX = "https://api.sandbox.push.apple.com";
 
 // ── APNs helpers (same as notify-household) ──────────────────────────────────
 
@@ -66,8 +67,14 @@ async function makeAPNsJWT(): Promise<string> {
   return `${input}.${base64url(sig)}`;
 }
 
-async function sendAPNs(token: string, title: string, body: string, jwt: string): Promise<void> {
-  const res = await fetch(`${APNS_HOST}/3/device/${token}`, {
+async function sendAPNs(
+  token: string,
+  title: string,
+  body: string,
+  jwt: string,
+  host: string
+): Promise<void> {
+  const res = await fetch(`${host}/3/device/${token}`, {
     method: "POST",
     headers: {
       authorization:    `bearer ${jwt}`,
@@ -96,7 +103,7 @@ serve(async (_req: Request) => {
   // Fetch up to 100 unsent notifications that are due.
   const { data: pending, error: fetchErr } = await sb
     .from("notification_schedule")
-    .select("id, household_id, title, body")
+    .select("id, household_id, creator_id, title, body")
     .eq("sent", false)
     .lte("fire_at", new Date().toISOString())
     .limit(100);
@@ -117,18 +124,57 @@ serve(async (_req: Request) => {
   let processed = 0;
 
   for (const item of pending) {
-    // Fetch device tokens for this household.
-    const { data: tokenRows } = await sb
-      .from("device_tokens")
-      .select("token")
+    // Resolve household member IDs via profiles — more reliable than filtering
+    // device_tokens by household_id (tokens may have been registered before
+    // household_id was set on the row, leaving it NULL).
+    let profileQuery = sb
+      .from("profiles")
+      .select("id")
       .eq("household_id", item.household_id);
 
+    if (item.creator_id) {
+      profileQuery = profileQuery.neq("id", item.creator_id);
+    }
+
+    const { data: members } = await profileQuery;
+    const memberIds = (members || []).map((m: { id: string }) => m.id);
+
+    let tokenRows: { token: string; apns_environment: string }[] | null = null;
+    if (memberIds.length > 0) {
+      const { data } = await sb
+        .from("device_tokens")
+        .select("token, apns_environment")
+        .in("user_id", memberIds);
+      tokenRows = data;
+    }
+
     if (tokenRows && tokenRows.length > 0) {
-      await Promise.all(
-        tokenRows.map(({ token }: { token: string }) =>
-          sendAPNs(token, item.title, item.body, jwt)
-        )
+      const deliveryResults = await Promise.all(
+        tokenRows.map(async ({ token, apns_environment }: { token: string; apns_environment: string }) => {
+          const res = await fetch(`${apns_environment === "sandbox" ? APNS_HOST_SANDBOX : APNS_HOST_PROD}/3/device/${token}`, {
+            method: "POST",
+            headers: {
+              authorization:    `bearer ${jwt}`,
+              "apns-topic":     BUNDLE_ID,
+              "apns-push-type": "alert",
+              "apns-priority":  "10",
+              "content-type":   "application/json",
+            },
+            body: JSON.stringify({ aps: { alert: { title: item.title, body: item.body }, sound: "default" } }),
+          });
+          const reason = res.ok ? "ok" : await res.text();
+          if (!res.ok) console.error(`APNs ${res.status} for token …${token.slice(-8)}: ${reason}`);
+          return { token, ok: res.ok, status: res.status, reason };
+        })
       );
+
+      const staleTokens = deliveryResults
+        .filter(r => r.status === 400 && r.reason?.includes("BadDeviceToken"))
+        .map(r => r.token);
+      if (staleTokens.length > 0) {
+        await sb.from("device_tokens").delete().in("token", staleTokens);
+        console.log(`process-scheduled-push: removed ${staleTokens.length} stale token(s)`);
+      }
     }
 
     // Mark as sent regardless — prevents re-delivery if APNs tokens are stale.

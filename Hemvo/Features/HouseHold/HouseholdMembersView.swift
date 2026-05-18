@@ -15,12 +15,13 @@ struct HouseholdMembersView: View {
     @EnvironmentObject private var householdService: HouseholdService
     @Environment(\.dismiss) private var dismiss
 
-    @State private var showInviteSheet  = false
-    @State private var showSetupView    = false
-    @State private var showRenameAlert  = false
-    @State private var newHouseholdName = ""
-    @State private var showLeaveConfirm = false
-    @State private var memberToDelete:  HouseholdMembership? = nil
+    @State private var showInviteSheet          = false
+    @State private var showSetupView            = false
+    @State private var showRenameAlert          = false
+    @State private var newHouseholdName         = ""
+    @State private var showLeaveConfirm         = false
+    @State private var memberToDelete:          HouseholdMembership? = nil
+    @State private var memberToEditPermissions: HouseholdMembership? = nil
 
     private let amber   = Color(red: 0.784, green: 0.573, blue: 0.165)
     private let bg      = Color(red: 0.980, green: 0.969, blue: 0.949)
@@ -43,6 +44,9 @@ struct HouseholdMembersView: View {
     private var canManage: Bool { currentMember?.role.canManage ?? false }
     private var canInvite: Bool { currentMember?.role.canInvite ?? false }
     private var isOwner:   Bool { currentMember?.role == .owner }
+    private var isRestrictedRole: Bool {
+        currentMember?.role == .teen || currentMember?.role == .child
+    }
 
     // MARK: - Body
 
@@ -104,6 +108,13 @@ struct HouseholdMembersView: View {
             } message: { member in
                 Text("\(member.username) will be removed from the household and lose access to all shared data.")
             }
+            .sheet(item: $memberToEditPermissions) { member in
+                MemberPermissionsSheet(
+                    member: member,
+                    ownerID: currentUserID,
+                    householdService: householdService
+                )
+            }
         }
     }
 
@@ -145,7 +156,7 @@ struct HouseholdMembersView: View {
                 householdHeader
                 membersSection
                 pendingInvitesSection
-                dangerSection
+                if !isRestrictedRole { dangerSection }
             }
             .padding(20)
         }
@@ -232,20 +243,59 @@ struct HouseholdMembersView: View {
                             .cornerRadius(4)
                     }
                 }
-                HStack(spacing: 4) {
-                    Image(systemName: member.role.icon).font(.system(size: 10))
-                    Text(member.role.rawValue).font(.system(size: 12, weight: .medium))
+                // Owner sees a tappable role Menu for non-owner members;
+                // everyone else sees a plain label.
+                if isOwner && member.id != currentUserID && member.role != .owner {
+                    Menu {
+                        ForEach(HouseholdRole.allCases.filter { $0 != .owner }, id: \.self) { r in
+                            Button {
+                                Task {
+                                    try? await householdService.changeRole(
+                                        memberID:         member.id,
+                                        newRole:          r,
+                                        requestingUserID: currentUserID
+                                    )
+                                }
+                            } label: {
+                                Label(r.rawValue, systemImage: r.icon)
+                            }
+                            .disabled(r == member.role)
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: member.role.icon).font(.system(size: 10))
+                            Text(member.role.rawValue).font(.system(size: 12, weight: .medium))
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 8, weight: .bold))
+                        }
+                        .foregroundStyle(amber)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(amber.opacity(0.1))
+                        .cornerRadius(20)
+                    }
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: member.role.icon).font(.system(size: 10))
+                        Text(member.role.rawValue).font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(muted)
                 }
-                .foregroundStyle(muted)
             }
 
             Spacer()
 
             if isOwner && member.id != currentUserID && member.role != .owner {
-                Button { memberToDelete = member } label: {
-                    Image(systemName: "trash.fill")
-                        .font(.system(size: 17))
-                        .foregroundStyle(Color.red.opacity(0.75))
+                HStack(spacing: 12) {
+                    Button { memberToEditPermissions = member } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 17))
+                            .foregroundStyle(amber.opacity(0.85))
+                    }
+                    Button { memberToDelete = member } label: {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 17))
+                            .foregroundStyle(Color.red.opacity(0.75))
+                    }
                 }
             }
         }
@@ -345,10 +395,14 @@ struct HouseholdMembersView: View {
     }
 
     private func doRemoveMember(_ memberID: String) {
-        try? householdService.removeMember(
-            memberID: memberID,
-            requestingUserID: currentUserID
-        )
+        do {
+            try householdService.removeMember(
+                memberID: memberID,
+                requestingUserID: currentUserID
+            )
+        } catch {
+            print("[HouseholdMembers] removeMember error: \(error.localizedDescription)")
+        }
     }
 
     private func doLeave() {
@@ -364,9 +418,10 @@ struct HouseholdInviteSheet: View {
     @EnvironmentObject private var householdService: HouseholdService
     @Environment(\.dismiss) private var dismiss
 
-    @State private var email          = ""
-    @State private var role: HouseholdRole = .adult
-    @State private var errorMessage: String?
+    @State private var email:         String = ""
+    @State private var role:          HouseholdRole = .adult
+    @State private var permissions:   MemberPermissions = .defaults(for: .adult)
+    @State private var errorMessage:  String?
     @State private var didSend        = false
 
     private let amber   = Color(red: 0.784, green: 0.573, blue: 0.165)
@@ -429,7 +484,7 @@ struct HouseholdInviteSheet: View {
                     .foregroundStyle(muted)
                 HStack(spacing: 8) {
                     ForEach(HouseholdRole.allCases, id: \.self) { r in
-                        Button { role = r } label: {
+                        Button { role = r; permissions = .defaults(for: r) } label: {
                             VStack(spacing: 4) {
                                 Image(systemName: r.icon).font(.system(size: 18))
                                 Text(r.rawValue).font(.system(size: 11, weight: .semibold))
@@ -446,6 +501,8 @@ struct HouseholdInviteSheet: View {
                     }
                 }
             }
+
+            PermissionsToggleSection(permissions: $permissions, amber: amber, muted: muted, divider: divider)
 
             if let err = errorMessage {
                 Text(err)
@@ -508,10 +565,11 @@ struct HouseholdInviteSheet: View {
         Task {
             do {
                 try await householdService.inviteMember(
-                    email:           email.trimmingCharacters(in: .whitespaces),
-                    role:            role,
-                    inviterName:     inviterName,
-                    currentUserID:   inviterID
+                    email:         email.trimmingCharacters(in: .whitespaces),
+                    role:          role,
+                    permissions:   permissions,
+                    inviterName:   inviterName,
+                    currentUserID: inviterID
                 )
                 withAnimation { didSend = true }
             } catch HouseholdError.emailFailed(let code) {
@@ -521,6 +579,178 @@ struct HouseholdInviteSheet: View {
                 errorMessage = "Email delivery failed. Share this code with \(email): \(code)"
             } catch {
                 errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
+// MARK: - PermissionsToggleSection
+
+/// Reusable toggle block used both in the invite sheet and the edit-permissions sheet.
+struct PermissionsToggleSection: View {
+    @Binding var permissions: MemberPermissions
+    let amber:   Color
+    let muted:   Color
+    let divider: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("NOTIFICATION PERMISSIONS")
+                .font(.system(size: 10, weight: .heavy)).kerning(1.4)
+                .foregroundStyle(muted)
+
+            VStack(spacing: 0) {
+                permRow(label: "Expenses & Bills", icon: "creditcard.fill",
+                        value: $permissions.receiveExpenseAlerts)
+                Divider().padding(.leading, 44)
+                permRow(label: "Meal Planning",    icon: "fork.knife",
+                        value: $permissions.receiveMealAlerts)
+                Divider().padding(.leading, 44)
+                permRow(label: "Calendar & Tasks", icon: "calendar",
+                        value: $permissions.receiveCalendarAlerts)
+                Divider().padding(.leading, 44)
+                permRow(label: "Maintenance",      icon: "wrench.and.screwdriver.fill",
+                        value: $permissions.receiveMaintenanceAlerts)
+            }
+            .background(Color.white)
+            .cornerRadius(12)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(divider, lineWidth: 1))
+        }
+    }
+
+    private func permRow(label: String, icon: String, value: Binding<Bool>) -> some View {
+        Toggle(isOn: value) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundStyle(amber)
+                    .frame(width: 24)
+                Text(label)
+                    .font(.system(size: 14, weight: .medium))
+            }
+        }
+        .toggleStyle(SwitchToggleStyle(tint: amber))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+    }
+}
+
+// MARK: - MemberPermissionsSheet
+
+struct MemberPermissionsSheet: View {
+    let member:           HouseholdMembership
+    let ownerID:          String
+    let householdService: HouseholdService
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var permissions: MemberPermissions
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    private let amber   = Color(red: 0.784, green: 0.573, blue: 0.165)
+    private let bg      = Color(red: 0.980, green: 0.969, blue: 0.949)
+    private let brown   = Color(red: 0.102, green: 0.071, blue: 0.031)
+    private let muted   = Color(red: 0.478, green: 0.416, blue: 0.333)
+    private let divider = Color(red: 0.902, green: 0.867, blue: 0.816)
+
+    init(member: HouseholdMembership, ownerID: String, householdService: HouseholdService) {
+        self.member           = member
+        self.ownerID          = ownerID
+        self.householdService = householdService
+        _permissions = State(initialValue: member.permissions)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                bg.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: 20) {
+                        memberHeader
+                        PermissionsToggleSection(
+                            permissions: $permissions,
+                            amber: amber, muted: muted, divider: divider
+                        )
+                        if let err = errorMessage {
+                            Text(err)
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color.red)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        saveButton
+                    }
+                    .padding(24)
+                }
+            }
+            .navigationTitle("Permissions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private var memberHeader: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle().fill(amber.opacity(0.15)).frame(width: 48, height: 48)
+                Text((member.username.first.map(String.init) ?? "?").uppercased())
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(amber)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(member.username)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(brown)
+                HStack(spacing: 4) {
+                    Image(systemName: member.role.icon).font(.system(size: 11))
+                    Text(member.role.rawValue).font(.system(size: 12, weight: .medium))
+                }
+                .foregroundStyle(muted)
+            }
+            Spacer()
+        }
+        .padding(16)
+        .background(Color.white)
+        .cornerRadius(14)
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(divider, lineWidth: 1))
+    }
+
+    private var saveButton: some View {
+        Button(action: save) {
+            Group {
+                if isSaving {
+                    ProgressView().tint(.white)
+                } else {
+                    Text("Save Permissions")
+                        .font(.system(size: 16, weight: .bold))
+                }
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(amber)
+            .cornerRadius(14)
+        }
+        .disabled(isSaving)
+    }
+
+    private func save() {
+        isSaving = true
+        errorMessage = nil
+        Task {
+            do {
+                try await householdService.updateMemberPermissions(
+                    memberID:          member.id,
+                    permissions:       permissions,
+                    requestingUserID:  ownerID
+                )
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+                isSaving = false
             }
         }
     }

@@ -16,6 +16,7 @@ struct AddExpenseView: View {
     @State private var isRecurring = false
     @State private var isPaid      = false
     @State private var notes       = ""
+    @State private var scope:       BudgetScope = .household
     @FocusState private var amountFocused: Bool
 
     var amount: Double { Double(amountText) ?? 0 }
@@ -81,6 +82,40 @@ struct AddExpenseView: View {
                         .cornerRadius(14)
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.bpDivider, lineWidth: 1))
 
+                        // ── Scope ─────────────────────────────
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "person.2.fill")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(Color.bpSlate)
+                                Text("VISIBILITY")
+                                    .font(.system(size: 9, weight: .heavy))
+                                    .kerning(1.4)
+                                    .foregroundColor(Color.bpTextSub)
+                            }
+                            HStack(spacing: 8) {
+                                ForEach(BudgetScope.allCases, id: \.self) { s in
+                                    Button { scope = s } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: s == .household ? "house.fill" : "person.fill")
+                                                .font(.system(size: 11, weight: .bold))
+                                            Text(s.displayName)
+                                                .font(.system(size: 13, weight: .bold))
+                                        }
+                                        .foregroundColor(scope == s ? .white : Color.bpNavy)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 9)
+                                        .background(scope == s ? Color.bpNavy : Color.bpSurface)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                        .overlay(RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color.bpNavy.opacity(scope == s ? 0 : 0.3), lineWidth: 1))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .animation(.easeInOut(duration: 0.15), value: scope)
+                                }
+                            }
+                        }
+
                         // ── Notes ────────────────────────────
                         FieldCard(label: "Notes", icon: "note.text") {
                             TextField("Optional notes…", text: $notes, axis: .vertical)
@@ -97,7 +132,8 @@ struct AddExpenseView: View {
                                 amount: amount, category: category,
                                 date: date, isPaid: isPaid,
                                 paidDate: isPaid ? Date() : nil,
-                                isRecurring: isRecurring, notes: notes
+                                isRecurring: isRecurring, notes: notes,
+                                scope: scope
                             ))
                             dismiss()
                         } label: {
@@ -125,17 +161,17 @@ struct AddExpenseView: View {
             }
             .navigationTitle("Add Expense")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                amountFocused = true
+                scope = vm.selectedScope
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(Color.bpSlate)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { amountFocused = false }
-                        .font(.system(size: 14, weight: .semibold))
-                }
+
             }
         }
     }

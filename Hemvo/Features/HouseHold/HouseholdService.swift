@@ -56,6 +56,57 @@ final class HouseholdService: ObservableObject {
         return "\(base)_user_\(userID)"
     }
 
+    // MARK: Realtime (profiles — live role/permissions updates)
+
+    private var profilesRealtimeTask:    Task<Void, Never>?
+    private var profilesRealtimeChannel: RealtimeChannelV2?
+
+    private func startProfilesRealtime(householdID: String) {
+        let channel = supabase.realtimeV2.channel("profiles:\(householdID):\(UUID().uuidString)")
+        profilesRealtimeChannel = channel
+
+        profilesRealtimeTask = Task { [weak self, channel] in
+            // Register the listener BEFORE subscribing (required by the SDK).
+            // Realtime CDC delivers UUIDs in lowercase; pass lowercase for filter match.
+            let changes = channel.postgresChange(
+                AnyAction.self,
+                schema: "public",
+                table: "profiles",
+                filter: .eq("household_id", value: householdID.lowercased())
+            )
+
+            do {
+                try await channel.subscribeWithError()
+            } catch {
+                print("[Realtime] profiles subscribe error: \(error)")
+                await MainActor.run { [weak self] in self?.profilesRealtimeTask = nil }
+                return
+            }
+
+            for await _ in changes {
+                guard !Task.isCancelled, let self else { break }
+                // Small debounce — role changes are rare but the owner's device
+                // fires its own UPDATE event too; skip any duplicate bursts.
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                guard !Task.isCancelled else { break }
+                await self.refreshMembers()
+            }
+
+            if !Task.isCancelled {
+                await MainActor.run { [weak self] in self?.profilesRealtimeTask = nil }
+            }
+        }
+    }
+
+    private func stopProfilesRealtime() {
+        profilesRealtimeTask?.cancel()
+        profilesRealtimeTask = nil
+        if let ch = profilesRealtimeChannel {
+            Task { await supabase.realtimeV2.removeChannel(ch) }
+        }
+        profilesRealtimeChannel = nil
+    }
+
     // MARK: Init
 
     private init() {
@@ -169,6 +220,7 @@ final class HouseholdService: ObservableObject {
     @discardableResult
     func inviteMember(email: String,
                       role: HouseholdRole,
+                      permissions: MemberPermissions? = nil,
                       inviterName: String,
                       currentUserID: String) async throws -> HouseholdInviteRecord {
         guard let h = household else { throw HouseholdError.notFound }
@@ -185,6 +237,7 @@ final class HouseholdService: ObservableObject {
                                  inviterName: inviterName, role: role, inviteeEmail: email),
             inviteeEmail: email,
             role: role,
+            permissions: permissions,
             createdAt: Date(),
             acceptedAt: nil
         )
@@ -258,26 +311,112 @@ final class HouseholdService: ObservableObject {
 
     func leaveHousehold(userID: String) {
         guard var h = household else { return }
+        let wasOwner = h.ownerUserID == userID
         h.members.removeAll { $0.id == userID }
 
-        if h.ownerUserID == userID, let newOwner = h.members.first {
+        if wasOwner, let newOwner = h.members.first {
+            // Transfer ownership locally then sync both changes to Supabase.
             h.ownerUserID = newOwner.id
             if let i = h.members.firstIndex(where: { $0.id == newOwner.id }) {
                 h.members[i].role = .owner
             }
+            let householdID = h.id
+            let newOwnerID  = newOwner.id
+            Task { await transferOwnershipInSupabase(householdID: householdID,
+                                                     newOwnerID:  newOwnerID,
+                                                     leavingUserID: userID) }
+        } else if wasOwner {
+            // Owner is the sole member — delete the household entirely.
+            let householdID = h.id
+            Task { await deleteHouseholdFromSupabase(householdID: householdID) }
+        } else {
+            // Regular member leaving — just clear their profile.
+            Task { await clearProfileHousehold(userID: userID) }
         }
+
         household = h.members.isEmpty ? nil : h
         saveHousehold()
     }
 
     func removeMember(memberID: String, requestingUserID: String) throws {
         guard var h = household else { throw HouseholdError.notFound }
-        guard let requester = h.members.first(where: { $0.id == requestingUserID }),
-              requester.role.canInvite
-        else { throw HouseholdError.notOwner }
+        // Use ownerUserID as the authoritative check rather than the member list,
+        // which may be stale if fetchMembersFromSupabase hasn't returned yet.
+        let isOwner = h.ownerUserID == requestingUserID ||
+            h.members.first(where: { $0.id == requestingUserID })?.role.canInvite == true
+        guard isOwner else { throw HouseholdError.notOwner }
         h.members.removeAll { $0.id == memberID }
         household = h
         saveHousehold()
+        Task { await removeMemberFromSupabase(memberID: memberID) }
+    }
+
+    func removeMemberFromSupabase(memberID: String) async {
+        await clearProfileHousehold(userID: memberID)
+    }
+
+    // Nullifies household_id and role on a profile row.
+    // Uses explicit encode(to:) so nil is sent as JSON null, not omitted.
+    private func clearProfileHousehold(userID: String) async {
+        struct NullFields: Encodable {
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encode(String?.none, forKey: .householdId)
+                try c.encode(String?.none, forKey: .role)
+            }
+            enum CodingKeys: String, CodingKey {
+                case householdId = "household_id"
+                case role
+            }
+        }
+        do {
+            try await supabase
+                .from("profiles")
+                .update(NullFields())
+                .eq("id", value: userID)
+                .execute()
+            print("[Supabase] profile household cleared: \(userID)")
+        } catch {
+            print("[Supabase] clearProfileHousehold error: \(error)")
+        }
+    }
+
+    private func transferOwnershipInSupabase(householdID: String,
+                                             newOwnerID: String,
+                                             leavingUserID: String) async {
+        do {
+            // Update the household's owner_id — RLS allows this while the
+            // leaving user's session is still active (owner_id = auth.uid()).
+            try await supabase
+                .from("households")
+                .update(["owner_id": newOwnerID])
+                .eq("id", value: householdID)
+                .execute()
+            // Promote the new owner's role in profiles.
+            try await supabase
+                .from("profiles")
+                .update(["role": HouseholdRole.owner.rawValue])
+                .eq("id", value: newOwnerID)
+                .execute()
+            print("[Supabase] ownership transferred to: \(newOwnerID)")
+        } catch {
+            print("[Supabase] transferOwnership error: \(error)")
+        }
+        // Clear the leaving owner's own profile regardless of the above outcome.
+        await clearProfileHousehold(userID: leavingUserID)
+    }
+
+    private func deleteHouseholdFromSupabase(householdID: String) async {
+        do {
+            try await supabase
+                .from("households")
+                .delete()
+                .eq("id", value: householdID)
+                .execute()
+            print("[Supabase] household deleted: \(householdID)")
+        } catch {
+            print("[Supabase] deleteHousehold error: \(error)")
+        }
     }
 
     // MARK: - Rename
@@ -325,6 +464,91 @@ final class HouseholdService: ObservableObject {
         saveInvites()
     }
 
+    // MARK: - Change Member Role
+
+    /// Changes a member's role (Owner → Adult/Teen/Child not allowed; use leaveHousehold for ownership transfer).
+    /// Resets permissions to the new role's defaults and syncs both to Supabase via SECURITY DEFINER RPCs.
+    func changeRole(memberID: String,
+                    newRole: HouseholdRole,
+                    requestingUserID: String) async throws {
+        guard newRole != .owner else { return }
+        guard var h = household else { throw HouseholdError.notFound }
+        guard h.ownerUserID == requestingUserID else { throw HouseholdError.notOwner }
+
+        let newPermissions = MemberPermissions.defaults(for: newRole)
+        if let i = h.members.firstIndex(where: { $0.id == memberID }) {
+            h.members[i].role        = newRole
+            h.members[i].permissions = newPermissions
+            household = h
+            saveHousehold()
+        }
+
+        // Both columns need SECURITY DEFINER RPCs — direct .update() is blocked by RLS.
+        async let roleUpdate: Void        = updateRoleInSupabase(memberID: memberID, role: newRole)
+        async let permUpdate: Void        = updateMemberPermissionsInSupabase(memberID: memberID, permissions: newPermissions)
+        _ = await (roleUpdate, permUpdate)
+    }
+
+    private func updateRoleInSupabase(memberID: String, role: HouseholdRole) async {
+        struct Params: Encodable {
+            let pMemberId: String
+            let pRole:     String
+            enum CodingKeys: String, CodingKey {
+                case pMemberId = "p_member_id"
+                case pRole     = "p_role"
+            }
+        }
+        do {
+            try await supabase
+                .rpc("update_member_role",
+                     params: Params(pMemberId: memberID, pRole: role.rawValue))
+                .execute()
+        } catch {
+            print("[HouseholdService] changeRole error: \(error)")
+        }
+    }
+
+    // MARK: - Member Permissions
+
+    /// Updates a member's notification permissions locally and in Supabase.
+    /// Only the household owner is allowed to do this.
+    func updateMemberPermissions(memberID: String,
+                                 permissions: MemberPermissions,
+                                 requestingUserID: String) async throws {
+        guard var h = household else { throw HouseholdError.notFound }
+        guard h.ownerUserID == requestingUserID else { throw HouseholdError.notOwner }
+        if let i = h.members.firstIndex(where: { $0.id == memberID }) {
+            h.members[i].permissions = permissions
+            household = h
+            saveHousehold()
+        }
+        await updateMemberPermissionsInSupabase(memberID: memberID, permissions: permissions)
+    }
+
+    func updateMemberPermissionsInSupabase(memberID: String, permissions: MemberPermissions) async {
+        // Direct .update() is blocked by RLS (profiles: only own row).
+        // Call the SECURITY DEFINER RPC which validates ownership server-side
+        // and updates only the `permissions` column.
+        // Explicit CodingKeys required: the SDK uses default (camelCase) encoding,
+        // but PostgREST matches parameter names by their exact SQL identifiers.
+        struct Params: Encodable {
+            let pMemberId:    String
+            let pPermissions: MemberPermissions
+            enum CodingKeys: String, CodingKey {
+                case pMemberId    = "p_member_id"
+                case pPermissions = "p_permissions"
+            }
+        }
+        do {
+            try await supabase
+                .rpc("update_member_permissions",
+                     params: Params(pMemberId: memberID, pPermissions: permissions))
+                .execute()
+        } catch {
+            print("[HouseholdService] updatePermissions error: \(error)")
+        }
+    }
+
     // MARK: - Fetch & Refresh Members from Supabase
 
     /// Refreshes the member list for the current household from Supabase.
@@ -367,13 +591,15 @@ final class HouseholdService: ObservableObject {
                 } else {
                     role = .adult
                 }
+                let permissions = profile.permissions ?? .defaults(for: role)
                 return HouseholdMembership(
                     id: profileID,
                     username: profile.fullName ?? profile.username ?? "Member",
                     email: profile.email ?? "",
                     role: role,
                     avatarHex: profile.avatarColor ?? "#C8922A",
-                    joinedAt: profile.createdAt ?? Date()
+                    joinedAt: profile.createdAt ?? Date(),
+                    permissions: permissions
                 )
             }
 
@@ -383,6 +609,23 @@ final class HouseholdService: ObservableObject {
             h.members = members
             household = h
             saveHousehold()
+
+            // Start a Realtime subscription the first time we have a valid household.
+            // Guards against duplicates: only starts when the previous task is gone.
+            if profilesRealtimeTask == nil {
+                startProfilesRealtime(householdID: householdID)
+            }
+
+            // Auto-apply permissions from pending invite records when the member just joined.
+            // This lets the owner pre-configure permissions before the invite is sent.
+            let membersByEmail = Dictionary(uniqueKeysWithValues: members.map { ($0.email.lowercased(), $0) })
+            for invite in pendingInvites where invite.isPending {
+                guard let invitePermissions = invite.permissions,
+                      let joinedMember = membersByEmail[invite.inviteeEmail.lowercased()]
+                else { continue }
+                let memberID = joinedMember.id
+                Task { await self.updateMemberPermissionsInSupabase(memberID: memberID, permissions: invitePermissions) }
+            }
 
             // Drop pending invites whose invitee has now joined the household.
             let memberEmails = Set(members.map { $0.email.lowercased() })
@@ -438,6 +681,7 @@ final class HouseholdService: ObservableObject {
     }
 
     private func clearHousehold() {
+        stopProfilesRealtime()
         household      = nil
         pendingInvites = []
         UserDefaults.standard.removeObject(forKey: HouseholdStorageKeys.household)

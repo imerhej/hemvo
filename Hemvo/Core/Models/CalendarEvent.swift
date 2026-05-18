@@ -20,6 +20,7 @@ struct CalendarEvent: Codable, Identifiable, Equatable {
     var alertOption: String
     var createdBy: String?
     var inviteeIDs: [UUID]
+    var scope: EventScope
 
     init(
         id: UUID = UUID(),
@@ -35,7 +36,8 @@ struct CalendarEvent: Codable, Identifiable, Equatable {
         travelTime: String = "None",
         alertOption: String = "None",
         createdBy: String? = nil,
-        inviteeIDs: [UUID] = []
+        inviteeIDs: [UUID] = [],
+        scope: EventScope = .personal
     ) {
         self.id           = id
         self.title        = title
@@ -51,6 +53,27 @@ struct CalendarEvent: Codable, Identifiable, Equatable {
         self.alertOption  = alertOption
         self.createdBy    = createdBy
         self.inviteeIDs   = inviteeIDs
+        self.scope        = scope
+    }
+
+    // Backward-compatible decode: old events stored before `scope` was added decode as .personal
+    init(from decoder: Decoder) throws {
+        let c          = try decoder.container(keyedBy: CodingKeys.self)
+        id             = try c.decode(UUID.self, forKey: .id)
+        title          = try c.decode(String.self, forKey: .title)
+        date           = try c.decode(Date.self, forKey: .date)
+        endDate        = try c.decodeIfPresent(Date.self, forKey: .endDate)
+        assignedToID   = try c.decodeIfPresent(UUID.self, forKey: .assignedToID)
+        isAllDay       = try c.decode(Bool.self, forKey: .isAllDay)
+        notes          = try c.decode(String.self, forKey: .notes)
+        category       = try c.decode(EventCategory.self, forKey: .category)
+        colorHex       = try c.decode(String.self, forKey: .colorHex)
+        repeatRule     = try c.decode(RecurrenceRule.self, forKey: .repeatRule)
+        travelTime     = try c.decode(String.self, forKey: .travelTime)
+        alertOption    = try c.decode(String.self, forKey: .alertOption)
+        createdBy      = try c.decodeIfPresent(String.self, forKey: .createdBy)
+        inviteeIDs     = (try? c.decode([UUID].self, forKey: .inviteeIDs)) ?? []
+        scope          = (try? c.decode(EventScope.self, forKey: .scope)) ?? .personal
     }
 
     var isUpcoming: Bool { date >= Date() }
@@ -78,6 +101,19 @@ struct CalendarEvent: Codable, Identifiable, Equatable {
         }
     }
 
+    // MARK: - EventScope
+    enum EventScope: String, Codable, CaseIterable {
+        case personal  = "Personal"
+        case household = "Household"
+
+        var iconName: String {
+            switch self {
+            case .personal:  return "person.fill"
+            case .household: return "house.fill"
+            }
+        }
+    }
+
     // MARK: - RecurrenceRule
     enum RecurrenceRule: String, Codable, CaseIterable {
         case never    = "Never"
@@ -90,7 +126,7 @@ struct CalendarEvent: Codable, Identifiable, Equatable {
 
     var formattedTime: String {
         if isAllDay { return "All day" }
-        return date.formatted(.dateTime.hour().minute())
+        return date.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits))
     }
 
     var formattedDate: String {

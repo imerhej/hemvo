@@ -57,7 +57,7 @@ struct HouseholdInvite: Codable, Identifiable, Equatable {
     }
 
     var formattedSentDate: String {
-        sentAt.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+        sentAt.formatted(.dateTime.month(.abbreviated).day().hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits))
     }
 }
 

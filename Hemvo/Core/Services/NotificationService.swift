@@ -189,7 +189,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                 // ── Notification BEFORE event time (based on alertOption) ────
                 let beforeFireDate: Date?
                 let beforeBody: String
-                let timeStr = event.date.formatted(.dateTime.hour().minute())
+                let timeStr = event.date.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits))
 
                 if event.isAllDay {
                     // For all-day events the only meaningful "before" is 1 day prior at 8pm

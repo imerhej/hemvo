@@ -57,6 +57,11 @@ struct SettingsView: View {
     private var isTrial:  Bool { authVM.trialDaysRemaining > 0 }
     private var isActive: Bool { authVM.isSubscriptionActive && !isTrial }
 
+    private var isRestrictedRole: Bool {
+        let role = authVM.profile?.role ?? ""
+        return role == "Teen" || role == "Child"
+    }
+
     private var subColor: Color {
         isTrial ? Color(hex: "#E67E22")! : isActive ? Color(hex: "#2E7D32")! : .red
     }
@@ -253,11 +258,13 @@ struct SettingsView: View {
             SettingsNavRow(icon: "person.circle.fill",  color: accent,                  label: "Edit Profile",         chevron: true) { showProfile = true }
             SettingsDivider()
             SettingsNavRow(icon: "house.fill",           color: Color(hex: "#1565C0")!, label: "Household Members",   chevron: true) { showHousehold = true }
-            SettingsDivider()
-            SettingsNavRow(icon: "crown.fill",           color: Color(hex: "#E67E22")!, label: "Manage Subscription", chevron: true) { showSubscription = true }
-            SettingsDivider()
-            SettingsNavRow(icon: "arrow.clockwise",      color: Color(hex: "#2E7D32")!, label: "Restore Purchases",   chevron: false) {
-                Task { await storeKit.restorePurchases() }
+            if !isRestrictedRole {
+                SettingsDivider()
+                SettingsNavRow(icon: "crown.fill",      color: Color(hex: "#E67E22")!, label: "Manage Subscription", chevron: true) { showSubscription = true }
+                SettingsDivider()
+                SettingsNavRow(icon: "arrow.clockwise", color: Color(hex: "#2E7D32")!, label: "Restore Purchases",   chevron: false) {
+                    Task { await storeKit.restorePurchases() }
+                }
             }
         }
     }

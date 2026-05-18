@@ -526,7 +526,7 @@ struct SecuritySection: View {
     var hasUppercase: Bool   { newPassword.contains(where: \.isUppercase) }
     var hasNumber: Bool      { newPassword.contains(where: \.isNumber) }
     var passwordsMatch: Bool { newPassword == confirmPassword && !confirmPassword.isEmpty }
-    var canSave: Bool        { !currentPassword.isEmpty && hasMinLength && passwordsMatch }
+    var canSave: Bool        { !currentPassword.isEmpty && hasMinLength && hasUppercase && hasNumber && passwordsMatch }
 
     var body: some View {
         VStack(spacing: 18) {
@@ -719,16 +719,15 @@ private struct SecurityPasswordRow: View {
                     .font(.system(size: 10, weight: .heavy)).kerning(0.5)
                     .foregroundColor(isFocused ? Color.bpNavy : Color.bpTextSub)
                     .animation(.easeInOut(duration: 0.15), value: isFocused)
-                Group {
-                    if showText {
-                        TextField(label, text: $text)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .focused(focused, equals: tag)
-                    } else {
-                        SecureField(label, text: $text)
-                            .focused(focused, equals: tag)
-                    }
+                ZStack(alignment: .leading) {
+                    TextField(label, text: $text)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .focused(focused, equals: tag)
+                        .opacity(showText ? 1 : 0)
+                    SecureField(label, text: $text)
+                        .focused(focused, equals: tag)
+                        .opacity(showText ? 0 : 1)
                 }
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(Color.bpText)
@@ -783,11 +782,17 @@ private struct SecurityHintRow: View {
 
 // MARK: ── PAYMENT ────────────────────────────────────────────
 struct PaymentSection: View {
+    @EnvironmentObject var authVM: AuthViewModel
     @State private var cards: [PaymentCard]       = []
     @State private var showAddCard                = false
     @State private var cardToDelete: PaymentCard? = nil
     @State private var showDeleteAlert            = false
     private let storageKey = "hb_paymentCards"
+
+    private var isRestrictedRole: Bool {
+        let role = authVM.profile?.role ?? ""
+        return role == "Teen" || role == "Child"
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -819,9 +824,10 @@ struct PaymentSection: View {
                     Text("Add Payment Method").font(.headline).bold()
                 }
                 .foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 18)
-                .background(Color.blue).cornerRadius(16)
-                .shadow(color: Color.blue.opacity(0.4), radius: 10, y: 5)
+                .background(isRestrictedRole ? Color.gray : Color.blue).cornerRadius(16)
+                .shadow(color: (isRestrictedRole ? Color.gray : Color.blue).opacity(0.4), radius: 10, y: 5)
             }
+            .disabled(isRestrictedRole)
 
             Text("Billing handled securely through Apple's In-App Purchase system.\nCard details are never stored on our servers.")
                 .font(.caption).foregroundColor(.secondary)

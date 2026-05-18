@@ -4,6 +4,19 @@
 internal import Foundation
 internal import SwiftUI
 
+// MARK: - BudgetScope
+enum BudgetScope: String, Codable, CaseIterable {
+    case household = "household"
+    case personal  = "personal"
+
+    var displayName: String {
+        switch self {
+        case .household: return "Household"
+        case .personal:  return "Personal"
+        }
+    }
+}
+
 // MARK: - Expense
 struct Expense: Codable, Identifiable, Equatable {
     let id: UUID
@@ -15,7 +28,9 @@ struct Expense: Codable, Identifiable, Equatable {
     var paidDate: Date?
     var isRecurring: Bool
     var notes: String
+    var scope: BudgetScope
     var createdBy: String?    // UUID string of the user who created this expense
+    var paidBy: String?       // UUID string of the user who marked this bill as paid
 
     init(
         id: UUID = UUID(),
@@ -27,7 +42,9 @@ struct Expense: Codable, Identifiable, Equatable {
         paidDate: Date? = nil,
         isRecurring: Bool = false,
         notes: String = "",
-        createdBy: String? = nil
+        scope: BudgetScope = .household,
+        createdBy: String? = nil,
+        paidBy: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -38,7 +55,9 @@ struct Expense: Codable, Identifiable, Equatable {
         self.paidDate = paidDate
         self.isRecurring = isRecurring
         self.notes = notes
+        self.scope = scope
         self.createdBy = createdBy
+        self.paidBy = paidBy
     }
 
     var formattedAmount: String {
@@ -120,8 +139,20 @@ struct BudgetCategory: Codable, Identifiable, Equatable {
     var percentUsed: Double  { guard limit > 0 else { return 0 }; return min(spent / limit, 1.0) }
     var isOverBudget: Bool   { spent > limit }
 
+    enum CodingKeys: String, CodingKey { case id, name, limit, spent }
+
     init(id: UUID = UUID(), name: String, limit: Double, spent: Double = 0) {
         self.id = id; self.name = name; self.limit = limit; self.spent = spent
+    }
+
+    // `spent` defaults to 0 so older UserDefaults data that pre-dates this field
+    // decodes successfully instead of throwing and wiping the whole saved budget.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id    = try c.decode(UUID.self,   forKey: .id)
+        name  = try c.decode(String.self, forKey: .name)
+        limit = try c.decode(Double.self, forKey: .limit)
+        spent = (try? c.decode(Double.self, forKey: .spent)) ?? 0
     }
 
     static var defaults: [BudgetCategory] { [] }

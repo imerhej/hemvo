@@ -9,7 +9,16 @@ internal import Combine
 struct MealDetailView: View {
     let mealID: UUID                              // stable identity
     @ObservedObject var mealVM: MealPlanViewModel
+    @EnvironmentObject private var authVM: AuthViewModel
+    @EnvironmentObject private var householdService: HouseholdService
     @Environment(\.dismiss) var dismiss
+
+    private var canWrite: Bool {
+        guard let uid = authVM.userID?.uuidString,
+              let member = householdService.household?.members.first(where: { $0.id == uid })
+        else { return true }
+        return member.role.canWrite
+    }
 
     @State private var showEditMeal    = false
     @State private var showDeleteAlert = false
@@ -267,24 +276,26 @@ struct MealDetailView: View {
     // MARK: - Action Buttons
     private func actionButtons(meal: Meal) -> some View {
         VStack(spacing: 10) {
-            // Edit — always visible for all household members
-            Button { showEditMeal = true } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "pencil.circle.fill")
-                        .font(.system(size: 20))
-                    Text("Edit Meal")
-                        .font(.system(size: 16, weight: .bold))
+            // Edit — owners and adults only
+            if canWrite {
+                Button { showEditMeal = true } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.system(size: 20))
+                        Text("Edit Meal")
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(typeColor(for: meal))
+                    .cornerRadius(14)
+                    .shadow(color: typeColor(for: meal).opacity(0.35), radius: 10, y: 4)
                 }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(typeColor(for: meal))
-                .cornerRadius(14)
-                .shadow(color: typeColor(for: meal).opacity(0.35), radius: 10, y: 4)
             }
 
-            // Delete — only for the creator
-            if mealVM.canDelete(meal) {
+            // Delete — only for the creator and write-enabled roles
+            if canWrite && mealVM.canDelete(meal) {
                 Button { showDeleteAlert = true } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "trash")
@@ -332,7 +343,7 @@ private struct DetailStatPill: View {
     let vm = MealPlanViewModel()
     let sampleMeal = Meal(
         name: "Avocado Toast",
-        day: .monday,
+        date: Date(),
         mealType: .breakfast,
         ingredients: [
             GroceryItem(name: "Sourdough bread", quantity: "2", unit: "slices"),

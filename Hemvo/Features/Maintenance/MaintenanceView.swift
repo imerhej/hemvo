@@ -17,6 +17,15 @@ private let mvCream   = Color(hex: "#F5F0E8")!
 struct MaintenanceView: View {
 
     @StateObject private var vm = MaintenanceViewModel()
+    @EnvironmentObject private var authVM: AuthViewModel
+    @EnvironmentObject private var householdService: HouseholdService
+
+    private var canWrite: Bool {
+        guard let uid = authVM.userID?.uuidString,
+              let member = householdService.household?.members.first(where: { $0.id == uid })
+        else { return true }
+        return member.role.canWrite
+    }
     @State private var selectedArea:  MaintenanceItem.HomeArea? = nil
     @State private var showAddTask    = false
     @State private var showHistory    = false
@@ -49,26 +58,28 @@ struct MaintenanceView: View {
                     }
                 }
 
-                // Add Task FAB
-                Button { showAddTask = true } label: {
-                    HStack(spacing: 6) {
-                        ZStack {
-                            Circle().fill(Color.white.opacity(0.25)).frame(width: 22, height: 22)
-                            Image(systemName: "plus")
-                                .font(.system(size: 11, weight: .black))
+                // Add Task FAB — owners and adults only
+                if canWrite {
+                    Button { showAddTask = true } label: {
+                        HStack(spacing: 6) {
+                            ZStack {
+                                Circle().fill(Color.white.opacity(0.25)).frame(width: 22, height: 22)
+                                Image(systemName: "plus")
+                                    .font(.system(size: 11, weight: .black))
+                                    .foregroundColor(.white)
+                            }
+                            Text("Add Task")
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundColor(.white)
                         }
-                        Text("Add Task")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(.white)
+                        .padding(.horizontal, 16).padding(.vertical, 9)
+                        .background(
+                            Capsule().fill(mvAmber)
+                                .shadow(color: mvAmber.opacity(0.35), radius: 6, y: 2)
+                        )
                     }
-                    .padding(.horizontal, 16).padding(.vertical, 9)
-                    .background(
-                        Capsule().fill(mvAmber)
-                            .shadow(color: mvAmber.opacity(0.35), radius: 6, y: 2)
-                    )
+                    .padding(.trailing, 16).padding(.bottom, 10)
                 }
-                .padding(.trailing, 16).padding(.bottom, 10)
             }
             .navigationBarHidden(true)
             .sheet(isPresented: $showAddTask) {
@@ -83,6 +94,7 @@ struct MaintenanceView: View {
             .sheet(item: $selectedTask) { task in
                 MaintenanceTaskDetailSheet(
                     task: task,
+                    canWrite: canWrite,
                     vm: vm,
                     itemToEdit: $itemToEdit,
                     itemToDelete: $itemToDelete,
@@ -317,15 +329,17 @@ struct MaintenanceTaskCard: View {
                 Spacer()
             }
 
-            // Frequency + time estimate row
+            // Frequency + time + due date row
             HStack(spacing: 12) {
                 Label(item.frequency.rawValue, systemImage: "arrow.clockwise")
                     .font(.system(size: 11, weight: .medium)).foregroundColor(mvMuted)
                 Label("\(item.estimatedMinutes) min", systemImage: "clock")
                     .font(.system(size: 11, weight: .medium)).foregroundColor(mvMuted)
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold)).foregroundColor(mvMuted.opacity(0.5))
+                Label(item.nextDue.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()),
+                      systemImage: "calendar")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(item.isOverdue ? Color(hex: "#C0392B")! : mvMuted)
             }
         }
         .padding(16)
@@ -339,6 +353,7 @@ struct MaintenanceTaskCard: View {
 // MARK: - MaintenanceTaskDetailSheet
 struct MaintenanceTaskDetailSheet: View {
     let task: MaintenanceItem
+    var canWrite: Bool = true
     @ObservedObject var vm: MaintenanceViewModel
     @Binding var itemToEdit: MaintenanceItem?
     @Binding var itemToDelete: MaintenanceItem?
@@ -348,9 +363,10 @@ struct MaintenanceTaskDetailSheet: View {
     @ObservedObject private var householdService = HouseholdService.shared
     @State private var showMarkDoneConfirm = false
 
-    private var assignedMember: HouseholdMembership? {
-        guard let id = task.assignedMemberID else { return nil }
-        return householdService.household?.members.first { $0.id == id }
+    private var assignedMembers: [HouseholdMembership] {
+        task.assignedMemberIDs.compactMap { id in
+            householdService.household?.members.first { $0.id == id }
+        }
     }
 
     private var statusColor: Color {
@@ -415,9 +431,9 @@ struct MaintenanceTaskDetailSheet: View {
                             detailRow(icon: "house.fill", label: "Area", value: task.area.rawValue)
                             mvDivider.frame(height: 1).padding(.horizontal, 16)
                             detailRow(icon: "clock.fill", label: "Est. Time", value: "\(task.estimatedMinutes) min")
-                            if let member = assignedMember {
+                            if !assignedMembers.isEmpty {
                                 mvDivider.frame(height: 1).padding(.horizontal, 16)
-                                assignedRow(member: member)
+                                assignedRow(members: assignedMembers)
                             }
                             if !task.notes.isEmpty {
                                 mvDivider.frame(height: 1).padding(.horizontal, 16)
@@ -430,43 +446,44 @@ struct MaintenanceTaskDetailSheet: View {
 
                         // ── Actions ────────────────────────────────────
                         VStack(spacing: 10) {
-                            let isOwner = vm.canDelete(task)
+                            let isOwner      = canWrite && vm.canDelete(task)
+                            let canComplete  = vm.canMarkComplete(task)
 
-                            // Mark Done — available to all household members
-                            Button { showMarkDoneConfirm = true } label: {
-                                HStack(spacing: 10) {
-                                    Image(systemName: "checkmark.circle.fill").font(.system(size: 18))
-                                    Text("Mark Done").font(.system(size: 16, weight: .bold))
-                                }
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity).padding(.vertical, 17)
-                                .background(Color(hex: "#3D7A52")!)
-                                .cornerRadius(16)
-                                .shadow(color: Color(hex: "#3D7A52")!.opacity(0.35), radius: 8, y: 4)
-                            }
-                            .buttonStyle(.plain)
-
-                            // Edit + Delete side by side
-                            HStack(spacing: 10) {
-                                // Edit — available to all household members
-                                Button {
-                                    selectedTask = nil
-                                    itemToEdit = task
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "pencil.circle.fill").font(.system(size: 16))
-                                        Text("Edit Task").font(.system(size: 15, weight: .bold))
+                            // Mark Done — available to all roles
+                            if canComplete {
+                                Button { showMarkDoneConfirm = true } label: {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: "checkmark.circle.fill").font(.system(size: 18))
+                                        Text("Mark Done").font(.system(size: 16, weight: .bold))
                                     }
                                     .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity).padding(.vertical, 15)
-                                    .background(mvAmber)
+                                    .frame(maxWidth: .infinity).padding(.vertical, 17)
+                                    .background(Color(hex: "#3D7A52")!)
                                     .cornerRadius(16)
-                                    .shadow(color: mvAmber.opacity(0.3), radius: 6, y: 3)
+                                    .shadow(color: Color(hex: "#3D7A52")!.opacity(0.35), radius: 8, y: 4)
                                 }
                                 .buttonStyle(.plain)
+                            }
 
-                                // Delete — only for the creator
-                                if isOwner {
+                            // Edit + Delete — creator only
+                            if isOwner {
+                                HStack(spacing: 10) {
+                                    Button {
+                                        selectedTask = nil
+                                        itemToEdit = task
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            Image(systemName: "pencil.circle.fill").font(.system(size: 16))
+                                            Text("Edit Task").font(.system(size: 15, weight: .bold))
+                                        }
+                                        .foregroundColor(.white)
+                                        .frame(maxWidth: .infinity).padding(.vertical, 15)
+                                        .background(mvAmber)
+                                        .cornerRadius(16)
+                                        .shadow(color: mvAmber.opacity(0.3), radius: 6, y: 3)
+                                    }
+                                    .buttonStyle(.plain)
+
                                     Button {
                                         itemToDelete = task
                                         showDeleteAlert = true
@@ -530,9 +547,9 @@ struct MaintenanceTaskDetailSheet: View {
         .padding(.horizontal, 16).padding(.vertical, 14)
     }
 
-    private func assignedRow(member: HouseholdMembership) -> some View {
+    private func assignedRow(members: [HouseholdMembership]) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: "person.fill")
+            Image(systemName: members.count > 1 ? "person.2.fill" : "person.fill")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(mvAmber)
                 .frame(width: 22)
@@ -540,22 +557,46 @@ struct MaintenanceTaskDetailSheet: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(mvMuted)
             Spacer()
-            HStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(Color(hex: member.avatarHex) ?? mvAmber)
-                        .frame(width: 26, height: 26)
-                    Text(member.username.prefix(1).uppercased())
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.white)
+            if members.count == 1, let member = members.first {
+                HStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: member.avatarHex) ?? mvAmber)
+                            .frame(width: 26, height: 26)
+                        Text(member.username.prefix(1).uppercased())
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(member.username)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(mvBrown)
+                        Text(member.role.rawValue)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(mvMuted)
+                    }
                 }
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(member.username)
-                        .font(.system(size: 14, weight: .semibold))
+            } else {
+                HStack(spacing: 4) {
+                    HStack(spacing: -8) {
+                        ForEach(Array(members.prefix(3)), id: \.id) { member in
+                            ZStack {
+                                Circle()
+                                    .fill(Color(hex: member.avatarHex) ?? mvAmber)
+                                    .frame(width: 28, height: 28)
+                                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                                Text(member.username.prefix(1).uppercased())
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                    }
+                    Text("\(members.count) members")
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(mvBrown)
-                    Text(member.role.rawValue)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(mvMuted)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.leading, 4)
                 }
             }
         }

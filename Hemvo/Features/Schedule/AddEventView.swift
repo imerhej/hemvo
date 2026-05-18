@@ -22,7 +22,11 @@ struct AddEventView: View {
     @State private var category    = CalendarEvent.EventCategory.general
     @State private var assignedTo: UUID? = nil
     @State private var repeatRule  = CalendarEvent.RecurrenceRule.never
+    @State private var alertOption = "None"
     @State private var inviteeIDs: Set<UUID> = []
+
+    private let alertOptions = ["None", "5 minutes before", "15 minutes before",
+                                "30 minutes before", "1 hour before", "1 day before"]
 
     var colorHex: String { category.defaultColorHex }
 
@@ -49,6 +53,13 @@ struct AddEventView: View {
                     Picker("Repeat", selection: $repeatRule) {
                         ForEach(CalendarEvent.RecurrenceRule.allCases, id: \.self) { rule in
                             Text(rule.rawValue).tag(rule)
+                        }
+                    }
+                }
+                if !isAllDay {
+                    Section("Alert") {
+                        Picker("Alert", selection: $alertOption) {
+                            ForEach(alertOptions, id: \.self) { Text($0).tag($0) }
                         }
                     }
                 }
@@ -103,6 +114,7 @@ struct AddEventView: View {
                             isAllDay: isAllDay, notes: notes,
                             category: category, colorHex: colorHex,
                             repeatRule: repeatRule,
+                            alertOption: isAllDay ? "None" : alertOption,
                             inviteeIDs: Array(inviteeIDs)
                         ))
                         dismiss()
