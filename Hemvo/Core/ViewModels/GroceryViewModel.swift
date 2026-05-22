@@ -38,12 +38,20 @@ final class GroceryViewModel: ObservableObject {
         return Double(checkedItems.count) / Double(items.count)
     }
 
+    // MARK: - Role-based write access
+    private var hasWriteAccess: Bool {
+        guard let uid = cachedUserID else { return false }
+        if let role = HouseholdService.shared.household?.members.first(where: { $0.id == uid.uuidString })?.role {
+            return role.canWrite
+        }
+        return true // solo user (no household) — full control
+    }
+
     // MARK: - Ownership check
     func canDelete(id: UUID) -> Bool {
-        guard let uid = cachedUserID,
-              let item = items.first(where: { $0.id == id }) else { return false }
-        guard let createdBy = item.createdBy else { return true }
-        return createdBy == uid.uuidString
+        guard cachedUserID != nil,
+              items.first(where: { $0.id == id }) != nil else { return false }
+        return hasWriteAccess
     }
 
     // MARK: - Sync from Meal Plan

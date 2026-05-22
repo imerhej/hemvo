@@ -48,7 +48,12 @@ final class NativeCalendarService: ObservableObject {
     }
 
     func events(on date: Date) -> [EKEvent] {
-        nativeEvents.filter { Calendar.current.isDate($0.startDate, inSameDayAs: date) }
+        let cal      = Calendar.current
+        let dayStart = cal.startOfDay(for: date)
+        let dayEnd   = cal.date(byAdding: .day, value: 1, to: dayStart)!
+        return nativeEvents.filter { ev in
+            ev.startDate < dayEnd && ev.endDate > dayStart
+        }
     }
 
     func hasEvent(on date: Date) -> Bool { !events(on: date).isEmpty }
@@ -1812,6 +1817,7 @@ struct EditCalendarEventSheet: View {
     @State private var showRepeat    = false
     @State private var showTravel    = false
     @State private var showAlert     = false
+    @State private var hasLoaded     = false
 
     enum EditTravelOption: String, CaseIterable {
         case none    = "None"
@@ -2041,6 +2047,7 @@ struct EditCalendarEventSheet: View {
                         }
                     }
                     .onChange(of: category) { _, newCat in
+                        guard hasLoaded else { return }
                         selectedColorHex = newCat.defaultColorHex
                     }
                 }
@@ -2181,6 +2188,9 @@ struct EditCalendarEventSheet: View {
                 alertOption      = EditAlertOption(rawValue: event.alertOption) ?? .none
                 selectedColorHex = event.colorHex
                 eventScope       = event.scope
+                // Delay so the onChange(of: category) triggered above fires first (with
+                // hasLoaded = false, so it is skipped), before we allow user changes.
+                DispatchQueue.main.async { hasLoaded = true }
             }
         }
     }

@@ -52,6 +52,7 @@ struct PaymentCard: Identifiable, Codable {
 // MARK: - ProfileView
 struct ProfileView: View {
     @EnvironmentObject var authVM: AuthViewModel
+    @EnvironmentObject var prefs:  UserPreferences
     @Environment(\.dismiss) var dismiss
     @State private var selectedTab: ProfileTab = .personal
 
@@ -74,7 +75,10 @@ struct ProfileView: View {
     private let muted   = Color(hex: "#7A6A55")!
     private let divider = Color(hex: "#E6DDD0")!
 
-    @AppStorage("hb_avatarColor") private var selectedColor: String = "#C8922A"
+    private var selectedColor: String {
+        get { prefs.avatarColor }
+        nonmutating set { prefs.avatarColor = newValue }
+    }
 
     private let avatarColors = [
         "#C8922A", "#4CAF74", "#2196F3",
@@ -246,6 +250,7 @@ struct ProfileView: View {
 // MARK: ── PERSONAL INFO ──────────────────────────────────────
 struct WarmPersonalSection: View {
     @EnvironmentObject var authVM: AuthViewModel
+    @EnvironmentObject var prefs:  UserPreferences
 
     private let amber   = Color(hex: "#C8922A")!
     private let amberBg = Color(hex: "#F5E4C3")!
@@ -253,7 +258,10 @@ struct WarmPersonalSection: View {
     private let muted   = Color(hex: "#7A6A55")!
     private let divider = Color(hex: "#E6DDD0")!
 
-    @AppStorage("hb_avatarColor") private var selectedColor: String = "#C8922A"
+    private var selectedColor: String {
+        get { prefs.avatarColor }
+        nonmutating set { prefs.avatarColor = newValue }
+    }
     @State private var name      = ""
     @State private var username  = ""
     @State private var isSaving  = false
@@ -1015,5 +1023,7 @@ struct AddPaymentCardSheet: View {
 }
 
 #Preview {
-    ProfileView().environmentObject(AuthViewModel())
+    ProfileView()
+        .environmentObject(AuthViewModel())
+        .environmentObject(UserPreferences.shared)
 }

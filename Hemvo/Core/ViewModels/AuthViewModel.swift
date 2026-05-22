@@ -417,10 +417,13 @@ final class AuthViewModel: ObservableObject {
         // Fall back to local trial end date
         if let end = UserDefaults.standard.object(
             forKey: "hemvo_trialEndDate") as? Date {
+            // Use seconds-level precision so the last day of the trial
+            // isn't falsely treated as expired (dateComponents .day returns
+            // 0 for any remaining time less than 24 hours).
             let days = Calendar.current.dateComponents(
                 [.day], from: Date(), to: end).day ?? 0
             trialDaysRemaining   = max(days, 0)
-            isSubscriptionActive = days > 0
+            isSubscriptionActive = end > Date()
         } else {
             isSubscriptionActive = false
             trialDaysRemaining   = 0
@@ -472,6 +475,9 @@ final class AuthViewModel: ObservableObject {
         ]
         let ud = UserDefaults.standard
         keysToRemove.forEach { ud.removeObject(forKey: $0) }
+
+        // Clear iCloud KV store preference keys so they don't bleed into a new account
+        UserPreferences.shared.clearAll()
 
         // 3. Clear CoreData
         let context     = PersistenceService.shared.container.viewContext

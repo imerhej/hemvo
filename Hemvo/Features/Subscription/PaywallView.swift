@@ -175,10 +175,10 @@ struct PaywallView: View {
             // Annual — highlighted
             PlanCard(
                 title:         "Yearly",
-                price:         "$71",
+                price:         "$50",
                 period:        "/ year",
-                badge:         "BEST VALUE  •  Save 15%",
-                detail:        "~$5.90/mo • Billed annually",
+                badge:         "BEST VALUE  •  Save 17%",
+                detail:        "~$4.17/mo • Billed annually",
                 isSelected:    selectedPlan == StoreIDs.annual,
                 isRecommended: true,
                 accentColor:   accentColor
@@ -191,7 +191,7 @@ struct PaywallView: View {
             // Monthly
             PlanCard(
                 title:         "Monthly",
-                price:         "$6.99",
+                price:         "$4.99",
                 period:        "/ month",
                 badge:         nil,
                 detail:        "Billed monthly • Cancel anytime",
@@ -206,7 +206,7 @@ struct PaywallView: View {
         }
     }
 
-    private var annualMonthlyStr: String { "5.90" }
+    private var annualMonthlyStr: String { "4.17" }
 
     // MARK: - CTA
     private var ctaSection: some View {

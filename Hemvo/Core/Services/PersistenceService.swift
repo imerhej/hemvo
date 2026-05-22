@@ -1,79 +1,42 @@
-//  PersistenceService.swift
-//  Hemvo
-//  CoreData + CloudKit stack. Provides NSManagedObjectContext to the app.
+// PersistenceService.swift
+// Hemvo
+// CoreData stack. All household data lives in Supabase; CoreData handles
+// local entity cleanup on account deletion and is available for future
+// device-only features. CloudKit sync is intentionally not wired up —
+// Supabase is the single source of truth for multi-user household data.
 
-internal import SwiftUI
-internal import StoreKit
 internal import CoreData
-internal import CloudKit
 internal import Foundation
-internal import Combine
-internal import UserNotifications
 
-
-// MARK: - PersistenceService
 final class PersistenceService {
 
     static let shared   = PersistenceService()
     static let preview  = PersistenceService(inMemory: true)
 
-    let container: NSPersistentCloudKitContainer
+    let container: NSPersistentContainer
 
     // MARK: - Init
+
     init(inMemory: Bool = false) {
-        container = NSPersistentCloudKitContainer(name: "Hemvo")
+        container = NSPersistentContainer(name: "Hemvo")
 
         if inMemory {
             container.persistentStoreDescriptions.first?.url =
                 URL(fileURLWithPath: "/dev/null")
-        } else {
-            configureCloudKit()
         }
 
         container.loadPersistentStores { description, error in
             if let error = error as NSError? {
-                // In production, handle this gracefully instead of crashing.
                 fatalError("CoreData failed to load: \(error), \(error.userInfo)")
             }
-            print("PersistenceService: Store loaded — \(description.url?.lastPathComponent ?? "unknown")")
         }
 
         container.viewContext.automaticallyMergesChangesFromParent = true
         container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
-
-        // Listen for remote changes
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(remoteStoreChanged),
-            name: .NSPersistentStoreRemoteChange,
-            object: container.persistentStoreCoordinator
-        )
-    }
-
-    // MARK: - CloudKit Config
-    private func configureCloudKit() {
-        guard let description = container.persistentStoreDescriptions.first else {
-            print("PersistenceService: No persistent store description found.")
-            return
-        }
-        description.setOption(
-            true as NSNumber,
-            forKey: NSPersistentHistoryTrackingKey
-        )
-        description.setOption(
-            true as NSNumber,
-            forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey
-        )
-        // Only attach CloudKit container if entitlement is configured
-        #if !DEBUG
-        description.cloudKitContainerOptions =
-            NSPersistentCloudKitContainerOptions(
-                containerIdentifier: "iCloud.com.hemvo.app"
-            )
-        #endif
     }
 
     // MARK: - Save
+
     func save() {
         let ctx = container.viewContext
         guard ctx.hasChanges else { return }
@@ -85,6 +48,7 @@ final class PersistenceService {
     }
 
     // MARK: - Background Save
+
     func saveInBackground(_ block: @escaping (NSManagedObjectContext) -> Void) {
         let bgCtx = container.newBackgroundContext()
         bgCtx.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
@@ -94,13 +58,6 @@ final class PersistenceService {
                 do { try bgCtx.save() }
                 catch { print("PersistenceService: Background save failed — \(error)") }
             }
-        }
-    }
-
-    // MARK: - Remote Change Handler
-    @objc private func remoteStoreChanged(_ notification: Notification) {
-        DispatchQueue.main.async {
-            self.container.viewContext.mergeChanges(fromContextDidSave: notification)
         }
     }
 }

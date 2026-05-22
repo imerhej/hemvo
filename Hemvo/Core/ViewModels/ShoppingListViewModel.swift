@@ -30,17 +30,22 @@ final class ShoppingListViewModel: ObservableObject {
         Task { await loadFromSupabase() }
     }
 
+    // MARK: - Role-based write access
+    private var hasWriteAccess: Bool {
+        guard let uid = cachedUserID else { return false }
+        if let role = HouseholdService.shared.household?.members.first(where: { $0.id == uid.uuidString })?.role {
+            return role.canWrite
+        }
+        return true // solo user (no household) — full control
+    }
+
     // MARK: - Ownership check
     func canDelete(_ list: ShoppingList) -> Bool {
-        guard let uid = cachedUserID else { return false }
-        guard let createdBy = list.createdBy else { return true }
-        return createdBy == uid.uuidString
+        hasWriteAccess
     }
 
     func canDeleteItem(_ item: ShoppingItem) -> Bool {
-        guard let uid = cachedUserID else { return false }
-        guard let createdBy = item.createdBy else { return true }
-        return createdBy == uid.uuidString
+        hasWriteAccess
     }
 
     // MARK: - List CRUD

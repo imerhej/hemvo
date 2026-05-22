@@ -24,10 +24,18 @@ final class MaintenanceViewModel: ObservableObject {
     private var realtimeDebounce: Task<Void, Never>?
     private var realtimeChannel:  RealtimeChannelV2?
 
+    // MARK: - Role-based write access
+    private var hasWriteAccess: Bool {
+        guard let uid = cachedUserID else { return false }
+        if let role = HouseholdService.shared.household?.members.first(where: { $0.id == uid.uuidString })?.role {
+            return role.canWrite
+        }
+        return true // solo user (no household) — full control
+    }
+
     // MARK: - Ownership checks
     func canDelete(_ item: MaintenanceItem) -> Bool {
-        guard let uid = cachedUserID else { return false }
-        return item.createdBy == uid.uuidString
+        hasWriteAccess
     }
 
     func canMarkComplete(_ item: MaintenanceItem) -> Bool {
@@ -37,8 +45,7 @@ final class MaintenanceViewModel: ObservableObject {
     }
 
     func canDeleteHistory(_ task: CompletedTask) -> Bool {
-        guard let uid = cachedUserID else { return false }
-        return task.createdBy == uid.uuidString
+        hasWriteAccess
     }
 
     // MARK: - Active computed
@@ -60,7 +67,7 @@ final class MaintenanceViewModel: ObservableObject {
         pendingUploadIDs.insert(stamped.id)
         persistPendingUploadIDs()
         persist()
-        if UserDefaults.standard.bool(forKey: "notif_maintenance") {
+        if UserPreferences.shared.notifMaintenance {
             notif.scheduleMaintenanceReminder(for: stamped)
         }
         Task { await supabaseUpsert(stamped) }
@@ -93,7 +100,7 @@ final class MaintenanceViewModel: ObservableObject {
         items[idx] = item
         persist()
         notif.cancelMaintenanceReminder(for: item.id)
-        if UserDefaults.standard.bool(forKey: "notif_maintenance") {
+        if UserPreferences.shared.notifMaintenance {
             notif.scheduleMaintenanceReminder(for: item)
         }
         let addedIDs = Set(item.assignedMemberIDs).subtracting(Set(previous.assignedMemberIDs))
@@ -190,7 +197,7 @@ final class MaintenanceViewModel: ObservableObject {
         loadDeletedIDs()
         loadPendingUploadIDs()
         load()
-        if UserDefaults.standard.bool(forKey: "notif_maintenance") {
+        if UserPreferences.shared.notifMaintenance {
             notif.scheduleMaintenanceReminders(for: items)
         }
         Task { await loadFromSupabase() }
@@ -355,7 +362,7 @@ final class MaintenanceViewModel: ObservableObject {
             }
             items = remoteItems + pendingLocal
             persist()
-            if UserDefaults.standard.bool(forKey: "notif_maintenance") {
+            if UserPreferences.shared.notifMaintenance {
                 notif.scheduleMaintenanceReminders(for: items)
             }
             for i in pendingLocal { Task { await supabaseUpsert(i) } }

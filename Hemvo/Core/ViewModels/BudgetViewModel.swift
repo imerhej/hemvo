@@ -34,18 +34,23 @@ final class BudgetViewModel: ObservableObject {
     private var budgetRealtimeTask:    Task<Void, Never>?
     private var budgetRealtimeChannel: RealtimeChannelV2?
 
-    // MARK: - Ownership checks
-    func canDelete(_ expense: Expense) -> Bool {
+    // MARK: - Role-based write access
+    private var hasWriteAccess: Bool {
         guard let uid = cachedUserID else { return false }
-        guard let createdBy = expense.createdBy else { return true }
-        return createdBy == uid.uuidString
+        if let role = HouseholdService.shared.household?.members.first(where: { $0.id == uid.uuidString })?.role {
+            return role.canWrite
+        }
+        return true // solo user (no household) — full control
     }
 
-    /// Only the creator can move an expense between household and personal scope.
+    // MARK: - Ownership checks
+    func canDelete(_ expense: Expense) -> Bool {
+        hasWriteAccess
+    }
+
+    /// Only Owner/Adult can move an expense between household and personal scope.
     func canChangeScope(_ expense: Expense) -> Bool {
-        guard let uid = cachedUserID else { return false }
-        guard let createdBy = expense.createdBy else { return true }
-        return createdBy == uid.uuidString
+        hasWriteAccess
     }
 
     // MARK: - Computed — Month + Scope Filter
@@ -106,7 +111,7 @@ final class BudgetViewModel: ObservableObject {
         updateCategorySpend()
         persist()
         if stamped.isRecurring && !stamped.isPaid &&
-           UserDefaults.standard.bool(forKey: "notif_bills") {
+           UserPreferences.shared.notifBills {
             NotificationService.shared.scheduleBillReminder(for: stamped)
         }
         objectWillChange.send()
@@ -142,7 +147,7 @@ final class BudgetViewModel: ObservableObject {
             persist()
             NotificationService.shared.cancelBillReminder(for: stamped.id)
             if stamped.isRecurring && !stamped.isPaid &&
-               UserDefaults.standard.bool(forKey: "notif_bills") {
+               UserPreferences.shared.notifBills {
                 NotificationService.shared.scheduleBillReminder(for: stamped)
             }
             objectWillChange.send()
@@ -295,7 +300,7 @@ final class BudgetViewModel: ObservableObject {
         updateCategorySpend()
         Task { await loadFromSupabase() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            if UserDefaults.standard.bool(forKey: "notif_bills") {
+            if UserPreferences.shared.notifBills {
                 NotificationService.shared.rescheduleAllBills(from: self.expenses)
             }
         }

@@ -57,9 +57,17 @@ final class ScheduleViewModel: ObservableObject {
     func events(on date: Date) -> [CalendarEvent] {
         let cal = Calendar.current
         var result: [CalendarEvent] = []
+        let dayStart = cal.startOfDay(for: date)
         for ev in events {
             if cal.isDate(ev.date, inSameDayAs: date) {
                 result.append(ev)
+            } else if ev.repeatRule == .never, let endDate = ev.endDate {
+                // Multi-day span: include on any day between start and end (inclusive)
+                let evStart = cal.startOfDay(for: ev.date)
+                let evEnd   = cal.startOfDay(for: endDate)
+                if dayStart > evStart && dayStart <= evEnd {
+                    result.append(ev)
+                }
             } else if ev.occursOn(date: date) {
                 var occurrence = ev
                 let h = cal.component(.hour, from: ev.date)
@@ -85,17 +93,22 @@ final class ScheduleViewModel: ObservableObject {
         !events(on: date).isEmpty || !tasks(on: date).isEmpty
     }
 
+    // MARK: - Role-based write access
+    private var hasWriteAccess: Bool {
+        guard let uid = cachedUserID else { return false }
+        if let role = HouseholdService.shared.household?.members.first(where: { $0.id == uid.uuidString })?.role {
+            return role.canWrite
+        }
+        return true // solo user (no household) — full control
+    }
+
     // MARK: - Ownership check
     func canDelete(_ event: CalendarEvent) -> Bool {
-        guard let uid = cachedUserID else { return false }
-        guard let createdBy = event.createdBy else { return true }
-        return createdBy == uid.uuidString
+        hasWriteAccess
     }
 
     func canDelete(_ task: HouseTask) -> Bool {
-        guard let uid = cachedUserID else { return false }
-        guard let createdBy = task.createdBy else { return true }
-        return createdBy == uid.uuidString
+        hasWriteAccess
     }
 
     // MARK: - Member Lookup
@@ -115,7 +128,7 @@ final class ScheduleViewModel: ObservableObject {
         pendingUploadEventIDs.insert(stamped.id)
         persistPendingUploadIDs()
         persist()
-        if UserDefaults.standard.bool(forKey: "notif_schedule") {
+        if UserPreferences.shared.notifSchedule {
             notif.scheduleEventReminders(for: [stamped])   // local notifications for this device
         }
         Task { await supabaseUpsertEvent(stamped) }
@@ -134,7 +147,7 @@ final class ScheduleViewModel: ObservableObject {
             events[idx] = event
             persist()
             notif.cancelEventReminders(for: event.id)
-            if UserDefaults.standard.bool(forKey: "notif_schedule") {
+            if UserPreferences.shared.notifSchedule {
                 notif.scheduleEventReminders(for: [event])
             }
             Task { await supabaseUpdateEvent(event) }
@@ -519,7 +532,7 @@ final class ScheduleViewModel: ObservableObject {
         loadDeletedIDs()
         loadPendingUploadIDs()
         load()
-        if UserDefaults.standard.bool(forKey: "notif_schedule") {
+        if UserPreferences.shared.notifSchedule {
             notif.scheduleEventReminders(for: events)
         }
         Task { await loadFromSupabase() }
@@ -694,7 +707,7 @@ final class ScheduleViewModel: ObservableObject {
             // Personal events from other users that didn't invite this user are not shown.
             guard cachedUserID.map({ isVisible(event, to: $0) }) ?? true else { return }
             events.append(event)
-            if UserDefaults.standard.bool(forKey: "notif_schedule") {
+            if UserPreferences.shared.notifSchedule {
                 notif.scheduleEventReminders(for: [event])
             }
             persist()
@@ -715,7 +728,7 @@ final class ScheduleViewModel: ObservableObject {
                 events[idx] = event
             } else if !deletedEventIDs.contains(event.id) {
                 events.append(event)
-                if UserDefaults.standard.bool(forKey: "notif_schedule") {
+                if UserPreferences.shared.notifSchedule {
                     notif.scheduleEventReminders(for: [event])
                 }
             }
@@ -824,7 +837,7 @@ final class ScheduleViewModel: ObservableObject {
             if let d = try? JSONEncoder().encode(events) {
                 UserDefaults.standard.set(d, forKey: eventsKey)
             }
-            if UserDefaults.standard.bool(forKey: "notif_schedule") {
+            if UserPreferences.shared.notifSchedule {
                 notif.scheduleEventReminders(for: events)
             }
             for ev in pendingLocal { Task { await supabaseUpsertEvent(ev) } }

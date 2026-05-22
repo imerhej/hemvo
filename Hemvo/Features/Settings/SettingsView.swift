@@ -12,10 +12,10 @@ struct SettingsView: View {
 
     @EnvironmentObject var authVM:   AuthViewModel
     @EnvironmentObject var storeKit: StoreKitService
-    @StateObject private var syncService = CloudSyncService.shared
+    @EnvironmentObject var prefs:    UserPreferences
     @Environment(\.dismiss) var dismiss
 
-    @AppStorage("hb_avatarColor") private var avatarColor: String = "#4CAF74"
+    private var avatarColor: String { prefs.avatarColor }
 
     // Navigation sheets
     @State private var showProfile       = false
@@ -28,11 +28,11 @@ struct SettingsView: View {
     @State private var showDeleteConfirm    = false
     @State private var deleteErrorMessage: String? = nil
 
-    // Notification toggles
-    @AppStorage("notif_bills")       private var billNotifs        = true
-    @AppStorage("notif_meals")       private var mealNotifs        = true
-    @AppStorage("notif_schedule")    private var scheduleNotifs    = true
-    @AppStorage("notif_maintenance") private var maintenanceNotifs = true
+    // Notification toggles — backed by UserPreferences (iCloud KV + UserDefaults)
+    private var billNotifs:        Binding<Bool> { Binding(get: { prefs.notifBills },       set: { prefs.notifBills = $0 }) }
+    private var mealNotifs:        Binding<Bool> { Binding(get: { prefs.notifMeals },       set: { prefs.notifMeals = $0 }) }
+    private var scheduleNotifs:    Binding<Bool> { Binding(get: { prefs.notifSchedule },    set: { prefs.notifSchedule = $0 }) }
+    private var maintenanceNotifs: Binding<Bool> { Binding(get: { prefs.notifMaintenance }, set: { prefs.notifMaintenance = $0 }) }
 
     @State private var systemNotifsGranted = true
 
@@ -89,7 +89,7 @@ struct SettingsView: View {
                     VStack(spacing: 18) {
                         accountGroup
                         notificationsGroup
-                        iCloudGroup
+                        preferenceSyncGroup
                         aboutGroup
                         signOutButton
                         dangerZone
@@ -303,9 +303,9 @@ struct SettingsView: View {
                 label: "Bill Reminders",
                 detail: "Alerts before bills are due",
                 tint: Color(hex: "#C62828")!,
-                isOn: $billNotifs
+                isOn: billNotifs
             )
-            .onChange(of: billNotifs) { _, enabled in
+            .onChange(of: prefs.notifBills) { _, enabled in
                 if !enabled { NotificationService.shared.cancelAllBillReminders() }
             }
             SettingsDivider()
@@ -314,9 +314,9 @@ struct SettingsView: View {
                 label: "Meal Plan Reminders",
                 detail: "Daily meal planning nudges",
                 tint: Color(hex: "#E67E22")!,
-                isOn: $mealNotifs
+                isOn: mealNotifs
             )
-            .onChange(of: mealNotifs) { _, enabled in
+            .onChange(of: prefs.notifMeals) { _, enabled in
                 if !enabled { NotificationService.shared.cancelMealReminders() }
             }
             SettingsDivider()
@@ -325,9 +325,9 @@ struct SettingsView: View {
                 label: "Schedule Events",
                 detail: "Upcoming event & task alerts",
                 tint: Color(hex: "#6A1B9A")!,
-                isOn: $scheduleNotifs
+                isOn: scheduleNotifs
             )
-            .onChange(of: scheduleNotifs) { _, enabled in
+            .onChange(of: prefs.notifSchedule) { _, enabled in
                 if !enabled { NotificationService.shared.cancelAllEventReminders() }
             }
             SettingsDivider()
@@ -336,55 +336,31 @@ struct SettingsView: View {
                 label: "Maintenance Reminders",
                 detail: "Home upkeep task alerts",
                 tint: Color(hex: "#4E342E")!,
-                isOn: $maintenanceNotifs
+                isOn: maintenanceNotifs
             )
-            .onChange(of: maintenanceNotifs) { _, enabled in
+            .onChange(of: prefs.notifMaintenance) { _, enabled in
                 if !enabled { NotificationService.shared.cancelAllMaintenanceReminders() }
             }
         }
     }
 
-    // MARK: - iCloud Group
-    private var iCloudGroup: some View {
-        SettingsGroup(header: "iCLOUD SYNC", headerIcon: "icloud.fill") {
+    // MARK: - Preference Sync Group
+    private var preferenceSyncGroup: some View {
+        SettingsGroup(header: "PREFERENCES SYNC", headerIcon: "icloud.fill") {
             HStack(spacing: 14) {
                 SettingsIconBox(icon: "icloud.fill", color: Color(hex: "#00838F")!)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("iCloud")
+                    Text("iCloud Preferences")
                         .font(.system(size: 14, weight: .semibold)).foregroundColor(Color.bpText)
-                    Text(syncService.statusDescription)
+                    Text("Notification settings & avatar color sync across your devices")
                         .font(.system(size: 12, weight: .medium)).foregroundColor(Color.bpTextSub)
                 }
                 Spacer()
-                if case .syncing = syncService.syncStatus {
-                    ProgressView().scaleEffect(0.8).tint(Color.bpSlate)
-                } else {
-                    Image(systemName: syncService.isICloudAvailable
-                          ? "checkmark.circle.fill"
-                          : "xmark.circle.fill")
-                        .font(.system(size: 17))
-                        .foregroundColor(syncService.isICloudAvailable
-                                         ? Color(hex: "#2E7D32")!
-                                         : Color.bpTextSub.opacity(0.35))
-                }
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 17))
+                    .foregroundColor(Color(hex: "#2E7D32")!)
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
-
-            SettingsDivider()
-
-            Button { Task { await syncService.triggerSync() } } label: {
-                HStack(spacing: 14) {
-                    SettingsIconBox(icon: "arrow.triangle.2.circlepath", color: Color(hex: "#00838F")!)
-                    Text("Sync Now")
-                        .font(.system(size: 14, weight: .semibold)).foregroundColor(Color.bpText)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color.bpTextSub.opacity(0.5))
-                }
-                .padding(.horizontal, 16).padding(.vertical, 14)
-            }
-            .buttonStyle(.plain)
         }
     }
 
@@ -638,5 +614,6 @@ struct SettingsLinkRow: View {
         SettingsView()
             .environmentObject(AuthViewModel())
             .environmentObject(StoreKitService.shared)
+            .environmentObject(UserPreferences.shared)
     }
 }

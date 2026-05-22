@@ -53,6 +53,7 @@ struct HemvoApp: App {
     @StateObject private var authVM      = AuthViewModel()
     @StateObject private var hsHolder    = HouseholdServiceHolder()
     @StateObject private var skHolder    = StoreKitServiceHolder()
+    @StateObject private var prefs       = UserPreferences.shared
     let persistence                      = PersistenceService.shared
 
     var body: some Scene {
@@ -61,6 +62,7 @@ struct HemvoApp: App {
                 .environmentObject(authVM)
                 .environmentObject(hsHolder.service)   // HouseholdService
                 .environmentObject(skHolder.service)   // StoreKitService
+                .environmentObject(prefs)              // UserPreferences
                 .environment(\.managedObjectContext,
                              persistence.container.viewContext)
                 .task {
@@ -94,19 +96,12 @@ struct HemvoApp: App {
 
     @MainActor
     private func scheduleTomorrowReminders() async {
-        // Register defaults so keys read as true when the user hasn't opened Settings yet.
-        UserDefaults.standard.register(defaults: [
-            "notif_bills":       true,
-            "notif_meals":       true,
-            "notif_schedule":    true,
-            "notif_maintenance": true,
-        ])
-
-        let svc = NotificationService.shared
+        let svc   = NotificationService.shared
+        let prefs = UserPreferences.shared
 
         // Meals
         let meals = loadMeals()
-        if UserDefaults.standard.bool(forKey: "notif_meals") {
+        if prefs.notifMeals {
             svc.scheduleMealReminders(meals: meals)
         } else {
             svc.cancelMealReminders()
@@ -114,7 +109,7 @@ struct HemvoApp: App {
 
         // Calendar events
         let events = loadEvents()
-        if UserDefaults.standard.bool(forKey: "notif_schedule") {
+        if prefs.notifSchedule {
             svc.scheduleEventReminders(for: events)
         } else {
             for event in events { svc.cancelEventReminders(for: event.id) }
@@ -122,14 +117,14 @@ struct HemvoApp: App {
 
         // Maintenance
         let maintItems = loadMaintenanceItems()
-        if UserDefaults.standard.bool(forKey: "notif_maintenance") {
+        if prefs.notifMaintenance {
             svc.scheduleMaintenanceReminders(for: maintItems)
         } else {
             for item in maintItems { svc.cancelMaintenanceReminder(for: item.id) }
         }
 
         // Bills
-        if UserDefaults.standard.bool(forKey: "notif_bills") {
+        if prefs.notifBills {
             svc.rescheduleAllBills(from: loadExpenses())
         } else {
             svc.cancelAllBillReminders()
@@ -208,9 +203,6 @@ private struct RootView: View {
         .animation(.easeInOut, value: authVM.isLoggedIn)
         .animation(.easeInOut, value: authVM.trialExpired)
         .animation(.easeInOut, value: householdService.household == nil)
-        .task {
-            await authVM.refreshSubscriptionStatus()
-        }
     }
 }
 

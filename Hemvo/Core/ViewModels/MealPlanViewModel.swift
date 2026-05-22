@@ -78,7 +78,7 @@ final class MealPlanViewModel: ObservableObject {
         meals.removeAll { $0.id == stamped.id }
         meals.append(stamped)
         persist()
-        if UserDefaults.standard.bool(forKey: "notif_meals") {
+        if UserPreferences.shared.notifMeals {
             notif.scheduleMealReminders(meals: meals)
         }
         objectWillChange.send()
@@ -98,7 +98,7 @@ final class MealPlanViewModel: ObservableObject {
         if let idx = meals.firstIndex(where: { $0.id == meal.id }) {
             meals[idx] = meal
             persist()
-            if UserDefaults.standard.bool(forKey: "notif_meals") {
+            if UserPreferences.shared.notifMeals {
                 notif.scheduleMealReminders(meals: meals)
             }
             objectWillChange.send()
@@ -113,18 +113,25 @@ final class MealPlanViewModel: ObservableObject {
         persistPendingUploadIDs()
         meals.removeAll { $0.id == meal.id }
         persist()
-        if UserDefaults.standard.bool(forKey: "notif_meals") {
+        if UserPreferences.shared.notifMeals {
             notif.scheduleMealReminders(meals: meals)
         }
         objectWillChange.send()
         Task { await supabaseDelete(id: meal.id) }
     }
 
+    // MARK: - Role-based write access
+    private var hasWriteAccess: Bool {
+        guard let uid = cachedUserID else { return false }
+        if let role = HouseholdService.shared.household?.members.first(where: { $0.id == uid.uuidString })?.role {
+            return role.canWrite
+        }
+        return true // solo user (no household) — full control
+    }
+
     // MARK: - Ownership check
-    // Any household member can delete any meal — prevents stale meals getting stuck
-    // when the original creator deletes on their device but others still see the remote row.
     func canDelete(_ meal: Meal) -> Bool {
-        cachedUserID != nil
+        hasWriteAccess
     }
 
     func clearWeek() {
@@ -150,7 +157,7 @@ final class MealPlanViewModel: ObservableObject {
         loadDeletedIDs()
         loadPendingUploadIDs()
         load()
-        if UserDefaults.standard.bool(forKey: "notif_meals") {
+        if UserPreferences.shared.notifMeals {
             notif.scheduleMealReminders(meals: meals)
         }
         Task { await loadFromSupabase() }
@@ -281,7 +288,7 @@ final class MealPlanViewModel: ObservableObject {
             }
             meals = remoteMeals + pendingLocal
             persist()
-            if UserDefaults.standard.bool(forKey: "notif_meals") {
+            if UserPreferences.shared.notifMeals {
                 notif.scheduleMealReminders(meals: meals)
             }
             for m in pendingLocal { Task { await supabaseUpsert(m) } }
@@ -408,7 +415,7 @@ final class MealPlanViewModel: ObservableObject {
         }
 
         persist()
-        if UserDefaults.standard.bool(forKey: "notif_meals") {
+        if UserPreferences.shared.notifMeals {
             notif.scheduleMealReminders(meals: meals)
         }
         objectWillChange.send()

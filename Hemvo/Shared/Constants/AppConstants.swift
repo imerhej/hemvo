@@ -15,9 +15,9 @@ enum AppConstants {
     static let trialDurationDays  = 7
 
     // MARK: - Pricing
-    static let monthlyPrice       = 8.99
-    static let annualPrice        = 92.99
-    static let annualMonthlyCost  = annualPrice / 12   // ~$5.00/mo
+    static let monthlyPrice       = 4.99
+    static let annualPrice        = 50.0
+    static let annualMonthlyCost  = annualPrice / 12   // ~$4.17/mo
 
     // MARK: - App Info
     static let appName            = "Hemvo"
@@ -25,9 +25,9 @@ enum AppConstants {
     static let buildNumber        = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
 
     // MARK: - URLs
-    static let privacyPolicyURL   = URL(string: "https://webstitching.com/hemvo/")!
-    static let termsOfServiceURL  = URL(string: "https://webstitching.com/hemvo/")!
-    static let supportURL         = URL(string: "https://webstitching.com/hemvo/")!
+    static let privacyPolicyURL   = URL(string: "https://hemvo.app/privacy.html")!
+    static let termsOfServiceURL  = URL(string: "https://hemvo.app/terms.html")!
+    static let supportURL         = URL(string: "https://hemvo.app/contact.html")!
 
     // MARK: - Dashboard
     static let dashboardPreviewCount = 3     // rows shown in dashboard section cards
