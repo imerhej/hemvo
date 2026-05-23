@@ -88,6 +88,7 @@ struct HemvoApp: App {
                     NotificationService.shared.clearBadge()
                     PushNotificationService.shared.refreshToken()
                     Task { await scheduleTomorrowReminders() }
+                    Task { await authVM.refreshSubscriptionStatus() }
                 }
         }
     }
@@ -189,6 +190,11 @@ private struct RootView: View {
             } else if authVM.trialExpired {
                 PaywallView()
 
+            } else if authVM.ownerSubscriptionLapsed {
+                OwnerLapsedView()
+                    .environmentObject(authVM)
+                    .environmentObject(householdService)
+
             } else if householdService.household == nil {
                 HouseholdSetupView()
                     .environmentObject(authVM)
@@ -202,6 +208,7 @@ private struct RootView: View {
         .animation(.easeInOut, value: authVM.isCheckingSession)
         .animation(.easeInOut, value: authVM.isLoggedIn)
         .animation(.easeInOut, value: authVM.trialExpired)
+        .animation(.easeInOut, value: authVM.ownerSubscriptionLapsed)
         .animation(.easeInOut, value: householdService.household == nil)
     }
 }

@@ -23,9 +23,13 @@ internal import UserNotifications
 final class AuthViewModel: ObservableObject {
 
     // MARK: - Published state
-    @Published var isLoggedIn:           Bool          = false
-    @Published var isSubscriptionActive: Bool          = false
-    @Published var trialDaysRemaining:   Int           = 0
+    @Published var isLoggedIn:              Bool          = false
+    @Published var isSubscriptionActive:    Bool          = false
+    @Published var trialDaysRemaining:      Int           = 0
+    /// True only after the owner's grace period has fully expired (members only).
+    @Published var ownerSubscriptionLapsed: Bool          = false
+    /// Days left in the grace window after the owner's sub lapsed (0 when expired or N/A).
+    @Published var gracePeriodDaysRemaining: Int          = 0
     @Published var profile:              HemvoProfile? = nil
     /// User UUID read directly from the Supabase session token.
     /// Available immediately after sign-in — does NOT require the profiles
@@ -58,12 +62,25 @@ final class AuthViewModel: ObservableObject {
         get async { await auth.currentUserID() }
     }
 
+    // MARK: - Role helpers
+
+    /// True when the current user owns their household (or has no household yet).
+    /// Defaults to true so new users without a household still hit the regular paywall.
+    var isOwner: Bool {
+        guard let uid = userID?.uuidString,
+              let h   = HouseholdService.shared.household else { return true }
+        return h.ownerUserID == uid
+    }
+
     // MARK: - Trial helpers
     var trialHasStarted: Bool {
         UserDefaults.standard.object(forKey: "hemvo_trialEndDate") as? Date != nil
     }
 
+    /// Only owners need a personal active subscription or trial.
+    /// Members are covered by the owner — their own trial expiry is irrelevant.
     var trialExpired: Bool {
+        guard isOwner else { return false }
         guard !isSubscriptionActive else { return false }
         if let end = UserDefaults.standard.object(forKey: "hemvo_trialEndDate") as? Date {
             return end < Date()
@@ -406,38 +423,78 @@ final class AuthViewModel: ObservableObject {
     }
 
     // MARK: - Subscription
+
     func refreshSubscriptionStatus() async {
-        // First check StoreKit for active paid subscription
         let hasSub = await storeKit.hasActiveSubscription()
+        let isActive: Bool
         if hasSub {
             isSubscriptionActive = true
             trialDaysRemaining   = 0
-            return
-        }
-        // Fall back to local trial end date
-        if let end = UserDefaults.standard.object(
-            forKey: "hemvo_trialEndDate") as? Date {
-            // Use seconds-level precision so the last day of the trial
-            // isn't falsely treated as expired (dateComponents .day returns
-            // 0 for any remaining time less than 24 hours).
-            let days = Calendar.current.dateComponents(
-                [.day], from: Date(), to: end).day ?? 0
+            isActive             = true
+        } else if let end = UserDefaults.standard.object(forKey: "hemvo_trialEndDate") as? Date {
+            let days = Calendar.current.dateComponents([.day], from: Date(), to: end).day ?? 0
             trialDaysRemaining   = max(days, 0)
             isSubscriptionActive = end > Date()
+            isActive             = end > Date()
         } else {
             isSubscriptionActive = false
             trialDaysRemaining   = 0
+            isActive             = false
         }
+
+        if isOwner {
+            // Push owner's current status to Supabase so members can read it.
+            await auth.updateSubscriptionStatus(isActive: isActive)
+        } else {
+            // Member: check whether the owner is still paying.
+            await checkOwnerSubscriptionStatus()
+        }
+    }
+
+    // MARK: - Grace Period (members only)
+
+    private func checkOwnerSubscriptionStatus() async {
+        guard let h = HouseholdService.shared.household, !h.ownerUserID.isEmpty else { return }
+        let ownerActive = await auth.fetchOwnerSubscriptionStatus(ownerID: h.ownerUserID)
+        if ownerActive {
+            clearOwnerGracePeriod()
+            ownerSubscriptionLapsed  = false
+            gracePeriodDaysRemaining = 0
+        } else {
+            startOrCheckGracePeriod(householdID: h.id)
+        }
+    }
+
+    private func startOrCheckGracePeriod(householdID: String) {
+        let key = "hemvo_ownerLapsedAt_\(householdID)"
+        let lapsedAt: Date
+        if let stored = UserDefaults.standard.object(forKey: key) as? Date {
+            lapsedAt = stored
+        } else {
+            lapsedAt = Date()
+            UserDefaults.standard.set(lapsedAt, forKey: key)
+        }
+        let elapsed   = Calendar.current.dateComponents([.day], from: lapsedAt, to: Date()).day ?? 0
+        let remaining = max(0, AppConstants.gracePeriodDays - elapsed)
+        gracePeriodDaysRemaining = remaining
+        ownerSubscriptionLapsed  = remaining == 0
+    }
+
+    private func clearOwnerGracePeriod() {
+        guard let h = HouseholdService.shared.household else { return }
+        UserDefaults.standard.removeObject(forKey: "hemvo_ownerLapsedAt_\(h.id)")
     }
 
     // MARK: - Sign Out
     func signOut() {
-        isLoggedIn           = false
-        isSubscriptionActive = false
-        trialDaysRemaining   = 0
-        profile              = nil
-        userID               = nil
-        errorMessage         = nil
+        isLoggedIn               = false
+        isSubscriptionActive     = false
+        trialDaysRemaining       = 0
+        ownerSubscriptionLapsed  = false
+        gracePeriodDaysRemaining = 0
+        profile                  = nil
+        userID                   = nil
+        errorMessage             = nil
         // Mark the app as locked rather than fully signing out the Supabase session.
         // This keeps the refresh token in the keychain so biometric login can restore
         // the session without re-entering a password. checkSession() skips auto-login
@@ -501,11 +558,13 @@ final class AuthViewModel: ObservableObject {
         try? await auth.signOut()
         KeychainHelper.shared.deleteAll()
 
-        isLoggedIn           = false
-        isSubscriptionActive = false
-        trialDaysRemaining   = 0
-        profile              = nil
-        userID               = nil
+        isLoggedIn               = false
+        isSubscriptionActive     = false
+        trialDaysRemaining       = 0
+        ownerSubscriptionLapsed  = false
+        gracePeriodDaysRemaining = 0
+        profile                  = nil
+        userID                   = nil
         return nil
     }
 }

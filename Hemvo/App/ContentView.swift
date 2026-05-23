@@ -66,6 +66,7 @@ struct ContentView: View {
         ZStack(alignment: .bottom) {
             // Page content — no native TabView so we control rendering
             Group {
+
                 switch selectedTab {
                 case .dashboard:
                     DashboardView(
@@ -102,8 +103,45 @@ struct ContentView: View {
             .padding(.bottom, 90)
 
             LiquidTabBar(selectedTab: $selectedTab)
+
+            // Grace period warning shown to members when the owner's sub has lapsed
+            // but the 5-day window hasn't expired yet.
+            if !authVM.isOwner && authVM.gracePeriodDaysRemaining > 0 {
+                GracePeriodBanner(daysRemaining: authVM.gracePeriodDaysRemaining)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
         .ignoresSafeArea(edges: .bottom)
+        .animation(.easeInOut(duration: 0.3), value: authVM.gracePeriodDaysRemaining)
+    }
+}
+
+// MARK: - GracePeriodBanner
+
+private struct GracePeriodBanner: View {
+    let daysRemaining: Int
+
+    var body: some View {
+        VStack {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.white)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Subscription Paused")
+                        .font(.caption).bold().foregroundColor(.white)
+                    Text(daysRemaining == 1
+                         ? "1 day left — ask your owner to renew."
+                         : "\(daysRemaining) days left — ask your owner to renew.")
+                        .font(.caption2).foregroundColor(.white.opacity(0.9))
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color.orange)
+            Spacer()
+        }
+        .ignoresSafeArea(edges: .top)
     }
 }
 

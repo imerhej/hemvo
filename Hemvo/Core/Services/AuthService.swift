@@ -156,6 +156,41 @@ final class AuthService {
         return profile
     }
 
+    // MARK: - Subscription Status Sync
+
+    /// Writes the owner's current subscription state to their Supabase profile row so
+    /// members on other devices can read it without needing StoreKit access.
+    func updateSubscriptionStatus(isActive: Bool) async {
+        guard let uid = await currentUserID() else { return }
+        let status = isActive ? "active" : "expired"
+        try? await supabase
+            .from("profiles")
+            .update(["subscription_status": status])
+            .eq("id", value: uid.uuidString)
+            .execute()
+    }
+
+    /// Reads `subscription_status` from the owner's profile row.
+    /// Returns `true` (fail-open) on any network error so members aren't wrongly locked out.
+    func fetchOwnerSubscriptionStatus(ownerID: String) async -> Bool {
+        struct StatusRow: Decodable {
+            let subscriptionStatus: String?
+            enum CodingKeys: String, CodingKey {
+                case subscriptionStatus = "subscription_status"
+            }
+        }
+        guard let row: StatusRow = try? await supabase
+            .from("profiles")
+            .select("subscription_status")
+            .eq("id", value: ownerID)
+            .single()
+            .execute()
+            .value
+        else { return true }
+        let s = row.subscriptionStatus
+        return s == "active" || s == "trial"
+    }
+
     // MARK: - Update Profile
     func updateProfile(fullName: String, username: String, avatarColor: String) async throws {
         guard let uid = await currentUserID() else { throw AuthError.notLoggedIn }

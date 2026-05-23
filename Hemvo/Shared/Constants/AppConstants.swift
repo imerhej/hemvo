@@ -11,8 +11,9 @@ internal import Combine
 internal import UserNotifications
 
 enum AppConstants {
-    // MARK: - Trial
+    // MARK: - Trial & Grace Period
     static let trialDurationDays  = 7
+    static let gracePeriodDays    = 5   // days members retain access after owner's sub lapses
 
     // MARK: - Pricing
     static let monthlyPrice       = 4.99

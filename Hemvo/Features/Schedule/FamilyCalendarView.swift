@@ -151,6 +151,18 @@ struct FamilyCalendarView: View {
                 }
             }
             .task { await calSvc.requestAccess() }
+            .onAppear {
+                // Handle the case where jumpToDate is already set when the view is first created
+                // (e.g. tapping an event from the dashboard before the schedule tab is active)
+                if let d = jumpToDate {
+                    let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: d))
+                    selectedDate   = d
+                    displayedMonth = monthStart ?? d
+                    monthScrollID  = monthStart
+                    mode           = .month
+                    jumpToDate     = nil
+                }
+            }
             .onChange(of: jumpToDate) { _, newDate in
                 guard let d = newDate else { return }
                 let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: d))
