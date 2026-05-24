@@ -10,6 +10,8 @@ internal import StoreKit
 internal import CoreData
 internal import Combine     // ← required: ObservableObject lives in Combine
 internal import UIKit
+internal import Supabase
+internal import Auth
 
 // MARK: - APNs delegate
 // Receives the device token once iOS registers with Apple's push servers.
@@ -65,6 +67,12 @@ struct HemvoApp: App {
                 .environmentObject(prefs)              // UserPreferences
                 .environment(\.managedObjectContext,
                              persistence.container.viewContext)
+                .onOpenURL { url in
+                    // Exchange the recovery deep-link for a Supabase session.
+                    // This fires authStateChanges(.passwordRecovery), which
+                    // AuthViewModel catches to show ResetPasswordView.
+                    Task { try? await supabase.auth.session(from: url) }
+                }
                 .task {
                     // 1. Request local + remote notification permission
                     let granted = await NotificationService.shared.requestAuthorization()
@@ -210,6 +218,14 @@ private struct RootView: View {
         .animation(.easeInOut, value: authVM.trialExpired)
         .animation(.easeInOut, value: authVM.ownerSubscriptionLapsed)
         .animation(.easeInOut, value: householdService.household == nil)
+        .fullScreenCover(
+            isPresented: Binding(
+                get: { authVM.showResetPassword },
+                set: { authVM.showResetPassword = $0 }
+            )
+        ) {
+            ResetPasswordView(onComplete: { authVM.showResetPassword = false })
+        }
     }
 }
 

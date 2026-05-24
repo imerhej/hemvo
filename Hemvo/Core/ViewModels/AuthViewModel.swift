@@ -18,6 +18,8 @@ internal import Foundation
 internal import Combine
 internal import CoreData
 internal import UserNotifications
+internal import Supabase
+internal import Auth
 
 @MainActor
 final class AuthViewModel: ObservableObject {
@@ -43,6 +45,9 @@ final class AuthViewModel: ObservableObject {
     /// RootView shows a splash screen until this is false so the router
     /// never evaluates household/paywall state before auth is known.
     @Published var isCheckingSession:    Bool          = true
+    /// Set to true when Supabase fires a .passwordRecovery event (user tapped
+    /// the reset-password deep link). RootView presents ResetPasswordView.
+    @Published var showResetPassword:    Bool          = false
 
     // MARK: - Dependencies
     private let auth     = AuthService.shared
@@ -54,6 +59,18 @@ final class AuthViewModel: ObservableObject {
         Task {
             await checkSession()
             isCheckingSession = false
+        }
+        Task { await observeAuthStateChanges() }
+    }
+
+    // Listens for .passwordRecovery so that when HemvoApp calls
+    // supabase.auth.session(from:) on the deep-link URL, the view model
+    // automatically raises the ResetPasswordView sheet.
+    private func observeAuthStateChanges() async {
+        for await (event, _) in supabase.auth.authStateChanges {
+            if event == .passwordRecovery {
+                showResetPassword = true
+            }
         }
     }
 
@@ -113,6 +130,13 @@ final class AuthViewModel: ObservableObject {
             let loaded = try await auth.loadProfile()
             profile = loaded
             await HouseholdService.shared.syncWithProfile(loaded)
+            // Restore trial end date from Supabase if UserDefaults lost it
+            // (e.g. after reinstall or device migration) so the trial guard
+            // in login() can see the existing trial and not start a new one.
+            if UserDefaults.standard.object(forKey: "hemvo_trialEndDate") as? Date == nil,
+               let serverEnd = loaded.trialEndDate {
+                UserDefaults.standard.set(serverEnd, forKey: "hemvo_trialEndDate")
+            }
         } catch {
             // Not fatal — profile may not exist yet for brand new users
             print("Profile load error: \(error.localizedDescription)")
@@ -195,9 +219,12 @@ final class AuthViewModel: ObservableObject {
             }
             await refreshSubscriptionStatus()
             PushNotificationService.shared.refreshToken()
-            // Start trial on first ever login if not already started
-            if !trialHasStarted {
-                startTrial()
+            // Start trial only for genuinely new accounts — i.e. no trial in
+            // UserDefaults (restored from Supabase above if it existed) AND
+            // no trial recorded server-side. This prevents a password change
+            // or reinstall from resetting the trial clock.
+            if !trialHasStarted && profile?.trialEndDate == nil {
+                await startTrial()
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
                     await offerBiometricEnrollment()
@@ -278,7 +305,7 @@ final class AuthViewModel: ObservableObject {
                 isLoggedIn = true
                 UserDefaults.standard.removeObject(forKey: "hemvo_lockedOut")
                 userID = await auth.currentUserID()
-                startTrial()
+                await startTrial()
                 await loadProfile()
                 PushNotificationService.shared.refreshToken()
                 Task { @MainActor in
@@ -411,7 +438,7 @@ final class AuthViewModel: ObservableObject {
     }
 
     // MARK: - Trial
-    private func startTrial() {
+    private func startTrial() async {
         let end = Calendar.current.date(
             byAdding: .day,
             value: AppConstants.trialDurationDays,
@@ -420,6 +447,9 @@ final class AuthViewModel: ObservableObject {
         UserDefaults.standard.set(end, forKey: "hemvo_trialEndDate")
         trialDaysRemaining   = AppConstants.trialDurationDays
         isSubscriptionActive = true
+        // Persist to Supabase so the trial survives reinstalls and device
+        // migrations — loadProfile() restores it to UserDefaults on next login.
+        await auth.updateTrialEndDate(end)
     }
 
     // MARK: - Subscription

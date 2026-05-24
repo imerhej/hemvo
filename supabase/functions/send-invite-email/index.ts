@@ -4,7 +4,7 @@
 //
 // Required Supabase secrets (set once via CLI or dashboard):
 //   supabase secrets set RESEND_API_KEY=re_xxxx
-//   supabase secrets set FROM_ADDRESS="Hemvo <noreply@yourdomain.com>"
+//   supabase secrets set FROM_ADDRESS="Hemvo <noreply@hemvo.app>"
 //
 // Deploy: supabase functions deploy send-invite-email
 // Logs:   supabase functions logs send-invite-email

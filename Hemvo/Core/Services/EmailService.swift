@@ -8,7 +8,7 @@
 // Deploy the function once:
 //   supabase functions deploy send-invite-email
 //   supabase secrets set RESEND_API_KEY=re_xxxx
-//   supabase secrets set FROM_ADDRESS="Hemvo <noreply@webstitching.com>"
+//   supabase secrets set FROM_ADDRESS="Hemvo <noreply@hemvo.app>"
 
 internal import Foundation
 internal import Supabase

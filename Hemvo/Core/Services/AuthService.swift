@@ -92,6 +92,17 @@ final class AuthService {
                 "new_pw":     newPassword
             ])
             .execute()
+        await sendPasswordChangedNotification()
+    }
+
+    // nonisolated — called from nonisolated changePassword; errors are
+    // swallowed here so they never surface to the caller.
+    private nonisolated func sendPasswordChangedNotification() async {
+        struct Empty: Encodable {}
+        _ = try? await supabase.functions.invoke(
+            "send-password-changed-email",
+            options: FunctionInvokeOptions(body: Empty())
+        )
     }
 
     // MARK: - Reset Password (deep-link recovery session, no current password needed)
@@ -147,8 +158,16 @@ final class AuthService {
     }
 
     // MARK: - Password Reset Email
+    // Calls the send-password-reset-email Edge Function instead of Supabase's
+    // built-in email so the message is delivered via Resend from noreply@hemvo.app.
+    // The Edge Function uses the service role to generate the recovery link and
+    // sends { sent: true } regardless of whether the email exists (prevent enumeration).
     func sendPasswordReset(to email: String) async throws {
-        try await supabase.auth.resetPasswordForEmail(email)
+        struct Payload: Encodable { let email: String }
+        try await supabase.functions.invoke(
+            "send-password-reset-email",
+            options: FunctionInvokeOptions(body: Payload(email: email))
+        )
     }
 
     // MARK: - Load Profile
@@ -164,6 +183,20 @@ final class AuthService {
         return profile
     }
 
+    // MARK: - Trial End Date Sync
+    func updateTrialEndDate(_ date: Date) async {
+        guard let uid = await currentUserID() else { return }
+        struct Payload: Encodable {
+            let trialEndDate: Date
+            enum CodingKeys: String, CodingKey { case trialEndDate = "trial_end_date" }
+        }
+        _ = try? await supabase
+            .from("profiles")
+            .update(Payload(trialEndDate: date))
+            .eq("id", value: uid)
+            .execute()
+    }
+
     // MARK: - Subscription Status Sync
 
     /// Writes the owner's current subscription state to their Supabase profile row so
@@ -171,7 +204,7 @@ final class AuthService {
     func updateSubscriptionStatus(isActive: Bool) async {
         guard let uid = await currentUserID() else { return }
         let status = isActive ? "active" : "expired"
-        try? await supabase
+        _ = try? await supabase
             .from("profiles")
             .update(["subscription_status": status])
             .eq("id", value: uid.uuidString)
