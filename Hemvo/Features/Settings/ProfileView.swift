@@ -526,6 +526,7 @@ struct SecuritySection: View {
     @State private var biometricError   = ""
     @State private var showBiometricError = false
     @State private var isBiometricToggled = false
+    @State private var saveTask: Task<Void, Never>? = nil
 
     @FocusState private var focusedField: PWField?
     enum PWField { case current, new, confirm }
@@ -552,20 +553,23 @@ struct SecuritySection: View {
                 SecurityPasswordRow(
                     label: "Current Password", icon: "lock.fill",
                     text: $currentPassword, focused: $focusedField, tag: .current,
-                    accentColor: focusedField == .current ? Color.bpSlate : Color(.systemGray3)
+                    accentColor: focusedField == .current ? Color.bpSlate : Color(.systemGray3),
+                    contentType: .password
                 )
                 Color(hex: "#DDE1EE")!.frame(height: 1).padding(.leading, 52)
                 SecurityPasswordRow(
                     label: "New Password", icon: "lock.open.fill",
                     text: $newPassword, focused: $focusedField, tag: .new,
-                    accentColor: focusedField == .new ? Color.bpNavy : Color(.systemGray3)
+                    accentColor: focusedField == .new ? Color.bpNavy : Color(.systemGray3),
+                    contentType: .newPassword
                 )
                 Color(hex: "#DDE1EE")!.frame(height: 1).padding(.leading, 52)
                 SecurityPasswordRow(
                     label: "Confirm New Password", icon: "checkmark.shield.fill",
                     text: $confirmPassword, focused: $focusedField, tag: .confirm,
                     accentColor: focusedField == .confirm ? Color.bpNavy : Color(.systemGray3),
-                    trailingCheck: passwordsMatch
+                    trailingCheck: passwordsMatch,
+                    contentType: .newPassword
                 )
             }
             .background(Color.bpSurface)
@@ -628,6 +632,7 @@ struct SecuritySection: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .onDisappear { saveTask?.cancel() }
     }
 
     private var biometricCard: some View {
@@ -674,9 +679,11 @@ struct SecuritySection: View {
         guard canSave else { withAnimation { shake += 1 }; return }
         focusedField = nil
         isSaving     = true
-        Task {
+        saveTask?.cancel()
+        saveTask = Task { @MainActor in
             let success = await authVM.changePassword(
                 currentPassword: currentPassword, newPassword: newPassword)
+            guard !Task.isCancelled else { return }
             isSaving = false
             if success {
                 currentPassword = ""; newPassword = ""; confirmPassword = ""
@@ -693,6 +700,7 @@ struct SecuritySection: View {
                 withAnimation { shake += 1 }
             }
             try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !Task.isCancelled else { return }
             withAnimation { showToast = false }
         }
     }
@@ -700,13 +708,14 @@ struct SecuritySection: View {
 
 // MARK: - SecurityPasswordRow
 private struct SecurityPasswordRow: View {
-    let label:       String
-    let icon:        String
-    @Binding var text: String
-    var focused:     FocusState<SecuritySection.PWField?>.Binding
-    let tag:         SecuritySection.PWField
-    var accentColor: Color = Color.bpSlate
-    var trailingCheck: Bool = false
+    let label:           String
+    let icon:            String
+    @Binding var text:   String
+    var focused:         FocusState<SecuritySection.PWField?>.Binding
+    let tag:             SecuritySection.PWField
+    var accentColor:     Color                  = Color.bpSlate
+    var trailingCheck:   Bool                   = false
+    var contentType:     UITextContentType      = .password
 
     @State private var showText = false
     var isFocused: Bool { focused.wrappedValue == tag }
@@ -727,15 +736,21 @@ private struct SecurityPasswordRow: View {
                     .font(.system(size: 10, weight: .heavy)).kerning(0.5)
                     .foregroundColor(isFocused ? Color.bpNavy : Color.bpTextSub)
                     .animation(.easeInOut(duration: 0.15), value: isFocused)
+                // Only one field lives in the hierarchy at a time so the two
+                // views never compete for first-responder with the same tag.
+                // onChange re-focuses the newly visible field to keep the keyboard up.
                 ZStack(alignment: .leading) {
-                    TextField(label, text: $text)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .focused(focused, equals: tag)
-                        .opacity(showText ? 1 : 0)
-                    SecureField(label, text: $text)
-                        .focused(focused, equals: tag)
-                        .opacity(showText ? 0 : 1)
+                    if showText {
+                        TextField(label, text: $text)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .textContentType(contentType)
+                            .focused(focused, equals: tag)
+                    } else {
+                        SecureField(label, text: $text)
+                            .textContentType(contentType)
+                            .focused(focused, equals: tag)
+                    }
                 }
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(Color.bpText)
@@ -748,7 +763,12 @@ private struct SecurityPasswordRow: View {
                         .transition(.scale.combined(with: .opacity))
                 }
                 Button {
-                    withAnimation(.easeInOut(duration: 0.15)) { showText.toggle() }
+                    let wasFocused = isFocused
+                    showText.toggle()
+                    // Restore focus on the newly visible field so the keyboard stays up.
+                    if wasFocused {
+                        DispatchQueue.main.async { focused.wrappedValue = tag }
+                    }
                 } label: {
                     Image(systemName: showText ? "eye.slash.fill" : "eye.fill")
                         .font(.system(size: 14))

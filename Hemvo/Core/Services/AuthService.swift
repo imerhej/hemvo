@@ -74,16 +74,24 @@ final class AuthService {
     }
 
     // MARK: - Change Password (authenticated user, requires current password)
-    // nonisolated so this runs on the global concurrent executor (background thread),
-    // not the main actor. The Supabase SDK posts session-state callbacks back to the
-    // main actor internally; calling these SDK methods FROM the main actor causes the
-    // SDK to deadlock waiting for the very actor that's blocked waiting for the SDK.
+    // Uses a SECURITY DEFINER RPC instead of supabase.auth.signIn + auth.update.
+    // auth.updateUser triggers Supabase's secure_password_change enforcement which
+    // requires an OTP reauthenticate() flow — not a plain signIn. The RPC verifies
+    // the current password via pgcrypto and updates auth.users atomically on the
+    // server, which works regardless of that project setting.
+    // nonisolated so this runs off the main actor; the Supabase SDK dispatches
+    // session callbacks to the main actor internally, and calling these methods
+    // from the main actor causes a deadlock.
     nonisolated func changePassword(currentPassword: String, to newPassword: String) async throws {
-        guard let email = try? await supabase.auth.session.user.email else {
+        guard await currentUserID() != nil else {
             throw AuthError.notLoggedIn
         }
-        try await supabase.auth.signIn(email: email, password: currentPassword)
-        _ = try await supabase.auth.update(user: UserAttributes(password: newPassword))
+        try await supabase
+            .rpc("change_user_password", params: [
+                "current_pw": currentPassword,
+                "new_pw":     newPassword
+            ])
+            .execute()
     }
 
     // MARK: - Reset Password (deep-link recovery session, no current password needed)
