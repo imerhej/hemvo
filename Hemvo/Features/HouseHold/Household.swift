@@ -49,9 +49,11 @@ struct HouseholdMembership: Codable, Identifiable {
     var avatarHex: String   // hex color string, e.g. "#4CAF74"
     var joinedAt: Date
     var permissions: MemberPermissions
+    var isDisabled: Bool
 
     init(id: String, username: String, email: String, role: HouseholdRole,
-         avatarHex: String, joinedAt: Date, permissions: MemberPermissions? = nil) {
+         avatarHex: String, joinedAt: Date, permissions: MemberPermissions? = nil,
+         isDisabled: Bool = false) {
         self.id          = id
         self.username    = username
         self.email       = email
@@ -59,10 +61,11 @@ struct HouseholdMembership: Codable, Identifiable {
         self.avatarHex   = avatarHex
         self.joinedAt    = joinedAt
         self.permissions = permissions ?? .defaults(for: role)
+        self.isDisabled  = isDisabled
     }
 
     // Backward-compatible decode: existing cached memberships without permissions
-    // fall back to role-based defaults so no data is lost on upgrade.
+    // or isDisabled fall back to safe defaults so no data is lost on upgrade.
     init(from decoder: Decoder) throws {
         let c        = try decoder.container(keyedBy: CodingKeys.self)
         id           = try c.decode(String.self,         forKey: .id)
@@ -73,6 +76,7 @@ struct HouseholdMembership: Codable, Identifiable {
         joinedAt     = try c.decode(Date.self,           forKey: .joinedAt)
         permissions  = try c.decodeIfPresent(MemberPermissions.self, forKey: .permissions)
                        ?? .defaults(for: role)
+        isDisabled   = try c.decodeIfPresent(Bool.self,  forKey: .isDisabled) ?? false
     }
 }
 

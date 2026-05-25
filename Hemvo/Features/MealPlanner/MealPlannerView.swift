@@ -75,6 +75,8 @@ struct MealPlannerView: View {
                             summaryCard
                         }
                         .padding(.bottom, 100)
+                        .frame(maxWidth: 680)
+                        .frame(maxWidth: .infinity)
                     }
                 }
 

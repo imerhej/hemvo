@@ -30,6 +30,18 @@ struct AddEventView: View {
 
     var colorHex: String { category.defaultColorHex }
 
+    private var members: [HouseholdMembership] {
+        HouseholdService.shared.household?.members ?? []
+    }
+
+    private var inviteeSummary: String {
+        if inviteeIDs.isEmpty { return "None" }
+        let names = members
+            .filter { inviteeIDs.contains(UUID(uuidString: $0.id) ?? UUID()) }
+            .map(\.username)
+        return names.count <= 2 ? names.joined(separator: ", ") : "\(names.count) selected"
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -63,28 +75,36 @@ struct AddEventView: View {
                         }
                     }
                 }
-                let members = HouseholdService.shared.household?.members ?? []
                 if !members.isEmpty {
                     Section("Invitees") {
-                        ForEach(members) { member in
-                            let memberUUID = UUID(uuidString: member.id)
-                            Button {
-                                guard let uuid = memberUUID else { return }
-                                if inviteeIDs.contains(uuid) {
-                                    inviteeIDs.remove(uuid)
-                                } else {
-                                    inviteeIDs.insert(uuid)
-                                }
-                            } label: {
-                                HStack {
-                                    Text(member.username)
-                                        .foregroundStyle(.primary)
-                                    Spacer()
+                        Menu {
+                            ForEach(members) { member in
+                                let memberUUID = UUID(uuidString: member.id)
+                                Button {
+                                    guard let uuid = memberUUID else { return }
+                                    if inviteeIDs.contains(uuid) {
+                                        inviteeIDs.remove(uuid)
+                                    } else {
+                                        inviteeIDs.insert(uuid)
+                                    }
+                                } label: {
                                     if let uuid = memberUUID, inviteeIDs.contains(uuid) {
-                                        Image(systemName: "checkmark")
-                                            .foregroundStyle(.blue)
+                                        Label(member.username, systemImage: "checkmark")
+                                    } else {
+                                        Text(member.username)
                                     }
                                 }
+                            }
+                        } label: {
+                            HStack {
+                                Text("Invitees")
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Text(inviteeSummary)
+                                    .foregroundStyle(.secondary)
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .foregroundStyle(.secondary)
+                                    .font(.caption2)
                             }
                         }
                     }

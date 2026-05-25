@@ -25,7 +25,7 @@ enum HouseholdError: LocalizedError {
         case .expiredCode:        return "This invite code has expired. Ask the owner for a new one."
         case .alreadyMember:      return "You're already a member of a household."
         case .notFound:           return "Household not found."
-        case .notOwner:           return "Only an owner or adult member can do that."
+        case .notOwner:           return "Only the household owner can do that."
         case .emailFailed(let c): return "Invite saved, but the email couldn't be delivered. Share this code manually: \(c)"
         }
     }
@@ -340,19 +340,62 @@ final class HouseholdService: ObservableObject {
 
     func removeMember(memberID: String, requestingUserID: String) throws {
         guard var h = household else { throw HouseholdError.notFound }
-        // Use ownerUserID as the authoritative check rather than the member list,
-        // which may be stale if fetchMembersFromSupabase hasn't returned yet.
+        // Only the household owner may delete members.
         let isOwner = h.ownerUserID == requestingUserID ||
-            h.members.first(where: { $0.id == requestingUserID })?.role.canInvite == true
+            h.members.first(where: { $0.id == requestingUserID })?.role == .owner
         guard isOwner else { throw HouseholdError.notOwner }
         h.members.removeAll { $0.id == memberID }
         household = h
         saveHousehold()
-        Task { await removeMemberFromSupabase(memberID: memberID) }
+        Task { await deleteMemberFromSupabase(memberID: memberID) }
     }
 
-    func removeMemberFromSupabase(memberID: String) async {
-        await clearProfileHousehold(userID: memberID)
+    func deleteMemberFromSupabase(memberID: String) async {
+        guard let memberUUID = UUID(uuidString: memberID) else {
+            print("[HouseholdService] deleteMember: invalid UUID — \(memberID)")
+            return
+        }
+        struct Params: Encodable {
+            let pMemberId: UUID
+            enum CodingKeys: String, CodingKey { case pMemberId = "p_member_id" }
+        }
+        do {
+            try await supabase
+                .rpc("delete_household_member", params: Params(pMemberId: memberUUID))
+                .execute()
+        } catch {
+            print("[HouseholdService] delete_household_member error: \(error.localizedDescription)")
+        }
+    }
+
+    func setMemberDisabled(memberID: String, disabled: Bool) async {
+        guard let memberUUID = UUID(uuidString: memberID) else {
+            print("[HouseholdService] setMemberDisabled: invalid UUID — \(memberID)")
+            return
+        }
+        struct Params: Encodable {
+            let pMemberId: UUID
+            let pDisabled: Bool
+            enum CodingKeys: String, CodingKey {
+                case pMemberId = "p_member_id"
+                case pDisabled = "p_disabled"
+            }
+        }
+        do {
+            try await supabase
+                .rpc("set_member_disabled",
+                     params: Params(pMemberId: memberUUID, pDisabled: disabled))
+                .execute()
+            // Update local state immediately so the UI reflects the change.
+            if var h = household,
+               let i = h.members.firstIndex(where: { $0.id == memberID }) {
+                h.members[i].isDisabled = disabled
+                household = h
+                saveHousehold()
+            }
+        } catch {
+            print("[HouseholdService] set_member_disabled error: \(error.localizedDescription)")
+        }
     }
 
     // Nullifies household_id and role on a profile row.
@@ -599,7 +642,8 @@ final class HouseholdService: ObservableObject {
                     role: role,
                     avatarHex: profile.avatarColor ?? "#C8922A",
                     joinedAt: profile.createdAt ?? Date(),
-                    permissions: permissions
+                    permissions: permissions,
+                    isDisabled: profile.disabled ?? false
                 )
             }
 

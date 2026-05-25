@@ -225,25 +225,27 @@ struct SettingsView: View {
                     }
                 }
 
-                // Subscription badge
-                HStack(spacing: 8) {
-                    Image(systemName: subIcon)
-                        .font(.system(size: 11, weight: .bold))
-                    Text(subLabel)
-                        .font(.system(size: 12, weight: .heavy))
-                        .kerning(0.2)
-                    Spacer()
-                    Text(isActive ? "Manage →" : "Upgrade →")
-                        .font(.system(size: 11, weight: .heavy))
+                // Subscription badge — only the owner can manage/upgrade
+                if authVM.isOwner {
+                    HStack(spacing: 8) {
+                        Image(systemName: subIcon)
+                            .font(.system(size: 11, weight: .bold))
+                        Text(subLabel)
+                            .font(.system(size: 12, weight: .heavy))
+                            .kerning(0.2)
+                        Spacer()
+                        Text(isActive ? "Manage →" : "Upgrade →")
+                            .font(.system(size: 11, weight: .heavy))
+                    }
+                    .foregroundColor(accent)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(Color.white.opacity(0.92))
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.12), radius: 4, y: 2)
+                    .padding(.top, 16)
+                    .onTapGesture { isActive ? (showSubscription = true) : (showPaywall = true) }
                 }
-                .foregroundColor(accent)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
-                .background(Color.white.opacity(0.92))
-                .cornerRadius(12)
-                .shadow(color: Color.black.opacity(0.12), radius: 4, y: 2)
-                .padding(.top, 16)
-                .onTapGesture { isActive ? (showSubscription = true) : (showPaywall = true) }
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)
@@ -258,7 +260,7 @@ struct SettingsView: View {
             SettingsNavRow(icon: "person.circle.fill",  color: accent,                  label: "Edit Profile",         chevron: true) { showProfile = true }
             SettingsDivider()
             SettingsNavRow(icon: "house.fill",           color: Color(hex: "#1565C0")!, label: "Household Members",   chevron: true) { showHousehold = true }
-            if !isRestrictedRole {
+            if authVM.isOwner {
                 SettingsDivider()
                 SettingsNavRow(icon: "crown.fill",      color: Color(hex: "#E67E22")!, label: "Manage Subscription", chevron: true) { showSubscription = true }
                 SettingsDivider()

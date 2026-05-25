@@ -226,87 +226,89 @@ struct SubscriptionStatusView: View {
         .shadow(color: Color.bpText.opacity(0.04), radius: 8, y: 3)
     }
 
-    // MARK: - Action Buttons — ALL always visible
+    // MARK: - Action Buttons — owner-only
     private var actionButtons: some View {
         VStack(spacing: 12) {
 
-            // Upgrade / Renew (non-active subscribers)
-            if !isActive {
-                Button { showPaywall = true } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "crown.fill").font(.system(size: 16))
-                        Text(isExpired ? "Renew Subscription" : "Upgrade to Premium")
-                            .font(.system(size: 16, weight: .bold))
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 17)
-                    .background(
-                        LinearGradient(
-                            colors: isExpired ? [Color(hex: "#B71C1C")!, Color(hex: "#E53935")!]
-                                             : [Color(hex: "#E67E22")!, Color(hex: "#F39C12")!],
-                            startPoint: .leading, endPoint: .trailing
+            if authVM.isOwner {
+                // Upgrade / Renew (non-active subscribers)
+                if !isActive {
+                    Button { showPaywall = true } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "crown.fill").font(.system(size: 16))
+                            Text(isExpired ? "Renew Subscription" : "Upgrade to Premium")
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 17)
+                        .background(
+                            LinearGradient(
+                                colors: isExpired ? [Color(hex: "#B71C1C")!, Color(hex: "#E53935")!]
+                                                 : [Color(hex: "#E67E22")!, Color(hex: "#F39C12")!],
+                                startPoint: .leading, endPoint: .trailing
+                            )
                         )
-                    )
-                    .cornerRadius(16)
-                    .shadow(color: (isExpired ? Color(hex: "#B71C1C")! : Color(hex: "#E67E22")!).opacity(0.4), radius: 12, y: 5)
-                }
-            }
-
-            // Restore Purchases — always visible
-            Button {
-                Task {
-                    isRefreshing = true
-                    await storeKit.restorePurchases()
-                    await authVM.refreshSubscriptionStatus()
-                    isRefreshing = false
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    if isRefreshing {
-                        ProgressView().scaleEffect(0.85).tint(Color.bpNavy)
-                    } else {
-                        Image(systemName: "arrow.clockwise.circle.fill").font(.system(size: 16))
+                        .cornerRadius(16)
+                        .shadow(color: (isExpired ? Color(hex: "#B71C1C")! : Color(hex: "#E67E22")!).opacity(0.4), radius: 12, y: 5)
                     }
-                    Text(isRefreshing ? "Restoring…" : "Restore Purchases")
-                        .font(.system(size: 15, weight: .bold))
                 }
-                .foregroundColor(Color.bpNavy)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 15)
-                .background(Color.bpNavyLight)
-                .cornerRadius(16)
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.bpNavy.opacity(0.2), lineWidth: 1))
-            }
-            .disabled(isRefreshing)
 
-            // Refresh Status — always visible
-            Button { refresh() } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 15, weight: .semibold))
-                    Text("Refresh Status").font(.system(size: 15, weight: .bold))
-                }
-                .foregroundColor(Color.bpSlate)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 15)
-                .background(Color.bpSurface)
-                .cornerRadius(16)
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.bpDivider, lineWidth: 1))
-            }
-
-            // Cancel Subscription — always visible when active paid
-            if isActive {
-                Button { showCancelInfo = true } label: {
+                // Restore Purchases
+                Button {
+                    Task {
+                        isRefreshing = true
+                        await storeKit.restorePurchases()
+                        await authVM.refreshSubscriptionStatus()
+                        isRefreshing = false
+                    }
+                } label: {
                     HStack(spacing: 10) {
-                        Image(systemName: "xmark.circle.fill").font(.system(size: 15, weight: .semibold))
-                        Text("Cancel Subscription").font(.system(size: 15, weight: .bold))
+                        if isRefreshing {
+                            ProgressView().scaleEffect(0.85).tint(Color.bpNavy)
+                        } else {
+                            Image(systemName: "arrow.clockwise.circle.fill").font(.system(size: 16))
+                        }
+                        Text(isRefreshing ? "Restoring…" : "Restore Purchases")
+                            .font(.system(size: 15, weight: .bold))
                     }
-                    .foregroundColor(.red)
+                    .foregroundColor(Color.bpNavy)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 15)
-                    .background(Color.red.opacity(0.07))
+                    .background(Color.bpNavyLight)
                     .cornerRadius(16)
-                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.red.opacity(0.2), lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.bpNavy.opacity(0.2), lineWidth: 1))
+                }
+                .disabled(isRefreshing)
+
+                // Refresh Status
+                Button { refresh() } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 15, weight: .semibold))
+                        Text("Refresh Status").font(.system(size: 15, weight: .bold))
+                    }
+                    .foregroundColor(Color.bpSlate)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(Color.bpSurface)
+                    .cornerRadius(16)
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.bpDivider, lineWidth: 1))
+                }
+
+                // Cancel Subscription
+                if isActive {
+                    Button { showCancelInfo = true } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "xmark.circle.fill").font(.system(size: 15, weight: .semibold))
+                            Text("Cancel Subscription").font(.system(size: 15, weight: .bold))
+                        }
+                        .foregroundColor(.red)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(Color.red.opacity(0.07))
+                        .cornerRadius(16)
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.red.opacity(0.2), lineWidth: 1))
+                    }
                 }
             }
 

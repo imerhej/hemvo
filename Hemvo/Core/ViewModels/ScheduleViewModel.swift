@@ -103,8 +103,19 @@ final class ScheduleViewModel: ObservableObject {
     }
 
     // MARK: - Ownership check
+
+    // Only the creator may modify an event. If createdBy is nil (legacy/solo events), allow.
+    private func isOwnedByCurrentUser(_ event: CalendarEvent) -> Bool {
+        guard let createdBy = event.createdBy else { return true }
+        return createdBy == cachedUserID?.uuidString
+    }
+
     func canDelete(_ event: CalendarEvent) -> Bool {
-        hasWriteAccess
+        isOwnedByCurrentUser(event) && hasWriteAccess
+    }
+
+    func canEdit(_ event: CalendarEvent) -> Bool {
+        isOwnedByCurrentUser(event) && hasWriteAccess
     }
 
     func canDelete(_ task: HouseTask) -> Bool {

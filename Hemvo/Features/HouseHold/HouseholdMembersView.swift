@@ -21,6 +21,7 @@ struct HouseholdMembersView: View {
     @State private var newHouseholdName         = ""
     @State private var showLeaveConfirm         = false
     @State private var memberToDelete:          HouseholdMembership? = nil
+    @State private var memberToToggleDisabled:  HouseholdMembership? = nil
     @State private var memberToEditPermissions: HouseholdMembership? = nil
 
     private let amber   = Color(red: 0.784, green: 0.573, blue: 0.165)
@@ -107,6 +108,26 @@ struct HouseholdMembersView: View {
                 Button("Cancel", role: .cancel) { memberToDelete = nil }
             } message: { member in
                 Text("\(member.username) will be removed from the household and lose access to all shared data.")
+            }
+            .alert(
+                memberToToggleDisabled?.isDisabled == true ? "Enable Account?" : "Disable Account?",
+                isPresented: Binding(get: { memberToToggleDisabled != nil },
+                                     set: { if !$0 { memberToToggleDisabled = nil } }),
+                presenting: memberToToggleDisabled
+            ) { member in
+                let disabling = !member.isDisabled
+                Button(disabling ? "Disable \(member.username)" : "Enable \(member.username)",
+                       role: disabling ? .destructive : nil) {
+                    doToggleDisabled(member)
+                    memberToToggleDisabled = nil
+                }
+                Button("Cancel", role: .cancel) { memberToToggleDisabled = nil }
+            } message: { member in
+                if member.isDisabled {
+                    Text("\(member.username) will regain access to the household.")
+                } else {
+                    Text("\(member.username) will be signed out and blocked from logging in.")
+                }
             }
             .sheet(item: $memberToEditPermissions) { member in
                 MemberPermissionsSheet(
@@ -233,13 +254,21 @@ struct HouseholdMembersView: View {
                 HStack(spacing: 6) {
                     Text(member.username)
                         .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(brown)
+                        .foregroundStyle(member.isDisabled ? muted : brown)
                     if member.id == currentUserID {
                         Text("You")
                             .font(.system(size: 10, weight: .heavy))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(amber)
+                            .cornerRadius(4)
+                    }
+                    if member.isDisabled {
+                        Text("Disabled")
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Color.red.opacity(0.7))
                             .cornerRadius(4)
                     }
                 }
@@ -290,6 +319,11 @@ struct HouseholdMembersView: View {
                         Image(systemName: "slider.horizontal.3")
                             .font(.system(size: 17))
                             .foregroundStyle(amber.opacity(0.85))
+                    }
+                    Button { memberToToggleDisabled = member } label: {
+                        Image(systemName: member.isDisabled ? "person.fill.checkmark" : "person.fill.xmark")
+                            .font(.system(size: 17))
+                            .foregroundStyle(member.isDisabled ? Color.green.opacity(0.75) : Color.orange.opacity(0.85))
                     }
                     Button { memberToDelete = member } label: {
                         Image(systemName: "trash.fill")
@@ -403,6 +437,10 @@ struct HouseholdMembersView: View {
         } catch {
             print("[HouseholdMembers] removeMember error: \(error.localizedDescription)")
         }
+    }
+
+    private func doToggleDisabled(_ member: HouseholdMembership) {
+        Task { await householdService.setMemberDisabled(memberID: member.id, disabled: !member.isDisabled) }
     }
 
     private func doLeave() {

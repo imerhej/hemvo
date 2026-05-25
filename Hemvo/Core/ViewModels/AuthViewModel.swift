@@ -63,13 +63,33 @@ final class AuthViewModel: ObservableObject {
         Task { await observeAuthStateChanges() }
     }
 
-    // Listens for .passwordRecovery so that when HemvoApp calls
-    // supabase.auth.session(from:) on the deep-link URL, the view model
-    // automatically raises the ResetPasswordView sheet.
+    // Listens for auth events fired after HemvoApp processes a deep-link URL.
+    // .passwordRecovery → show ResetPasswordView
+    // .signedIn (while logged out) → magic-link email confirmation tapped; log in directly
     private func observeAuthStateChanges() async {
-        for await (event, _) in supabase.auth.authStateChanges {
-            if event == .passwordRecovery {
+        for await (event, session) in supabase.auth.authStateChanges {
+            switch event {
+            case .passwordRecovery:
                 showResetPassword = true
+            case .signedIn where !isLoggedIn:
+                isLoggedIn = true
+                userID     = session?.user.id
+                UserDefaults.standard.removeObject(forKey: "hemvo_lockedOut")
+                await loadProfile()
+                if profile == nil {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    await loadProfile()
+                }
+                await refreshSubscriptionStatus()
+                PushNotificationService.shared.refreshToken()
+                if !trialHasStarted && profile?.trialEndDate == nil {
+                    await startTrial()
+                }
+            case .signedOut where isLoggedIn:
+                // Fired when the SDK can't refresh the token (e.g. account banned).
+                signOut()
+            default:
+                break
             }
         }
     }
@@ -128,6 +148,11 @@ final class AuthViewModel: ObservableObject {
     func loadProfile() async {
         do {
             let loaded = try await auth.loadProfile()
+            if loaded.disabled ?? false {
+                signOut()
+                errorMessage = "Your account is disabled, contact the Owner."
+                return
+            }
             profile = loaded
             await HouseholdService.shared.syncWithProfile(loaded)
             // Restore trial end date from Supabase if UserDefaults lost it
@@ -144,8 +169,8 @@ final class AuthViewModel: ObservableObject {
     }
 
     // MARK: - Sign Up
-    // Supabase sends a confirmation email automatically.
-    // The user must tap the link in their email before they can log in.
+    // AuthService sends a confirmation email via Resend after creating the account.
+    // The user must tap the link before they can log in.
     // We do NOT set isLoggedIn = true here — the user isn't verified yet.
     // Returns true on success so the caller can show a dedicated success state.
     @discardableResult
@@ -180,7 +205,7 @@ final class AuthViewModel: ObservableObject {
             return "We couldn't send a confirmation email right now. Please try again in a moment."
         }
         if raw.contains("already registered") || raw.contains("already been registered")
-            || raw.contains("user already exists") {
+            || raw.contains("user already exists") || raw.contains("already exists") {
             return "An account with this email already exists. Please sign in instead."
         }
         if raw.contains("invalid email") {
@@ -188,6 +213,9 @@ final class AuthViewModel: ObservableObject {
         }
         if raw.contains("weak password") || raw.contains("password should be") {
             return "Password must be at least 8 characters with an uppercase letter and a number."
+        }
+        if raw.contains("user_banned") || raw.contains("banned") || raw.contains("user is banned") {
+            return "Your account is disabled. Contact the Owner."
         }
         if raw.contains("invalid login credentials") || raw.contains("invalid credentials") {
             return "Incorrect email/username or password. Please try again."
@@ -231,7 +259,7 @@ final class AuthViewModel: ObservableObject {
                 }
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = friendlyAuthError(error)
         }
         isLoading = false
     }
@@ -247,7 +275,7 @@ final class AuthViewModel: ObservableObject {
             } catch let err as SocialAuthError where err == .cancelled {
                 // Silent — user dismissed the sheet
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = friendlyAuthError(error)
             }
             isLoading = false
         }
@@ -271,7 +299,7 @@ final class AuthViewModel: ObservableObject {
             } catch let err as SocialAuthError where err == .cancelled {
                 // Silent
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = friendlyAuthError(error)
             }
             isLoading = false
         }

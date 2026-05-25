@@ -69,6 +69,8 @@ struct BudgetDashboardView: View {
                                     recentSection.padding(.horizontal, 20).padding(.top, 20)
                                         .padding(.bottom, 100)
                                 }
+                                .frame(maxWidth: 680)
+                                .frame(maxWidth: .infinity)
                             }
                         }
 

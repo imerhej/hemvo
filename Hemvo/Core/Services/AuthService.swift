@@ -14,22 +14,31 @@ final class AuthService {
     private init() {}
 
     // MARK: - Sign Up
-    /// Creates a new Supabase auth user. Username is stored in user_metadata
-    /// so the `handle_new_user` DB trigger can write it to the profiles table.
+    /// Creates a new account via the `create-account` Edge Function.
+    /// The Edge Function uses the admin API so GoTrue's SMTP path is never
+    /// triggered — the root cause of the previous "user created then deleted"
+    /// bug. Confirmation email is sent by the function via Resend.
     func createAccount(email: String, password: String,
                        fullName: String, username: String) async throws {
-        // Reject immediately if the username is already taken (avoids a
-        // partial-failure where auth.users gets a row but profiles doesn't).
         guard try await isUsernameAvailable(username) else {
             throw AuthError.usernameTaken
         }
-        try await supabase.auth.signUp(
-            email: email,
-            password: password,
-            data: [
-                "full_name": .string(fullName),
-                "username":  .string(username.lowercased().trimmingCharacters(in: .whitespaces))
-            ]
+        struct Payload: Encodable {
+            let email, password, username: String
+            let fullName: String
+            enum CodingKeys: String, CodingKey {
+                case email, password, username
+                case fullName = "full_name"
+            }
+        }
+        try await supabase.functions.invoke(
+            "create-account",
+            options: FunctionInvokeOptions(body: Payload(
+                email:    email,
+                password: password,
+                username: username.lowercased().trimmingCharacters(in: .whitespaces),
+                fullName: fullName
+            ))
         )
     }
 
@@ -291,6 +300,7 @@ struct HemvoProfile: Codable, Identifiable, Equatable {
     /// Per-member notification permissions stored as JSONB in Supabase.
     /// nil = use role-based defaults (MemberPermissions.defaults(for:)).
     var permissions: MemberPermissions?
+    var disabled: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -304,6 +314,7 @@ struct HemvoProfile: Codable, Identifiable, Equatable {
         case trialEndDate       = "trial_end_date"
         case createdAt          = "created_at"
         case permissions
+        case disabled
     }
 
     var isInTrial: Bool {

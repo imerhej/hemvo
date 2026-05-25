@@ -238,6 +238,15 @@ final class GroceryViewModel: ObservableObject {
             let staleRows = rows.filter { deletedIDs.contains($0.id) }
             for row in staleRows { Task { await supabaseDelete(id: row.id) } }
 
+            // Expire tombstones for IDs confirmed absent from remote — safe to
+            // clear only now, since Supabase delete() doesn't error on RLS blocks.
+            let remoteIDSet = Set(rows.map { $0.id })
+            let confirmedGone = deletedIDs.filter { !remoteIDSet.contains($0) }
+            if !confirmedGone.isEmpty {
+                deletedIDs.subtract(confirmedGone)
+                persistDeletedIDs()
+            }
+
             let remoteItems = rows.filter { !deletedIDs.contains($0.id) }.map { $0.toItem() }
             let remoteIDs   = Set(remoteItems.map { $0.id })
             let pendingLocal = items.filter { !remoteIDs.contains($0.id) && !deletedIDs.contains($0.id) }
@@ -277,8 +286,9 @@ final class GroceryViewModel: ObservableObject {
         do {
             try await supabase.from("grocery_items").delete()
                 .eq("id", value: id.uuidString).execute()
-            deletedIDs.remove(id)
-            persistDeletedIDs()
+            // Tombstone stays in deletedIDs until loadFromSupabase confirms
+            // the row is gone — Supabase returns "success" even when RLS
+            // silently blocks the delete, so clearing here is premature.
         } catch {
             print("[Supabase] delete grocery_item error: \(error)")
         }

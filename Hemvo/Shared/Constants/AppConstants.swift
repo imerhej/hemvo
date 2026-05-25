@@ -17,7 +17,7 @@ enum AppConstants {
 
     // MARK: - Pricing
     static let monthlyPrice       = 4.99
-    static let annualPrice        = 50.0
+    static let annualPrice        = 49.99
     static let annualMonthlyCost  = annualPrice / 12   // ~$4.17/mo
 
     // MARK: - App Info

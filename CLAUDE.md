@@ -73,7 +73,7 @@ Three paths managed by `AuthViewModel` + `AuthService`/`SocialAuthService`:
 
 StoreKit 2 via `StoreKitService`. Two products:
 - `com.hemvo.app.subscription.monthly` — $7.99/mo
-- `com.hemvo.app.subscription.annual` — $59.99/yr
+- `com.hemvo.app.subscription.annual` — $49.99/yr
 
 New users get a 7-day free trial (`AppConstants.trialDurationDays`). After trial, `PaywallView` gates access until a purchase is verified.
 

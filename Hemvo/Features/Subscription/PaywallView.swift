@@ -175,7 +175,7 @@ struct PaywallView: View {
             // Annual — highlighted
             PlanCard(
                 title:         "Yearly",
-                price:         "$50",
+                price:         "$49.99",
                 period:        "/ year",
                 badge:         "BEST VALUE  •  Save 17%",
                 detail:        "~$4.17/mo • Billed annually",

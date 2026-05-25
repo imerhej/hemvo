@@ -14,7 +14,7 @@ enum StoreIDs {
     /// $7.99 / month auto-renewing subscription
     static let monthly = "com.hemvo.app.subscription.monthly"
 
-    /// $59.99 / year auto-renewing subscription
+    /// $49.99 / year auto-renewing subscription
     static let annual  = "com.hemvo.app.subscription.annual"
 
     /// All subscription product IDs (used for Product.products(for:))

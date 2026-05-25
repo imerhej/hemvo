@@ -43,8 +43,7 @@ struct DashboardView: View {
         householdService.household?.members.first { $0.id == currentUserID }?.role
     }
     private var canSeeTrial: Bool {
-        let role = currentMemberRole
-        return role == nil || role == .owner || role == .adult
+        authVM.isOwner
     }
 
     // First name derived from the Supabase profile
@@ -75,6 +74,8 @@ struct DashboardView: View {
                         maintenanceSection.padding(.horizontal, 18)
                     }
                     .padding(.bottom, 40)
+                    .frame(maxWidth: 680)
+                    .frame(maxWidth: .infinity)
                 }
             }
         }

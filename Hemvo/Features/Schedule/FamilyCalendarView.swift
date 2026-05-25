@@ -206,7 +206,7 @@ struct FamilyCalendarView: View {
                     onEdit:    { eventToEdit = ev },
                     onDelete:  { eventToDelete = ev; showDeleteAlert = true },
                     canDelete: vm.canDelete(ev),
-                    canEdit:   canWrite)
+                    canEdit:   canWrite && vm.canEdit(ev))
             }
             .alert("Delete Event", isPresented: $showDeleteAlert) {
                 Button("Delete", role: .destructive) {
@@ -687,8 +687,8 @@ struct FamilyCalendarView: View {
                                 time:     ev.formattedTime,
                                 color:    Color(hex: ev.colorHex) ?? .purple,
                                 cal:      ev.category.rawValue,
-                                onEdit:   canWrite ? { eventToEdit = ev } : nil,
-                                onDelete: canWrite && vm.canDelete(ev) ? { eventToDelete = ev; showDeleteAlert = true } : nil
+                                onEdit:   (canWrite && vm.canEdit(ev)) ? { eventToEdit = ev } : nil,
+                                onDelete: (canWrite && vm.canDelete(ev)) ? { eventToDelete = ev; showDeleteAlert = true } : nil
                             )
                         }
                         .buttonStyle(.plain)
