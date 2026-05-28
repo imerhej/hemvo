@@ -24,6 +24,9 @@ struct AddChoreView: View {
     @State private var estimatedMinutes  = 15
     @State private var notes             = ""
 
+    private enum Field { case title, notes }
+    @FocusState private var focus: Field?
+
     var isEditing: Bool { editingItem != nil }
 
     var body: some View {
@@ -31,6 +34,9 @@ struct AddChoreView: View {
             Form {
                 Section("Chore Details") {
                     TextField("Title (e.g. Replace HVAC Filter)", text: $title)
+                        .focused($focus, equals: .title)
+                        .submitLabel(.next)
+                        .onSubmit { focus = .notes }
 
                     Picker("Home Area", selection: $area) {
                         ForEach(MaintenanceItem.HomeArea.allCases) { a in
@@ -58,6 +64,9 @@ struct AddChoreView: View {
                 Section("Notes") {
                     TextField("Optional notes or instructions…", text: $notes, axis: .vertical)
                         .lineLimit(2...5)
+                        .focused($focus, equals: .notes)
+                        .submitLabel(.done)
+                        .onSubmit { focus = nil }
                 }
 
                 // Quick-fill templates
@@ -105,7 +114,10 @@ struct AddChoreView: View {
                         .disabled(title.isEmpty)
                 }
             }
-            .onAppear { prefill() }
+            .onAppear {
+                prefill()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { focus = .title }
+            }
         }
     }
 

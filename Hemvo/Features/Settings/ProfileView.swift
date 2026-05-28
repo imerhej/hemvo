@@ -13,42 +13,6 @@ internal import Combine
 internal import UserNotifications
 internal import LocalAuthentication
 
-// MARK: - PaymentCard model
-struct PaymentCard: Identifiable, Codable {
-    let id: UUID
-    var nickname: String
-    var lastFour: String
-    var cardType: CardType
-    var expiryMonth: Int
-    var expiryYear: Int
-    var isDefault: Bool
-
-    init(id: UUID = UUID(), nickname: String, lastFour: String,
-         cardType: CardType, expiryMonth: Int, expiryYear: Int, isDefault: Bool = false) {
-        self.id = id; self.nickname = nickname; self.lastFour = lastFour
-        self.cardType = cardType; self.expiryMonth = expiryMonth
-        self.expiryYear = expiryYear; self.isDefault = isDefault
-    }
-
-    enum CardType: String, Codable, CaseIterable {
-        case visa = "Visa", mastercard = "Mastercard", amex = "Amex",
-             discover = "Discover", other = "Other"
-        var icon: String { "creditcard.fill" }
-        var color: Color {
-            switch self {
-            case .visa:       return .blue
-            case .mastercard: return .orange
-            case .amex:       return Color(hex: "#007B5F") ?? .green
-            case .discover:   return .orange
-            case .other:      return .gray
-            }
-        }
-    }
-
-    var displayExpiry: String { String(format: "%02d/%02d", expiryMonth, expiryYear % 100) }
-    var maskedNumber: String  { "•••• •••• •••• \(lastFour)" }
-}
-
 // MARK: - ProfileView
 struct ProfileView: View {
     @EnvironmentObject var authVM: AuthViewModel
@@ -57,14 +21,14 @@ struct ProfileView: View {
     @State private var selectedTab: ProfileTab = .personal
 
     enum ProfileTab: String, CaseIterable {
-        case personal = "Personal"
-        case security = "Security"
-        case payment  = "Payment"
+        case personal     = "Personal"
+        case security     = "Security"
+        case subscription = "Subscription"
         var icon: String {
             switch self {
-            case .personal: return "person.fill"
-            case .security: return "lock.fill"
-            case .payment:  return "creditcard.fill"
+            case .personal:     return "person.fill"
+            case .security:     return "lock.fill"
+            case .subscription: return "crown.fill"
             }
         }
     }
@@ -240,9 +204,9 @@ struct ProfileView: View {
     @ViewBuilder
     private var tabContent: some View {
         switch selectedTab {
-        case .personal: WarmPersonalSection()
-        case .security: SecuritySection()
-        case .payment:  PaymentSection()
+        case .personal:     WarmPersonalSection()
+        case .security:     SecuritySection()
+        case .subscription: SubscriptionSection()
         }
     }
 }
@@ -291,7 +255,9 @@ struct WarmPersonalSection: View {
                     text:  $name,
                     field: .name,
                     keyboard: .default,
-                    autocap: .words
+                    autocap: .words,
+                    submitLabelType: .next,
+                    onSubmitAction: { focused = .username }
                 )
                 divider.frame(height: 1).padding(.leading, 52)
 
@@ -303,7 +269,9 @@ struct WarmPersonalSection: View {
                     text:  $username,
                     field: .username,
                     keyboard: .default,
-                    autocap: .never
+                    autocap: .never,
+                    submitLabelType: .done,
+                    onSubmitAction: { focused = nil }
                 )
                 divider.frame(height: 1).padding(.leading, 52)
 
@@ -399,6 +367,9 @@ struct WarmPersonalSection: View {
         .onAppear {
             name     = authVM.profile?.fullName ?? ""
             username = authVM.profile?.username ?? ""
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                focused = .name
+            }
         }
     }
 
@@ -406,7 +377,9 @@ struct WarmPersonalSection: View {
     private func warmField(
         label: String, icon: String, placeholder: String,
         text: Binding<String>, field: PField,
-        keyboard: UIKeyboardType, autocap: TextInputAutocapitalization
+        keyboard: UIKeyboardType, autocap: TextInputAutocapitalization,
+        submitLabelType: SubmitLabel = .next,
+        onSubmitAction: (() -> Void)? = nil
     ) -> some View {
         HStack(spacing: 14) {
             ZStack {
@@ -432,6 +405,8 @@ struct WarmPersonalSection: View {
                     .textInputAutocapitalization(autocap)
                     .autocorrectionDisabled()
                     .focused($focused, equals: field)
+                    .submitLabel(submitLabelType)
+                    .onSubmit { onSubmitAction?() }
             }
             Spacer()
             if !text.wrappedValue.isEmpty {
@@ -554,14 +529,18 @@ struct SecuritySection: View {
                     label: "Current Password", icon: "lock.fill",
                     text: $currentPassword, focused: $focusedField, tag: .current,
                     accentColor: focusedField == .current ? Color.bpSlate : Color(.systemGray3),
-                    contentType: .password
+                    contentType: .password,
+                    submitLabelType: .next,
+                    onSubmitAction: { focusedField = .new }
                 )
                 Color(hex: "#DDE1EE")!.frame(height: 1).padding(.leading, 52)
                 SecurityPasswordRow(
                     label: "New Password", icon: "lock.open.fill",
                     text: $newPassword, focused: $focusedField, tag: .new,
                     accentColor: focusedField == .new ? Color.bpNavy : Color(.systemGray3),
-                    contentType: .newPassword
+                    contentType: .newPassword,
+                    submitLabelType: .next,
+                    onSubmitAction: { focusedField = .confirm }
                 )
                 Color(hex: "#DDE1EE")!.frame(height: 1).padding(.leading, 52)
                 SecurityPasswordRow(
@@ -569,7 +548,9 @@ struct SecuritySection: View {
                     text: $confirmPassword, focused: $focusedField, tag: .confirm,
                     accentColor: focusedField == .confirm ? Color.bpNavy : Color(.systemGray3),
                     trailingCheck: passwordsMatch,
-                    contentType: .newPassword
+                    contentType: .newPassword,
+                    submitLabelType: .done,
+                    onSubmitAction: { focusedField = nil }
                 )
             }
             .background(Color.bpSurface)
@@ -630,6 +611,11 @@ struct SecuritySection: View {
                 .cornerRadius(30)
                 .shadow(color: Color.bpText.opacity(0.1), radius: 12, y: 4)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                focusedField = .current
             }
         }
         .onDisappear { saveTask?.cancel() }
@@ -716,6 +702,8 @@ private struct SecurityPasswordRow: View {
     var accentColor:     Color                  = Color.bpSlate
     var trailingCheck:   Bool                   = false
     var contentType:     UITextContentType      = .password
+    var submitLabelType: SubmitLabel            = .next
+    var onSubmitAction:  (() -> Void)?          = nil
 
     @State private var showText = false
     var isFocused: Bool { focused.wrappedValue == tag }
@@ -746,10 +734,14 @@ private struct SecurityPasswordRow: View {
                             .textInputAutocapitalization(.never)
                             .textContentType(contentType)
                             .focused(focused, equals: tag)
+                            .submitLabel(submitLabelType)
+                            .onSubmit { onSubmitAction?() }
                     } else {
                         SecureField(label, text: $text)
                             .textContentType(contentType)
                             .focused(focused, equals: tag)
+                            .submitLabel(submitLabelType)
+                            .onSubmit { onSubmitAction?() }
                     }
                 }
                 .font(.system(size: 15, weight: .semibold))
@@ -808,237 +800,127 @@ private struct SecurityHintRow: View {
     }
 }
 
-// MARK: ── PAYMENT ────────────────────────────────────────────
-struct PaymentSection: View {
-    @EnvironmentObject var authVM: AuthViewModel
-    @State private var cards: [PaymentCard]       = []
-    @State private var showAddCard                = false
-    @State private var cardToDelete: PaymentCard? = nil
-    @State private var showDeleteAlert            = false
-    private let storageKey = "hb_paymentCards"
+// MARK: ── SUBSCRIPTION ───────────────────────────────────────
+struct SubscriptionSection: View {
+    @EnvironmentObject var authVM:   AuthViewModel
+    @EnvironmentObject var storeKit: StoreKitService
 
-    private var isRestrictedRole: Bool {
-        let role = authVM.profile?.role ?? ""
-        return role == "Teen" || role == "Child"
+    @State private var showSubscription = false
+    @State private var showPaywall      = false
+
+    private var isTrial:  Bool { authVM.trialDaysRemaining > 0 }
+    private var isActive: Bool { authVM.isSubscriptionActive && !isTrial }
+
+    private var statusColor: Color {
+        isTrial ? Color(hex: "#E67E22")! : isActive ? Color(hex: "#2E7D32")! : .red
+    }
+    private var statusIcon: String {
+        isTrial ? "clock.fill" : isActive ? "crown.fill" : "xmark.circle.fill"
+    }
+    private var statusLabel: String {
+        isTrial  ? "Free Trial — \(authVM.trialDaysRemaining) days left"
+        : isActive ? "Premium Active"
+        : "Subscription Expired"
+    }
+    private var statusDetail: String {
+        isTrial  ? "Upgrade before your trial ends to keep full access"
+        : isActive ? "Your subscription renews automatically through Apple"
+        : "Renew to restore full access"
     }
 
     var body: some View {
+        VStack(spacing: 18) {
+            if authVM.isOwner { ownerContent } else { memberContent }
+        }
+        .sheet(isPresented: $showSubscription) { SubscriptionStatusView() }
+        .fullScreenCover(isPresented: $showPaywall) { PaywallView() }
+    }
+
+    private var ownerContent: some View {
         VStack(spacing: 16) {
-            if cards.isEmpty {
-                VStack(spacing: 14) {
-                    Image(systemName: "creditcard.trianglebadge.exclamationmark")
-                        .font(.system(size: 44)).foregroundColor(Color(.systemGray3))
-                    Text("No Payment Methods").font(.headline)
-                    Text("Add a card to manage your Hemvo subscription.")
-                        .font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center)
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(statusColor.opacity(0.12))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: statusIcon)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(statusColor)
                 }
-                .frame(maxWidth: .infinity).padding(30)
-                .background(Color(.systemBackground)).cornerRadius(18)
-            } else {
-                VStack(spacing: 12) {
-                    ForEach(cards) { card in
-                        PaymentCardRow(
-                            card: card,
-                            onSetDefault: { setDefault(card) },
-                            onDelete: { cardToDelete = card; showDeleteAlert = true }
-                        )
-                    }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(statusLabel)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(Color.bpText)
+                    Text(statusDetail)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Color.bpTextSub)
                 }
+                Spacer()
             }
+            .padding(16)
+            .background(Color.bpSurface)
+            .cornerRadius(16)
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(statusColor.opacity(0.2), lineWidth: 1))
+            .shadow(color: Color.bpText.opacity(0.04), radius: 6, y: 2)
 
-            Button { showAddCard = true } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "plus.circle.fill").font(.system(size: 18))
-                    Text("Add Payment Method").font(.headline).bold()
-                }
-                .foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 18)
-                .background(isRestrictedRole ? Color.gray : Color.blue).cornerRadius(16)
-                .shadow(color: (isRestrictedRole ? Color.gray : Color.blue).opacity(0.4), radius: 10, y: 5)
-            }
-            .disabled(isRestrictedRole)
-
-            Text("Billing handled securely through Apple's In-App Purchase system.\nCard details are never stored on our servers.")
-                .font(.caption).foregroundColor(.secondary)
-                .multilineTextAlignment(.center).padding(.horizontal, 10)
-        }
-        .onAppear { loadCards() }
-        .sheet(isPresented: $showAddCard) {
-            AddPaymentCardSheet { newCard in
-                cards.append(newCard)
-                if cards.count == 1 { cards[0].isDefault = true }
-                saveCards()
-            }
-        }
-        .alert("Remove Card", isPresented: $showDeleteAlert) {
-            Button("Remove", role: .destructive) { if let c = cardToDelete { removeCard(c) } }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Remove \(cardToDelete.map { "•••• \($0.lastFour)" } ?? "this card")?")
-        }
-    }
-
-    private func setDefault(_ card: PaymentCard) {
-        for i in cards.indices { cards[i].isDefault = cards[i].id == card.id }
-        saveCards()
-    }
-    private func removeCard(_ card: PaymentCard) {
-        cards.removeAll { $0.id == card.id }
-        if !cards.isEmpty && !cards.contains(where: { $0.isDefault }) { cards[0].isDefault = true }
-        saveCards()
-    }
-    private func saveCards() {
-        if let d = try? JSONEncoder().encode(cards) { UserDefaults.standard.set(d, forKey: storageKey) }
-    }
-    private func loadCards() {
-        if let d = UserDefaults.standard.data(forKey: storageKey),
-           let s = try? JSONDecoder().decode([PaymentCard].self, from: d) { cards = s }
-    }
-}
-
-// MARK: - PaymentCardRow
-struct PaymentCardRow: View {
-    let card: PaymentCard
-    let onSetDefault: () -> Void
-    let onDelete: () -> Void
-    var body: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(card.cardType.color.opacity(0.12)).frame(width: 44, height: 32)
-                Image(systemName: card.cardType.icon)
-                    .foregroundColor(card.cardType.color).font(.subheadline)
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(card.nickname).font(.subheadline).bold()
-                    if card.isDefault { BadgeView(text: "DEFAULT", color: .homeBaseGreen, style: .filled) }
-                }
-                Text(card.maskedNumber).font(.caption).foregroundColor(.secondary)
-                Text("Expires \(card.displayExpiry)").font(.caption2).foregroundColor(.secondary)
-            }
-            Spacer()
-            Menu {
-                if !card.isDefault { Button("Set as Default", action: onSetDefault) }
-                Button("Remove Card", role: .destructive, action: onDelete)
+            Button {
+                isActive ? (showSubscription = true) : (showPaywall = true)
             } label: {
-                Image(systemName: "ellipsis.circle.fill").foregroundColor(.secondary).font(.title3).padding(4)
+                HStack(spacing: 10) {
+                    Image(systemName: isActive ? "creditcard.fill" : "crown.fill")
+                        .font(.system(size: 16))
+                    Text(isActive ? "Manage Subscription" : "Upgrade to Premium")
+                        .font(.system(size: 16, weight: .bold))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 17)
+                .background(isActive ? Color.bpNavy : Color(hex: "#E67E22")!)
+                .cornerRadius(16)
+                .shadow(color: (isActive ? Color.bpNavy : Color(hex: "#E67E22")!).opacity(0.35), radius: 10, y: 4)
             }
+
+            if isActive {
+                Button { Task { await storeKit.restorePurchases() } } label: {
+                    Text("Restore Purchases")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Color.bpTextSub)
+                }
+            }
+
+            Text("Subscriptions are billed through Apple. Manage or cancel anytime in your Apple ID settings.")
+                .font(.caption)
+                .foregroundColor(Color.bpTextSub)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 10)
         }
-        .padding(14).background(Color(.systemBackground)).cornerRadius(16)
-        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
-    }
-}
-
-// MARK: - AddPaymentCardSheet
-struct AddPaymentCardSheet: View {
-    let onSave: (PaymentCard) -> Void
-    @Environment(\.dismiss) var dismiss
-    @State private var nickname    = ""
-    @State private var lastFour    = ""
-    @State private var cardType    = PaymentCard.CardType.visa
-    @State private var expiryMonth = Calendar.current.component(.month, from: Date())
-    @State private var expiryYear  = Calendar.current.component(.year, from: Date())
-
-    var isValid: Bool { !nickname.isEmpty && lastFour.count == 4 && lastFour.allSatisfy(\.isNumber) }
-    private var yearRange: [Int] {
-        let y = Calendar.current.component(.year, from: Date())
-        return Array(y...(y + 15))
     }
 
-    var body: some View {
-        NavigationStack {
+    private var memberContent: some View {
+        VStack(spacing: 12) {
             ZStack {
-                Color.homeBaseBackground.ignoresSafeArea()
-                ScrollView {
-                    VStack(spacing: 20) {
-                        cardPreview.padding(.top, 8)
-                        CardView(title: "Card Details", icon: "creditcard.fill", iconColor: .blue) {
-                            VStack(spacing: 14) {
-                                HBTextField(label: "Nickname (e.g. Personal Visa)", text: $nickname, icon: "tag")
-                                HBTextField(label: "Last 4 digits", text: $lastFour, icon: "number", keyboard: .numberPad)
-                                    .onChange(of: lastFour) { _, new in
-                                        if new.count > 4 { lastFour = String(new.prefix(4)) }
-                                    }
-                                Picker("Card Type", selection: $cardType) {
-                                    ForEach(PaymentCard.CardType.allCases, id: \.self) {
-                                        Text($0.rawValue).tag($0)
-                                    }
-                                }
-                                .pickerStyle(.segmented)
-                            }
-                        }
-                        CardView(title: "Expiry Date", icon: "calendar", iconColor: .blue) {
-                            HStack(spacing: 20) {
-                                Picker("Month", selection: $expiryMonth) {
-                                    ForEach(1...12, id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
-                                }
-                                .pickerStyle(.wheel).frame(maxWidth: .infinity)
-                                Text("/").font(.title2).foregroundColor(.secondary)
-                                Picker("Year", selection: $expiryYear) {
-                                    ForEach(yearRange, id: \.self) { Text(String($0)).tag($0) }
-                                }
-                                .pickerStyle(.wheel).frame(maxWidth: .infinity)
-                            }
-                            .frame(height: 100)
-                        }
-                        Button {
-                            guard isValid else { return }
-                            onSave(PaymentCard(nickname: nickname, lastFour: lastFour,
-                                               cardType: cardType, expiryMonth: expiryMonth,
-                                               expiryYear: expiryYear))
-                            dismiss()
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "plus.circle.fill")
-                                Text("Add Card").font(.headline).bold()
-                            }
-                            .foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 18)
-                            .background(isValid ? Color.blue : Color(.systemGray4)).cornerRadius(16)
-                            .shadow(color: isValid ? Color.blue.opacity(0.4) : .clear, radius: 10, y: 5)
-                        }
-                        .disabled(!isValid)
-                        Text("Only the last 4 digits are saved. Full card numbers are never stored.")
-                            .font(.caption2).foregroundColor(.secondary)
-                            .multilineTextAlignment(.center).padding(.horizontal).padding(.bottom, 20)
-                    }
-                    .padding(.horizontal, 20)
-                }
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.bpNavy.opacity(0.08))
+                    .frame(width: 56, height: 56)
+                Image(systemName: "house.fill")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(Color.bpNavy)
             }
-            .navigationTitle("Add Payment Method")
-            .navigationBarTitleDisplayMode(.inline)
-            .tint(.blue)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }.foregroundColor(.blue)
-                }
-            }
+            Text("Managed by Household Owner")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(Color.bpText)
+            Text("Your access is included in the household subscription. Billing is handled by the household owner.")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(Color.bpTextSub)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 10)
         }
-    }
-
-    private var cardPreview: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 18)
-                .fill(LinearGradient(colors: [cardType.color, cardType.color.opacity(0.7)],
-                                     startPoint: .topLeading, endPoint: .bottomTrailing))
-                .frame(height: 160)
-                .shadow(color: cardType.color.opacity(0.4), radius: 12, y: 6)
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Text(nickname.isEmpty ? "Card Nickname" : nickname)
-                        .font(.subheadline).bold().foregroundColor(.white.opacity(0.9))
-                    Spacer()
-                    Text(cardType.rawValue).font(.headline).bold().foregroundColor(.white)
-                }
-                Text("•••• •••• •••• \(lastFour.isEmpty ? "****" : lastFour)")
-                    .font(.system(.title3, design: .monospaced)).foregroundColor(.white)
-                HStack {
-                    Text("EXPIRES").font(.caption2).foregroundColor(.white.opacity(0.7))
-                    Text(String(format: "%02d/%02d", expiryMonth, expiryYear % 100))
-                        .font(.caption).bold().foregroundColor(.white)
-                }
-            }
-            .padding(20)
-        }
+        .padding(24)
+        .frame(maxWidth: .infinity)
+        .background(Color.bpSurface)
+        .cornerRadius(18)
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.bpDivider, lineWidth: 1))
+        .shadow(color: Color.bpText.opacity(0.04), radius: 6, y: 2)
     }
 }
 
@@ -1046,4 +928,5 @@ struct AddPaymentCardSheet: View {
     ProfileView()
         .environmentObject(AuthViewModel())
         .environmentObject(UserPreferences.shared)
+        .environmentObject(StoreKitService.shared)
 }

@@ -20,6 +20,9 @@ struct EditExpenseView: View {
     @State private var scope       = BudgetScope.household
     @FocusState private var amountFocused: Bool
 
+    private enum Field { case title, notes }
+    @FocusState private var focus: Field?
+
     var amount: Double { Double(amountText) ?? 0 }
     var isValid: Bool  { !title.trimmingCharacters(in: .whitespaces).isEmpty && amount > 0 }
 
@@ -39,6 +42,9 @@ struct EditExpenseView: View {
                             TextField("e.g. Electric Bill", text: $title)
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(Color.bpText)
+                                .focused($focus, equals: .title)
+                                .submitLabel(.next)
+                                .onSubmit { focus = .notes }
                         }
 
                         // ── Category ─────────────────────────
@@ -134,6 +140,9 @@ struct EditExpenseView: View {
                                 .lineLimit(3...5)
                                 .font(.system(size: 14))
                                 .foregroundColor(Color.bpText)
+                                .focused($focus, equals: .notes)
+                                .submitLabel(.done)
+                                .onSubmit { focus = nil }
                         }
 
                         // ── Save + Delete Buttons ────────────
@@ -195,7 +204,10 @@ struct EditExpenseView: View {
                         .foregroundColor(Color.bpSlate)
                 }
             }
-            .onAppear { prefill() }
+            .onAppear {
+                prefill()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { focus = .title }
+            }
             .onTapGesture { amountFocused = false }
         }
     }

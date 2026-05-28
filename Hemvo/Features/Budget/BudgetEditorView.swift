@@ -84,7 +84,10 @@ struct BudgetEditorView: View {
                         .foregroundColor(Color.bpSlate)
                 }
             }
-            .onAppear { prefill() }
+            .onAppear {
+                prefill()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { incomeFocused = true }
+            }
             .onChange(of: vm.budget.categories.count) { _, _ in
                 for cat in vm.budgetCategories where categoryLimits[cat.name] == nil {
                     categoryLimits[cat.name] = String(Int(cat.limit))

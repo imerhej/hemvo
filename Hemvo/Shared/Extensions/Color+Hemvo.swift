@@ -7,19 +7,9 @@ internal import SwiftUI
 
 // MARK: - Brand Colors
 extension Color {
-    /// Primary green  — #4CAF74  (add to Assets.xcassets as "HemvoGreen")
     static let homeBaseGreen      = Color("HemvoGreen")
-
-    /// Page background — #F5F7F2  (add to Assets.xcassets as "HemvoBackground")
     static let homeBaseBackground = Color("HemvoBackground")
-
-    /// Dark accent     — #2E7D52  (add to Assets.xcassets as "HemvoAccent")
     static let homeBaseAccent     = Color("HemvoAccent")
-
-    // MARK: - Fallbacks (used when asset catalog isn't set up yet)
-    static let hbGreenFallback      = Color(hex: "#4CAF74")!
-    static let hbBackgroundFallback = Color(hex: "#F5F7F2")!
-    static let hbAccentFallback     = Color(hex: "#2E7D52")!
 }
 
 // MARK: - Hex Initializer

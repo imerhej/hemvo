@@ -25,6 +25,8 @@ struct GroceryListView: View {
     @State private var newItemName    = ""
     @State private var newItemQty     = ""
     @State private var newItemCat     = GroceryItem.GroceryCategory.other
+    @FocusState private var itemNameFocused: Bool
+    @FocusState private var itemQtyFocused: Bool
 
     private let green      = Color(hex: "#4A9E6B")!
     private let greenLight = Color(hex: "#EAF7EF")!
@@ -256,6 +258,9 @@ struct GroceryListView: View {
                         TextField("e.g. Whole milk", text: $newItemName)
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(textMain)
+                            .focused($itemNameFocused)
+                            .submitLabel(.next)
+                            .onSubmit { itemQtyFocused = true }
                             .padding(14)
                             .background(surface)
                             .cornerRadius(12)
@@ -269,6 +274,18 @@ struct GroceryListView: View {
                         TextField("e.g. 2 lbs", text: $newItemQty)
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(textMain)
+                            .focused($itemQtyFocused)
+                            .submitLabel(.done)
+                            .onSubmit {
+                                guard !newItemName.isEmpty else { return }
+                                groceryVM.addItem(GroceryItem(
+                                    name:     newItemName,
+                                    quantity: newItemQty.isEmpty ? "1" : newItemQty,
+                                    category: newItemCat
+                                ))
+                                newItemName = ""; newItemQty = ""; newItemCat = .other
+                                showAddItem = false
+                            }
                             .padding(14)
                             .background(surface)
                             .cornerRadius(12)

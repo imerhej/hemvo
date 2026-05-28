@@ -19,6 +19,9 @@ struct HouseholdSetupView: View {
     @State private var showSuccess          = false
     @State private var successMessage       = ""
 
+    @FocusState private var nameFocused: Bool
+    @FocusState private var codeFocused: Bool
+
     private enum SetupMode { case choose, create, join }
 
     private let amber   = Color(red: 0.784, green: 0.573, blue: 0.165)
@@ -146,10 +149,12 @@ struct HouseholdSetupView: View {
                     .font(.system(size: 10, weight: .heavy)).kerning(1.4)
                     .foregroundStyle(muted)
                 TextField("e.g. The Henderson House", text: $householdName)
+                    .focused($nameFocused)
+                    .submitLabel(.done)
                     .padding(14)
                     .background(Color.white)
                     .cornerRadius(12)
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(divider, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(nameFocused ? amber : divider, lineWidth: nameFocused ? 1.5 : 1))
                     .font(.system(size: 15, weight: .medium))
             }
             if let err = errorMessage { errorBanner(err) }
@@ -160,6 +165,11 @@ struct HouseholdSetupView: View {
                 householdName.trimmingCharacters(in: .whitespaces).isEmpty || isLoading
             )
             backButton
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                nameFocused = true
+            }
         }
     }
 
@@ -173,12 +183,14 @@ struct HouseholdSetupView: View {
                     .font(.system(size: 10, weight: .heavy)).kerning(1.4)
                     .foregroundStyle(muted)
                 TextField("Paste invite token (HB-…)", text: $joinCode)
+                    .focused($codeFocused)
+                    .submitLabel(.done)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .padding(14)
                     .background(Color.white)
                     .cornerRadius(12)
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(divider, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(codeFocused ? amber : divider, lineWidth: codeFocused ? 1.5 : 1))
                     .font(.system(size: 14, weight: .medium))
                     .multilineTextAlignment(.leading)
                 Text("Paste the invite token from the email your family member sent you.")
@@ -194,6 +206,11 @@ struct HouseholdSetupView: View {
             .disabled(isDisabled)
             .opacity(isDisabled ? 0.5 : 1)
             backButton
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                codeFocused = true
+            }
         }
     }
 

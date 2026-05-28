@@ -674,7 +674,9 @@ struct NewShoppingListSheet: View {
                     Button("Cancel") { dismiss() }.foregroundColor(accent)
                 }
             }
-            .onAppear { focused = true }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { focused = true }
+            }
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
@@ -700,7 +702,9 @@ struct ShoppingItemFormSheet: View {
     @State private var unit:     String           = ""
     @State private var category: ShoppingCategory = .other
     @State private var note:     String           = ""
-    @FocusState private var nameFocused: Bool
+
+    private enum Field { case name, quantity, unit, note }
+    @FocusState private var focus: Field?
 
     private var isEditing: Bool { editingItem != nil }
     private var isValid:   Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -715,7 +719,9 @@ struct ShoppingItemFormSheet: View {
                         fieldCard(icon: "tag.fill", label: "ITEM NAME") {
                             TextField("e.g. Whole Milk", text: $name)
                                 .font(.system(size: 16, weight: .semibold)).foregroundColor(slBrown)
-                                .focused($nameFocused)
+                                .focused($focus, equals: .name)
+                                .submitLabel(.next)
+                                .onSubmit { focus = .quantity }
                         }
 
                         HStack(spacing: 12) {
@@ -723,10 +729,16 @@ struct ShoppingItemFormSheet: View {
                                 TextField("1", text: $quantity)
                                     .keyboardType(.decimalPad)
                                     .font(.system(size: 16, weight: .semibold)).foregroundColor(slBrown)
+                                    .focused($focus, equals: .quantity)
+                                    .submitLabel(.next)
+                                    .onSubmit { focus = .unit }
                             }
                             fieldCard(icon: "scalemass.fill", label: "UNIT") {
                                 TextField("kg, L, pcs…", text: $unit)
                                     .font(.system(size: 16, weight: .semibold)).foregroundColor(slBrown)
+                                    .focused($focus, equals: .unit)
+                                    .submitLabel(.next)
+                                    .onSubmit { focus = .note }
                             }
                         }
 
@@ -765,6 +777,9 @@ struct ShoppingItemFormSheet: View {
                         fieldCard(icon: "note.text", label: "NOTE (OPTIONAL)") {
                             TextField("Brand, size, or any detail…", text: $note, axis: .vertical)
                                 .lineLimit(2...3).font(.system(size: 14)).foregroundColor(slBrown)
+                                .focused($focus, equals: .note)
+                                .submitLabel(.done)
+                                .onSubmit { focus = nil }
                         }
 
                         Button { save() } label: {
@@ -797,7 +812,7 @@ struct ShoppingItemFormSheet: View {
                     name = item.name; quantity = item.quantity
                     unit = item.unit; category = item.category; note = item.note
                 }
-                nameFocused = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { focus = .name }
             }
         }
         .presentationDetents([.large])

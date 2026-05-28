@@ -14,6 +14,7 @@ struct MaintenanceHistoryView: View {
     @State private var taskToDelete: CompletedTask? = nil
     @State private var showDeleteAlert = false
     @State private var searchText = ""
+    @FocusState private var isSearchFocused: Bool
 
     private let amber   = Color(hex: "#C8922A")!
     private let amberBg = Color(hex: "#F5E4C3")!
@@ -148,6 +149,7 @@ struct MaintenanceHistoryView: View {
                 Image(systemName: "magnifyingglass").foregroundColor(muted)
                 TextField("Search history…", text: $searchText)
                     .font(.system(size: 14)).foregroundColor(brown)
+                    .focused($isSearchFocused)
                 if !searchText.isEmpty {
                     Button { searchText = "" } label: {
                         Image(systemName: "xmark.circle.fill").foregroundColor(muted)

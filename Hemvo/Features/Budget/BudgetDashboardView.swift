@@ -157,6 +157,7 @@ struct BudgetDashboardView: View {
                     .padding(.vertical, 9)
                     .background(vm.selectedScope == scope ? Color.wAmber : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain)
                 .animation(.easeInOut(duration: 0.18), value: vm.selectedScope)

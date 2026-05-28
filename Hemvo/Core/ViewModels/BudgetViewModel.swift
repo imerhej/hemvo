@@ -161,6 +161,25 @@ final class BudgetViewModel: ObservableObject {
         persistDeletedIDs()
         expenses.removeAll { $0.id == expense.id }
         updateCategorySpend()
+
+        // If the deleted expense was a household expense, check whether its
+        // auto-created category is now empty and remove it too.
+        if expense.scope == .household {
+            let categoryName = expenseCategoryDisplayName(expense.category)
+                .lowercased().trimmingCharacters(in: .whitespaces)
+            let stillUsed = expenses.contains {
+                $0.scope == .household &&
+                expenseCategoryDisplayName($0.category)
+                    .lowercased().trimmingCharacters(in: .whitespaces) == categoryName
+            }
+            if !stillUsed, let cat = budget.categories.first(where: {
+                $0.name.lowercased().trimmingCharacters(in: .whitespaces) == categoryName
+            }) {
+                budget.categories.removeAll { $0.id == cat.id }
+                Task { await supabaseDeleteCategory(id: cat.id) }
+            }
+        }
+
         persist()
         NotificationService.shared.cancelBillReminder(for: expense.id)
         objectWillChange.send()

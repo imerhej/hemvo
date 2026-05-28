@@ -18,6 +18,10 @@ struct HBTextField: View {
     var keyboard: UIKeyboardType = .default
     var isSecure: Bool           = false
     var autocap: TextInputAutocapitalization = .never
+    var submitLabelType: SubmitLabel         = .next
+    var onSubmitAction: (() -> Void)?        = nil
+    /// Set to `true` externally to programmatically focus this field.
+    var externalFocus: Binding<Bool>?        = nil
 
     @FocusState private var isFocused: Bool
     @State private var showPassword = false
@@ -42,6 +46,13 @@ struct HBTextField: View {
                 }
             }
             .focused($isFocused)
+            .submitLabel(submitLabelType)
+            .onSubmit { onSubmitAction?() }
+            // Sync internal focus state to/from the external binding.
+            .onChange(of: isFocused) { _, focused in externalFocus?.wrappedValue = focused }
+            .onChange(of: externalFocus?.wrappedValue ?? false) { _, shouldFocus in
+                if shouldFocus { isFocused = true }
+            }
 
             // Trailing buttons
             HStack(spacing: 8) {

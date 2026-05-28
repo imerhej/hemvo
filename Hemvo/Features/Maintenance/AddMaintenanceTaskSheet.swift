@@ -26,6 +26,7 @@ struct AddMaintenanceTaskSheet: View {
     @State private var showDatePicker:   Bool                        = false
     @State private var showChoreLibrary: Bool                        = false
     @FocusState private var titleFocused: Bool
+    @FocusState private var notesFocused: Bool
 
     private var isEditing: Bool { editing != nil }
     private var isValid:   Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -104,6 +105,8 @@ struct AddMaintenanceTaskSheet: View {
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(brown)
                                 .focused($titleFocused)
+                                .submitLabel(.next)
+                                .onSubmit { notesFocused = true }
                         }
                         .padding(16)
                         .background(Color.white)
@@ -405,6 +408,9 @@ struct AddMaintenanceTaskSheet: View {
                             TextField("Any details or reminders…", text: $notes, axis: .vertical)
                                 .lineLimit(3...5)
                                 .font(.system(size: 14)).foregroundColor(brown)
+                                .focused($notesFocused)
+                                .submitLabel(.done)
+                                .onSubmit { notesFocused = false }
                         }
                         .padding(16)
                         .background(Color.white)
@@ -476,8 +482,8 @@ struct AddMaintenanceTaskSheet: View {
                     nextDueDate       = item.nextDue
                     assignedMemberIDs = item.assignedMemberIDs
                 } else {
-                    nextDueDate  = Calendar.current.date(byAdding: .day, value: frequency.days, to: Date()) ?? Date()
-                    titleFocused = true
+                    nextDueDate = Calendar.current.date(byAdding: .day, value: frequency.days, to: Date()) ?? Date()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { titleFocused = true }
                 }
             }
             .onChange(of: frequency) { _, newFreq in

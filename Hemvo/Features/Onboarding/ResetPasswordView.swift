@@ -20,6 +20,10 @@ struct ResetPasswordView: View {
     @State private var errorMessage = ""
     @State private var isSuccess    = false
 
+    // MARK: - Focus State
+    private enum Field { case newPassword, confirmPassword }
+    @FocusState private var focus: Field?
+
     // Validation
     private var hasMinLength:   Bool { newPassword.count >= 8 }
     private var hasUppercase:   Bool { newPassword.contains(where: \.isUppercase) }
@@ -88,6 +92,11 @@ struct ResetPasswordView: View {
                 }
             }
         }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                focus = .newPassword
+            }
+        }
     }
 
     // MARK: - Reset Form
@@ -108,9 +117,15 @@ struct ResetPasswordView: View {
                                       text: $newPassword)
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.never)
+                                .focused($focus, equals: .newPassword)
+                                .submitLabel(.next)
+                                .onSubmit { focus = .confirmPassword }
                         } else {
                             SecureField("Min 8 chars, 1 uppercase, 1 number",
                                         text: $newPassword)
+                                .focused($focus, equals: .newPassword)
+                                .submitLabel(.next)
+                                .onSubmit { focus = .confirmPassword }
                         }
                     }
                     .font(.system(size: 15, weight: .semibold))
@@ -139,8 +154,14 @@ struct ResetPasswordView: View {
                             TextField("Repeat new password", text: $confirmPass)
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.never)
+                                .focused($focus, equals: .confirmPassword)
+                                .submitLabel(.done)
+                                .onSubmit { focus = nil }
                         } else {
                             SecureField("Repeat new password", text: $confirmPass)
+                                .focused($focus, equals: .confirmPassword)
+                                .submitLabel(.done)
+                                .onSubmit { focus = nil }
                         }
                     }
                     .font(.system(size: 15, weight: .semibold))

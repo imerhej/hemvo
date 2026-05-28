@@ -33,6 +33,38 @@ struct LoginView: View {
     @State private var signUpSuccess   = false
     @State private var signUpEmail     = ""
 
+    // MARK: - Focus State
+    private enum Field: Hashable {
+        case name, username, emailOrUsername, password, confirmPass
+        case verificationCode
+        case resetEmail
+    }
+    @FocusState private var focus: Field?
+
+    // Per-field focus booleans wired to LoginField / PasswordLoginField externalFocus bindings.
+    @State private var focusName            = false
+    @State private var focusUsername        = false
+    @State private var focusEmailOrUsername = false
+    @State private var focusPassword        = false
+    @State private var focusConfirmPass     = false
+
+    private func setFocus(_ field: Field?) {
+        focusName            = false
+        focusUsername        = false
+        focusEmailOrUsername = false
+        focusPassword        = false
+        focusConfirmPass     = false
+        focus = field
+        switch field {
+        case .name:            focusName            = true
+        case .username:        focusUsername        = true
+        case .emailOrUsername: focusEmailOrUsername = true
+        case .password:        focusPassword        = true
+        case .confirmPass:     focusConfirmPass     = true
+        default: break
+        }
+    }
+
     @StateObject private var emailValidator = EmailValidator.shared
 
     // Email verification flow
@@ -172,9 +204,31 @@ struct LoginView: View {
         }
         .onAppear {
             withAnimation(.spring(response: 0.5).delay(0.1)) { appearAnim = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                setFocus(isSignUp ? .name : .emailOrUsername)
+            }
         }
-        .sheet(isPresented: $showVerification) { emailVerificationSheet }
-        .sheet(isPresented: $showForgotPassword) { forgotPasswordSheet }
+        .onChange(of: mode) { _, _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                setFocus(isSignUp ? .name : .emailOrUsername)
+            }
+        }
+        .sheet(isPresented: $showVerification) {
+            emailVerificationSheet
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        focus = .verificationCode
+                    }
+                }
+        }
+        .sheet(isPresented: $showForgotPassword) {
+            forgotPasswordSheet
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        focus = .resetEmail
+                    }
+                }
+        }
     }
 
     // MARK: - Top Bar
@@ -242,7 +296,10 @@ struct LoginView: View {
                     LoginField(
                         label: "Full Name", text: $name,
                         icon: "person.fill", accent: modeAccent,
-                        keyboard: .default, autocap: .words
+                        keyboard: .default, autocap: .words,
+                        submitLabelType: .next,
+                        onSubmitAction: { setFocus(.username) },
+                        externalFocus: $focusName
                     )
                     fieldDivider
                     LoginField(
@@ -251,7 +308,10 @@ struct LoginView: View {
                         icon:    "at",
                         accent:  modeAccent,
                         keyboard: .asciiCapable,
-                        autocap: .never
+                        autocap: .never,
+                        submitLabelType: .next,
+                        onSubmitAction: { setFocus(.emailOrUsername) },
+                        externalFocus: $focusUsername
                     )
                     // Username hint
                     Group {
@@ -289,7 +349,10 @@ struct LoginView: View {
                     icon:     isSignUp ? "envelope.fill" : "person.circle.fill",
                     accent:   modeAccent,
                     keyboard: isSignUp ? .emailAddress : .default,
-                    autocap:  .never
+                    autocap:  .never,
+                    submitLabelType: .next,
+                    onSubmitAction: { setFocus(.password) },
+                    externalFocus: $focusEmailOrUsername
                 )
                 .onChange(of: emailOrUsername) { _, new in
                     if isSignUp {
@@ -415,7 +478,13 @@ struct LoginView: View {
                     label: "Password",
                     text: $password,
                     showText: $showPassword,
-                    accent: modeAccent
+                    accent: modeAccent,
+                    submitLabelType: isSignUp ? .next : .go,
+                    onSubmitAction: {
+                        if isSignUp { setFocus(.confirmPass) }
+                        else { submit() }
+                    },
+                    externalFocus: $focusPassword
                 )
 
                 if isSignUp {
@@ -427,7 +496,10 @@ struct LoginView: View {
                         accent:        modeAccent,
                         trailing:      password == confirmPass && !confirmPass.isEmpty
                             ? "checkmark.circle.fill" : nil,
-                        trailingColor: .homeBaseGreen
+                        trailingColor: .homeBaseGreen,
+                        submitLabelType: .done,
+                        onSubmitAction: { setFocus(nil); submit() },
+                        externalFocus: $focusConfirmPass
                     )
                     fieldDivider
                     VStack(alignment: .leading, spacing: 8) {
@@ -621,6 +693,9 @@ struct LoginView: View {
                                     .stroke(verifyError ? Color.red : modeAccent.opacity(0.4),
                                             lineWidth: 2)
                             )
+                            .focused($focus, equals: .verificationCode)
+                            .submitLabel(.done)
+                            .onSubmit { if enteredCode.count == 6 { verifyCode() } }
                             .onChange(of: enteredCode) { _, new in
                                 let filtered = new.filter { $0.isNumber }
                                 enteredCode  = filtered.count > 6
@@ -737,6 +812,9 @@ struct LoginView: View {
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
                                     .font(.system(size: 16, weight: .semibold))
+                                    .focused($focus, equals: .resetEmail)
+                                    .submitLabel(.done)
+                                    .onSubmit { if !resetButtonDisabled { sendResetLink() } }
                             }
                             .padding(16)
                             .background(Color.white)
@@ -955,6 +1033,10 @@ struct PasswordLoginField: View {
     let accent:        Color
     var trailing:      String? = nil
     var trailingColor: Color   = .homeBaseGreen
+    var submitLabelType: SubmitLabel = .done
+    var onSubmitAction: (() -> Void)? = nil
+    /// Set to `true` externally (via DispatchQueue.main.async) to programmatically focus this field.
+    var externalFocus: Binding<Bool>? = nil
 
     @FocusState private var focused: Bool
 
@@ -975,8 +1057,15 @@ struct PasswordLoginField: View {
                 }
             }
             .focused($focused)
+            .submitLabel(submitLabelType)
+            .onSubmit { onSubmitAction?() }
             .font(.subheadline)
             .padding(.vertical, 16)
+            // Sync internal focus state to/from the external binding.
+            .onChange(of: focused) { _, isFocused in externalFocus?.wrappedValue = isFocused }
+            .onChange(of: externalFocus?.wrappedValue ?? false) { _, shouldFocus in
+                if shouldFocus { focused = true }
+            }
 
             if let t = trailing {
                 Image(systemName: t)
@@ -1009,6 +1098,11 @@ struct LoginField: View {
     var isSecure:      Bool                        = false
     var trailingIcon:  String?                     = nil
     var trailingColor: Color                       = .homeBaseGreen
+    var submitLabelType: SubmitLabel               = .next
+    var onSubmitAction: (() -> Void)?              = nil
+    /// When bound to a Bool, the component mirrors its internal focus state to this binding.
+    /// Set to `true` externally (via DispatchQueue.main.async) to programmatically focus this field.
+    var externalFocus: Binding<Bool>?              = nil
 
     @FocusState private var focused: Bool
 
@@ -1030,8 +1124,15 @@ struct LoginField: View {
                 }
             }
             .focused($focused)
+            .submitLabel(submitLabelType)
+            .onSubmit { onSubmitAction?() }
             .font(.subheadline)
             .padding(.vertical, 16)
+            // Sync internal focus state to/from the external binding.
+            .onChange(of: focused) { _, isFocused in externalFocus?.wrappedValue = isFocused }
+            .onChange(of: externalFocus?.wrappedValue ?? false) { _, shouldFocus in
+                if shouldFocus { focused = true }
+            }
 
             if let trailing = trailingIcon {
                 Image(systemName: trailing)

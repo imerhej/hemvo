@@ -28,6 +28,11 @@ struct AddMealView: View {
     @State private var newIngredient  = ""
     @State private var newQty         = ""
 
+    private enum Field { case name, notes }
+    @FocusState private var focus: Field?
+    @FocusState private var ingredientNameFocused: Bool
+    @FocusState private var ingredientQtyFocused: Bool
+
     var isEditing: Bool { editingMeal != nil }
 
     var body: some View {
@@ -36,6 +41,9 @@ struct AddMealView: View {
                 Section("Meal Details") {
                     TextField("Meal name (e.g. Pasta Primavera)", text: $name)
                         .foregroundColor(.primary)
+                        .focused($focus, equals: .name)
+                        .submitLabel(.next)
+                        .onSubmit { focus = .notes }
 
                     DatePicker("Date", selection: $selectedDate, displayedComponents: .date)
                         .foregroundColor(.blue)
@@ -55,9 +63,22 @@ struct AddMealView: View {
                 Section("Ingredients") {
                     HStack {
                         TextField("Ingredient name", text: $newIngredient)
+                            .focused($ingredientNameFocused)
+                            .submitLabel(.next)
+                            .onSubmit { ingredientQtyFocused = true }
                         TextField("Qty", text: $newQty)
                             .frame(width: 60)
                             .multilineTextAlignment(.trailing)
+                            .focused($ingredientQtyFocused)
+                            .submitLabel(.done)
+                            .onSubmit {
+                                guard !newIngredient.isEmpty else { return }
+                                ingredients.append(
+                                    GroceryItem(name: newIngredient, quantity: newQty.isEmpty ? "1" : newQty)
+                                )
+                                newIngredient = ""; newQty = ""
+                                ingredientNameFocused = true
+                            }
                         Button("Add") {
                             guard !newIngredient.isEmpty else { return }
                             ingredients.append(
@@ -81,6 +102,9 @@ struct AddMealView: View {
                 Section("Notes") {
                     TextField("Optional cooking notes…", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
+                        .focused($focus, equals: .notes)
+                        .submitLabel(.done)
+                        .onSubmit { focus = nil }
                 }
             }
             .navigationTitle(isEditing ? "Edit Meal" : "Add Meal")
@@ -97,7 +121,10 @@ struct AddMealView: View {
                         .disabled(name.isEmpty)
                 }
             }
-            .onAppear { prefill() }
+            .onAppear {
+                prefill()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { focus = .name }
+            }
         }
     }
 

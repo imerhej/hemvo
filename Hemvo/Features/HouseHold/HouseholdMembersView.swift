@@ -461,6 +461,7 @@ struct HouseholdInviteSheet: View {
     @State private var permissions:   MemberPermissions = .defaults(for: .adult)
     @State private var errorMessage:  String?
     @State private var didSend        = false
+    @FocusState private var emailFocused: Bool
 
     private let amber   = Color(red: 0.784, green: 0.573, blue: 0.165)
     private let bg      = Color(red: 0.980, green: 0.969, blue: 0.949)
@@ -495,6 +496,11 @@ struct HouseholdInviteSheet: View {
                     Button("Cancel") { dismiss() }
                 }
             }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    emailFocused = true
+                }
+            }
         }
     }
 
@@ -510,10 +516,13 @@ struct HouseholdInviteSheet: View {
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .focused($emailFocused)
+                    .tint(amber)
                     .padding(14)
                     .background(Color.white)
                     .cornerRadius(12)
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(divider, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(emailFocused ? amber : divider, lineWidth: emailFocused ? 1.5 : 1))
+                    .onTapGesture { emailFocused = true }
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -650,7 +659,7 @@ struct PermissionsToggleSection: View {
                 permRow(label: "Maintenance",      icon: "wrench.and.screwdriver.fill",
                         value: $permissions.receiveMaintenanceAlerts)
             }
-            .background(Color.white)
+            .background(Color(red: 0.955, green: 0.941, blue: 0.918))
             .cornerRadius(12)
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(divider, lineWidth: 1))
         }

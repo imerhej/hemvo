@@ -95,6 +95,7 @@ struct FamilyCalendarView: View {
     @State private var showCalendars   = false
     @State private var showSearch      = false
     @State private var searchQuery     = ""
+    @FocusState private var searchFocused: Bool
 
     // Edit/delete HB events
     @State private var eventToEdit:    CalendarEvent? = nil
@@ -126,21 +127,21 @@ struct FamilyCalendarView: View {
                         HStack {
                             Spacer()
                             Button { showAddEvent = true } label: {
-                                HStack(spacing: 6) {
+                                HStack(spacing: 7) {
                                     Image(systemName: "calendar.badge.plus")
-                                        .font(.system(size: 13, weight: .semibold))
+                                        .font(.system(size: 14, weight: .semibold))
                                     Text("Add Event")
-                                        .font(.system(size: 13, weight: .semibold))
+                                        .font(.system(size: 14, weight: .semibold))
                                 }
                                 .foregroundColor(.white)
-                                .padding(.vertical, 9)
-                                .padding(.horizontal, 16)
+                                .padding(.vertical, 11)
+                                .padding(.horizontal, 18)
                                 .background(Color.systemRed)
                                 .clipShape(Capsule())
-                                .shadow(color: Color.systemRed.opacity(0.35), radius: 6, y: 2)
+                                .shadow(color: Color.systemRed.opacity(0.4), radius: 8, y: 3)
                             }
-                            .padding(.trailing, 16)
-                            .padding(.bottom, 10)
+                            .padding(.trailing, 20)
+                            .padding(.bottom, 16)
                         }
                     }
                     .zIndex(5)
@@ -481,13 +482,11 @@ struct FamilyCalendarView: View {
                 LazyVStack(spacing: 0) {
                     ForEach(monthPages, id: \.self) { month in
                         monthGridView(for: month)
-                            .containerRelativeFrame(.vertical)
                             .id(month)
                     }
                 }
                 .scrollTargetLayout()
             }
-            .scrollTargetBehavior(.viewAligned)
             .frame(maxHeight: .infinity)
             .scrollPosition(id: $monthScrollID)
             .onChange(of: monthScrollID) { _, newID in
@@ -529,11 +528,10 @@ struct FamilyCalendarView: View {
                         monthDayCell(weeks[wi][di], inMonth: month)
                     }
                 }
-                .frame(maxHeight: .infinity)
+                .frame(minHeight: 96)
                 Divider()
             }
         }
-        .frame(maxHeight: .infinity)
         .padding(.horizontal, 4)
     }
 
@@ -627,20 +625,25 @@ struct FamilyCalendarView: View {
 
             Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, minHeight: 96, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 96)
         .disabled(day == nil)
     }
 
     private func eventPill(title: String, color: Color, isAllDay: Bool, icon: String? = nil) -> some View {
-        Text(title)
-            .font(.system(size: 11, weight: .semibold))
-            .lineLimit(1)
-            .foregroundColor(.white)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(color)
-            .cornerRadius(4)
+        HStack(spacing: 3) {
+            Image(systemName: icon ?? "star.circle.fill")
+                .font(.system(size: 9))
+                .foregroundColor(color)
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+                .foregroundColor(color)
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2.5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.15))
+        .cornerRadius(5)
     }
 
     // MARK: - Selected day events list
@@ -778,6 +781,7 @@ struct FamilyCalendarView: View {
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
+        .contentShape(Rectangle())
     }
 
     // MARK: - Search overlay
@@ -792,6 +796,7 @@ struct FamilyCalendarView: View {
                         TextField("Search events…", text: $searchQuery)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
+                            .focused($searchFocused)
                     }
                     .padding(.horizontal, 12).padding(.vertical, 10)
                     .background(Color(.systemGray6))
@@ -859,6 +864,11 @@ struct FamilyCalendarView: View {
                     }
                     .listStyle(.plain)
                 }
+            }
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                searchFocused = true
             }
         }
     }
@@ -1295,6 +1305,8 @@ struct NativeAddEventSheet: View {
     var onSave: (EKEvent, CalendarEvent.EventCategory, CalendarEvent.RecurrenceRule, String, String, String, [UUID], CalendarEvent.EventScope) -> Void
 
     @Environment(\.dismiss) var dismiss
+    @FocusState private var titleFocused: Bool
+    @FocusState private var notesFocused: Bool
 
     // Basic fields
     @State private var title            = ""
@@ -1377,6 +1389,9 @@ struct NativeAddEventSheet: View {
                 Section {
                     TextField("Title", text: $title)
                         .font(.system(size: 17))
+                        .focused($titleFocused)
+                        .submitLabel(.next)
+                        .onSubmit { notesFocused = true }
                 }
 
                 // MARK: Scope — required; appears directly under title
@@ -1549,6 +1564,7 @@ struct NativeAddEventSheet: View {
                                 Image(systemName: showTravelPicker ? "chevron.up" : "chevron.down")
                                     .font(.system(size: 12)).foregroundColor(.secondary)
                             }
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
 
@@ -1581,6 +1597,7 @@ struct NativeAddEventSheet: View {
                                 Image(systemName: showRepeatPicker ? "chevron.up" : "chevron.down")
                                     .font(.system(size: 12)).foregroundColor(.secondary)
                             }
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
 
@@ -1653,6 +1670,7 @@ struct NativeAddEventSheet: View {
                                 Image(systemName: showAlertPicker ? "chevron.up" : "chevron.down")
                                     .font(.system(size: 12)).foregroundColor(.secondary)
                             }
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
 
@@ -1704,10 +1722,16 @@ struct NativeAddEventSheet: View {
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
                         .font(.system(size: 16))
+                        .focused($notesFocused)
                 }
             }
             .listStyle(.insetGrouped)
             .navigationTitle("New Event")
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    titleFocused = true
+                }
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1809,6 +1833,9 @@ struct EditCalendarEventSheet: View {
     @ObservedObject var vm: ScheduleViewModel
     @Environment(\.dismiss) var dismiss
 
+    private enum Field { case title, notes }
+    @FocusState private var focus: Field?
+
     @State private var title      = ""
     @State private var notes      = ""
     @State private var isAllDay   = false
@@ -1857,6 +1884,9 @@ struct EditCalendarEventSheet: View {
                 Section {
                     TextField("Title", text: $title)
                         .font(.system(size: 17))
+                        .focused($focus, equals: .title)
+                        .submitLabel(.next)
+                        .onSubmit { focus = .notes }
                 }
 
                 Section {
@@ -2005,6 +2035,7 @@ struct EditCalendarEventSheet: View {
                                 Image(systemName: showTravel ? "chevron.up" : "chevron.down")
                                     .font(.system(size: 12)).foregroundColor(.secondary)
                             }
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
 
@@ -2037,6 +2068,7 @@ struct EditCalendarEventSheet: View {
                                 Image(systemName: showRepeat ? "chevron.up" : "chevron.down")
                                     .font(.system(size: 12)).foregroundColor(.secondary)
                             }
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
 
@@ -2081,6 +2113,7 @@ struct EditCalendarEventSheet: View {
                                 Image(systemName: showAlert ? "chevron.up" : "chevron.down")
                                     .font(.system(size: 12)).foregroundColor(.secondary)
                             }
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
 
@@ -2171,6 +2204,7 @@ struct EditCalendarEventSheet: View {
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
                         .font(.system(size: 16))
+                        .focused($focus, equals: .notes)
                 }
             }
             .listStyle(.insetGrouped)
@@ -2203,6 +2237,9 @@ struct EditCalendarEventSheet: View {
                 // Delay so the onChange(of: category) triggered above fires first (with
                 // hasLoaded = false, so it is skipped), before we allow user changes.
                 DispatchQueue.main.async { hasLoaded = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    focus = .title
+                }
             }
         }
     }

@@ -21,11 +21,17 @@ struct TaskDelegationView: View {
     @State private var notes      = ""
     @State private var assignedTo: UUID? = nil
 
+    private enum Field { case title, notes }
+    @FocusState private var focus: Field?
+
     var body: some View {
         NavigationStack {
             Form {
                 Section("Task Details") {
                     TextField("Task title (e.g. Clean garage)", text: $title)
+                        .focused($focus, equals: .title)
+                        .submitLabel(.next)
+                        .onSubmit { focus = .notes }
                     DatePicker("Due Date", selection: $dueDate, displayedComponents: .date)
                     Picker("Priority", selection: $priority) {
                         ForEach(HouseTask.Priority.allCases) { p in
@@ -52,6 +58,9 @@ struct TaskDelegationView: View {
                 Section("Notes") {
                     TextField("Optional notes…", text: $notes, axis: .vertical)
                         .lineLimit(2...4)
+                        .focused($focus, equals: .notes)
+                        .submitLabel(.done)
+                        .onSubmit { focus = nil }
                 }
 
                 // Existing tasks
@@ -70,6 +79,9 @@ struct TaskDelegationView: View {
                 }
             }
             .navigationTitle("Delegate Task")
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { focus = .title }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {

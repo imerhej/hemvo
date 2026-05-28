@@ -409,6 +409,7 @@ struct SettingsView: View {
                         .foregroundColor(Color.bpTextSub.opacity(0.5))
                 }
                 .padding(.horizontal, 16).padding(.vertical, 14)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
@@ -459,6 +460,7 @@ struct SettingsView: View {
                         .foregroundColor(Color.red.opacity(0.4))
                 }
                 .padding(.horizontal, 16).padding(.vertical, 14)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
@@ -556,6 +558,7 @@ struct SettingsNavRow: View {
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -570,24 +573,29 @@ struct SettingsToggleRow: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        HStack(spacing: 14) {
-            SettingsIconBox(icon: icon, color: isOn ? color : Color(hex: "#B0BAC8")!)
-                .animation(.easeInOut(duration: 0.2), value: isOn)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(isOn ? Color.bpText : Color.bpTextSub)
-                    .animation(.easeInOut(duration: 0.15), value: isOn)
-                if !detail.isEmpty {
-                    Text(detail)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Color.bpTextSub.opacity(0.75))
+        Button { isOn.toggle() } label: {
+            HStack(spacing: 14) {
+                SettingsIconBox(icon: icon, color: isOn ? color : Color(hex: "#B0BAC8")!)
+                    .animation(.easeInOut(duration: 0.2), value: isOn)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(isOn ? Color.bpText : Color.bpTextSub)
+                        .animation(.easeInOut(duration: 0.15), value: isOn)
+                    if !detail.isEmpty {
+                        Text(detail)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Color.bpTextSub.opacity(0.75))
+                    }
                 }
+                Spacer()
+                Toggle("", isOn: $isOn).labelsHidden().tint(tint)
+                    .allowsHitTesting(false)
             }
-            Spacer()
-            Toggle("", isOn: $isOn).labelsHidden().tint(tint)
+            .padding(.horizontal, 16).padding(.vertical, 13)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 16).padding(.vertical, 13)
+        .buttonStyle(.plain)
     }
 }
 
@@ -607,6 +615,7 @@ struct SettingsLinkRow: View {
                     .foregroundColor(Color.bpTextSub.opacity(0.5))
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
+            .contentShape(Rectangle())
         }
     }
 }

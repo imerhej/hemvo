@@ -25,6 +25,9 @@ struct AddEventView: View {
     @State private var alertOption = "None"
     @State private var inviteeIDs: Set<UUID> = []
 
+    private enum Field { case title, notes }
+    @FocusState private var focus: Field?
+
     private let alertOptions = ["None", "5 minutes before", "15 minutes before",
                                 "30 minutes before", "1 hour before", "1 day before"]
 
@@ -47,6 +50,9 @@ struct AddEventView: View {
             Form {
                 Section("Event Details") {
                     TextField("Title (e.g. Dentist Appointment)", text: $title)
+                        .focused($focus, equals: .title)
+                        .submitLabel(.next)
+                        .onSubmit { focus = .notes }
                     Picker("Category", selection: $category) {
                         ForEach(CalendarEvent.EventCategory.allCases) { cat in
                             Label(cat.rawValue, systemImage: cat.iconName).tag(cat)
@@ -122,6 +128,9 @@ struct AddEventView: View {
                 Section("Notes") {
                     TextField("Optional notes…", text: $notes, axis: .vertical)
                         .lineLimit(2...4)
+                        .focused($focus, equals: .notes)
+                        .submitLabel(.done)
+                        .onSubmit { focus = nil }
                 }
             }
             .navigationTitle("Add Event")
@@ -142,7 +151,10 @@ struct AddEventView: View {
                     .disabled(title.isEmpty)
                 }
             }
-            .onAppear { date = preselectedDate }
+            .onAppear {
+                date = preselectedDate
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { focus = .title }
+            }
         }
     }
 }
