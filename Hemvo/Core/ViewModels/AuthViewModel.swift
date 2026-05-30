@@ -154,6 +154,7 @@ final class AuthViewModel: ObservableObject {
                 return
             }
             profile = loaded
+            UserPreferences.shared.seed(from: loaded)
             await HouseholdService.shared.syncWithProfile(loaded)
             // Restore trial end date from Supabase if UserDefaults lost it
             // (e.g. after reinstall or device migration) so the trial guard

@@ -28,11 +28,34 @@ struct SettingsView: View {
     @State private var showDeleteConfirm    = false
     @State private var deleteErrorMessage: String? = nil
 
-    // Notification toggles — backed by UserPreferences (iCloud KV + UserDefaults)
-    private var billNotifs:        Binding<Bool> { Binding(get: { prefs.notifBills },       set: { prefs.notifBills = $0 }) }
-    private var mealNotifs:        Binding<Bool> { Binding(get: { prefs.notifMeals },       set: { prefs.notifMeals = $0 }) }
-    private var scheduleNotifs:    Binding<Bool> { Binding(get: { prefs.notifSchedule },    set: { prefs.notifSchedule = $0 }) }
-    private var maintenanceNotifs: Binding<Bool> { Binding(get: { prefs.notifMaintenance }, set: { prefs.notifMaintenance = $0 }) }
+    // For Teen/Child: values come from owner-set MemberPermissions and are read-only.
+    // For Owner/Adult: values come from UserPreferences and are editable.
+    private var memberPermissions: MemberPermissions? { authVM.profile?.permissions }
+
+    private var billNotifs: Binding<Bool> {
+        Binding(
+            get: { isRestrictedRole ? (memberPermissions?.receiveExpenseAlerts     ?? prefs.notifBills)       : prefs.notifBills },
+            set: { if !isRestrictedRole { prefs.notifBills = $0 } }
+        )
+    }
+    private var mealNotifs: Binding<Bool> {
+        Binding(
+            get: { isRestrictedRole ? (memberPermissions?.receiveMealAlerts        ?? prefs.notifMeals)       : prefs.notifMeals },
+            set: { if !isRestrictedRole { prefs.notifMeals = $0 } }
+        )
+    }
+    private var scheduleNotifs: Binding<Bool> {
+        Binding(
+            get: { isRestrictedRole ? (memberPermissions?.receiveCalendarAlerts    ?? prefs.notifSchedule)    : prefs.notifSchedule },
+            set: { if !isRestrictedRole { prefs.notifSchedule = $0 } }
+        )
+    }
+    private var maintenanceNotifs: Binding<Bool> {
+        Binding(
+            get: { isRestrictedRole ? (memberPermissions?.receiveMaintenanceAlerts ?? prefs.notifMaintenance) : prefs.notifMaintenance },
+            set: { if !isRestrictedRole { prefs.notifMaintenance = $0 } }
+        )
+    }
 
     @State private var systemNotifsGranted = true
 
@@ -89,6 +112,7 @@ struct SettingsView: View {
                     VStack(spacing: 18) {
                         accountGroup
                         notificationsGroup
+                            .disabled(isRestrictedRole)
                         preferenceSyncGroup
                         aboutGroup
                         signOutButton
@@ -297,6 +321,21 @@ struct SettingsView: View {
                     .background(Color.orange.opacity(0.07))
                 }
                 .buttonStyle(.plain)
+                Color.bpDivider.frame(height: 1)
+            }
+
+            if isRestrictedRole {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color.bpTextSub)
+                    Text("Managed by your household owner")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Color.bpTextSub)
+                    Spacer()
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+                .background(Color.bpDivider.opacity(0.5))
                 Color.bpDivider.frame(height: 1)
             }
 

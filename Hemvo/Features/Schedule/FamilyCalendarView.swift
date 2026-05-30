@@ -478,21 +478,32 @@ struct FamilyCalendarView: View {
 
             weekdayHeader
 
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 0) {
-                    ForEach(monthPages, id: \.self) { month in
-                        monthGridView(for: month)
-                            .id(month)
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(monthPages, id: \.self) { month in
+                            monthGridView(for: month)
+                                .id(month)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .frame(maxHeight: .infinity)
+                .scrollPosition(id: $monthScrollID, anchor: .top)
+                .onChange(of: monthScrollID) { _, newID in
+                    if let d = newID {
+                        displayedMonth = d
+                        calSvc.fetchEvents(for: d)
                     }
                 }
-                .scrollTargetLayout()
-            }
-            .frame(maxHeight: .infinity)
-            .scrollPosition(id: $monthScrollID)
-            .onChange(of: monthScrollID) { _, newID in
-                if let d = newID {
-                    displayedMonth = d
-                    calSvc.fetchEvents(for: d)
+                .onAppear {
+                    // Re-anchor scroll position after view recreation (mode switch / sheet dismiss).
+                    // Without this the LazyVStack snapping picks the wrong month on first touch.
+                    if let id = monthScrollID {
+                        DispatchQueue.main.async {
+                            proxy.scrollTo(id, anchor: .top)
+                        }
+                    }
                 }
             }
         }

@@ -301,6 +301,11 @@ struct HemvoProfile: Codable, Identifiable, Equatable {
     /// nil = use role-based defaults (MemberPermissions.defaults(for:)).
     var permissions: MemberPermissions?
     var disabled: Bool?
+    // Notification preferences — nil before migration runs, treated as true.
+    var notifBills: Bool?
+    var notifMeals: Bool?
+    var notifSchedule: Bool?
+    var notifMaintenance: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -315,6 +320,10 @@ struct HemvoProfile: Codable, Identifiable, Equatable {
         case createdAt          = "created_at"
         case permissions
         case disabled
+        case notifBills         = "notif_bills"
+        case notifMeals         = "notif_meals"
+        case notifSchedule      = "notif_schedule"
+        case notifMaintenance   = "notif_maintenance"
     }
 
     var isInTrial: Bool {

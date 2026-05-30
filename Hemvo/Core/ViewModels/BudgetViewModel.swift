@@ -431,6 +431,17 @@ final class BudgetViewModel: ObservableObject {
 
             let remoteExpenses = rows.filter { !deletedExpenseIDs.contains($0.id) }.map { $0.toExpense() }
 
+            // Clear tombstones only for IDs confirmed absent from Supabase.
+            // Doing this here (not in supabaseDelete) closes a race where a concurrent
+            // fetch could grab a row before the delete landed, then resurrect it after
+            // the tombstone was prematurely removed.
+            let remoteRowIDs = Set(rows.map { $0.id })
+            let confirmedGone = deletedExpenseIDs.filter { !remoteRowIDs.contains($0) }
+            if !confirmedGone.isEmpty {
+                confirmedGone.forEach { deletedExpenseIDs.remove($0) }
+                persistDeletedIDs()
+            }
+
             // Merge: remote is authoritative except for a 10-second window after
             // this user marks a bill as paid, where the write may still be in flight.
             // Limiting by paidBy == current user ensures another member's "mark unpaid"
@@ -654,6 +665,9 @@ final class BudgetViewModel: ObservableObject {
             // `.select()` makes PostgREST return the deleted rows.
             // An empty result means RLS blocked the delete — keep the tombstone
             // so the next loadFromSupabase() retries rather than re-adding the row.
+            // Tombstone cleanup happens in loadFromSupabase() once absence is confirmed,
+            // not here — removing it immediately would create a race where a concurrent
+            // fetch resurrects the expense before this delete is visible to that fetch.
             let deleted: [SupabaseExpenseRow] = try await supabase
                 .from("expenses")
                 .delete()
@@ -661,9 +675,8 @@ final class BudgetViewModel: ObservableObject {
                 .select()
                 .execute()
                 .value
-            if !deleted.isEmpty {
-                deletedExpenseIDs.remove(id)
-                persistDeletedIDs()
+            if deleted.isEmpty {
+                print("[Supabase] delete may have been blocked by RLS for id: \(id)")
             }
         } catch {
             print("[Supabase] delete expense error: \(error)")
