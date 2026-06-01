@@ -187,9 +187,10 @@ private struct RootView: View {
 
     var body: some View {
         Group {
-            if authVM.isCheckingSession {
-                // Supabase session check in flight — show splash to prevent
-                // the router from evaluating household/paywall state too early.
+            if authVM.isCheckingSession || authVM.isResolvingAccess {
+                // Show splash while the initial session check OR post-login
+                // subscription refresh is in flight, so trialExpired / paywall
+                // state is never evaluated before subscription status is known.
                 SplashView()
 
             } else if !authVM.isLoggedIn {

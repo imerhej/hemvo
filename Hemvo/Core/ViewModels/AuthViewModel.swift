@@ -45,6 +45,10 @@ final class AuthViewModel: ObservableObject {
     /// RootView shows a splash screen until this is false so the router
     /// never evaluates household/paywall state before auth is known.
     @Published var isCheckingSession:    Bool          = true
+    /// True from the moment isLoggedIn becomes true until refreshSubscriptionStatus()
+    /// (or startTrial()) completes.  Prevents RootView from evaluating
+    /// trialExpired/paywall state before subscription status is loaded.
+    @Published var isResolvingAccess:    Bool          = false
     /// Set to true when Supabase fires a .passwordRecovery event (user tapped
     /// the reset-password deep link). RootView presents ResetPasswordView.
     @Published var showResetPassword:    Bool          = false
@@ -72,7 +76,8 @@ final class AuthViewModel: ObservableObject {
             case .passwordRecovery:
                 showResetPassword = true
             case .signedIn where !isLoggedIn:
-                isLoggedIn = true
+                isLoggedIn        = true
+                isResolvingAccess = true
                 userID     = session?.user.id
                 UserDefaults.standard.removeObject(forKey: "hemvo_lockedOut")
                 await loadProfile()
@@ -81,6 +86,7 @@ final class AuthViewModel: ObservableObject {
                     await loadProfile()
                 }
                 await refreshSubscriptionStatus()
+                isResolvingAccess = false
                 PushNotificationService.shared.refreshToken()
                 if !trialHasStarted && profile?.trialEndDate == nil {
                     await startTrial()
@@ -236,7 +242,8 @@ final class AuthViewModel: ObservableObject {
         errorMessage = nil
         do {
             try await auth.login(emailOrUsername: emailOrUsername, password: password)
-            isLoggedIn = true
+            isLoggedIn        = true
+            isResolvingAccess = true
             UserDefaults.standard.removeObject(forKey: "hemvo_lockedOut")
             userID = await auth.currentUserID()
             await loadProfile()
@@ -247,6 +254,7 @@ final class AuthViewModel: ObservableObject {
                 await loadProfile()
             }
             await refreshSubscriptionStatus()
+            isResolvingAccess = false
             PushNotificationService.shared.refreshToken()
             // Start trial only for genuinely new accounts — i.e. no trial in
             // UserDefaults (restored from Supabase above if it existed) AND
@@ -311,11 +319,13 @@ final class AuthViewModel: ObservableObject {
         do {
             // Try signing in first — account may already exist
             try await auth.login(emailOrUsername: result.email, password: result.email)
-            isLoggedIn = true
+            isLoggedIn        = true
+            isResolvingAccess = true
             UserDefaults.standard.removeObject(forKey: "hemvo_lockedOut")
             userID = await auth.currentUserID()
             await loadProfile()
             await refreshSubscriptionStatus()
+            isResolvingAccess = false
             PushNotificationService.shared.refreshToken()
         } catch {
             // Account doesn't exist — create it with a random password
@@ -331,10 +341,12 @@ final class AuthViewModel: ObservableObject {
                     fullName: result.name,
                     username: username
                 )
-                isLoggedIn = true
+                isLoggedIn        = true
+                isResolvingAccess = true
                 UserDefaults.standard.removeObject(forKey: "hemvo_lockedOut")
                 userID = await auth.currentUserID()
                 await startTrial()
+                isResolvingAccess = false
                 await loadProfile()
                 PushNotificationService.shared.refreshToken()
                 Task { @MainActor in
@@ -363,10 +375,12 @@ final class AuthViewModel: ObservableObject {
                 UserDefaults.standard.removeObject(forKey: "hemvo_lockedOut")
                 let restored = await auth.restoreSession()
                 if restored {
-                    isLoggedIn = true
+                    isLoggedIn        = true
+                    isResolvingAccess = true
                     userID = await auth.currentUserID()
                     await loadProfile()
                     await refreshSubscriptionStatus()
+                    isResolvingAccess = false
                     PushNotificationService.shared.refreshToken()
                 } else {
                     // Session truly expired (refresh token invalidated or device restored).
@@ -547,6 +561,7 @@ final class AuthViewModel: ObservableObject {
     // MARK: - Sign Out
     func signOut() {
         isLoggedIn               = false
+        isResolvingAccess        = false
         isSubscriptionActive     = false
         trialDaysRemaining       = 0
         ownerSubscriptionLapsed  = false

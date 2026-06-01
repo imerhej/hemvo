@@ -81,14 +81,21 @@ final class UserPreferences: ObservableObject {
 
     /// Called by AuthViewModel.loadProfile() after a successful profile fetch.
     /// Overwrites local cache with the authoritative Supabase values.
+    /// Owner-disabled permissions override the flat columns so local notification
+    /// scheduling is suppressed even if the DB write hasn't propagated yet.
     func seed(from profile: HemvoProfile) {
         isSyncing = true
         defer { isSyncing = false }
-        if let v = profile.notifBills       { notifBills = v;       ud.set(v, forKey: "notif_bills") }
-        if let v = profile.notifMeals       { notifMeals = v;       ud.set(v, forKey: "notif_meals") }
-        if let v = profile.notifSchedule    { notifSchedule = v;    ud.set(v, forKey: "notif_schedule") }
-        if let v = profile.notifMaintenance { notifMaintenance = v; ud.set(v, forKey: "notif_maintenance") }
-        if let v = profile.avatarColor      { avatarColor = v;      ud.set(v, forKey: "hb_avatarColor") }
+        let perms = profile.permissions
+        let bills       = perms?.receiveExpenseAlerts     == false ? false : profile.notifBills
+        let meals       = perms?.receiveMealAlerts        == false ? false : profile.notifMeals
+        let schedule    = perms?.receiveCalendarAlerts    == false ? false : profile.notifSchedule
+        let maintenance = perms?.receiveMaintenanceAlerts == false ? false : profile.notifMaintenance
+        if let v = bills        { notifBills = v;       ud.set(v, forKey: "notif_bills") }
+        if let v = meals        { notifMeals = v;       ud.set(v, forKey: "notif_meals") }
+        if let v = schedule     { notifSchedule = v;    ud.set(v, forKey: "notif_schedule") }
+        if let v = maintenance  { notifMaintenance = v; ud.set(v, forKey: "notif_maintenance") }
+        if let v = profile.avatarColor { avatarColor = v; ud.set(v, forKey: "hb_avatarColor") }
     }
 
     // MARK: - Account deletion cleanup

@@ -82,9 +82,15 @@ final class StoreKitService: ObservableObject {
 
     // MARK: - Check Active Subscription
     func hasActiveSubscription() async -> Bool {
+        #if DEBUG
+        // Simulator / debug builds have no sandbox purchases configured.
+        // Return true so the paywall never blocks development testing.
+        return true
+        #else
         await updateEntitlements()
         return purchasedProductIDs.contains(StoreIDs.monthly) ||
                purchasedProductIDs.contains(StoreIDs.annual)
+        #endif
     }
 
     // MARK: - Update Entitlements

@@ -16,6 +16,7 @@ struct AddEventView: View {
     var preselectedDate: Date = Date()
 
     @State private var title       = ""
+    @State private var location    = ""
     @State private var date        = Date()
     @State private var isAllDay    = false
     @State private var notes       = ""
@@ -25,7 +26,7 @@ struct AddEventView: View {
     @State private var alertOption = "None"
     @State private var inviteeIDs: Set<UUID> = []
 
-    private enum Field { case title, notes }
+    private enum Field { case title, location, notes }
     @FocusState private var focus: Field?
 
     private let alertOptions = ["None", "5 minutes before", "15 minutes before",
@@ -51,6 +52,10 @@ struct AddEventView: View {
                 Section("Event Details") {
                     TextField("Title (e.g. Dentist Appointment)", text: $title)
                         .focused($focus, equals: .title)
+                        .submitLabel(.next)
+                        .onSubmit { focus = .location }
+                    TextField("Location", text: $location)
+                        .focused($focus, equals: .location)
                         .submitLabel(.next)
                         .onSubmit { focus = .notes }
                     Picker("Category", selection: $category) {
@@ -139,7 +144,7 @@ struct AddEventView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         vm.addEvent(CalendarEvent(
-                            title: title, date: date, assignedToID: assignedTo,
+                            title: title, location: location, date: date, assignedToID: assignedTo,
                             isAllDay: isAllDay, notes: notes,
                             category: category, colorHex: colorHex,
                             repeatRule: repeatRule,

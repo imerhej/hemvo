@@ -28,33 +28,46 @@ struct SettingsView: View {
     @State private var showDeleteConfirm    = false
     @State private var deleteErrorMessage: String? = nil
 
-    // For Teen/Child: values come from owner-set MemberPermissions and are read-only.
-    // For Owner/Adult: values come from UserPreferences and are editable.
+    private var isRestrictedRole: Bool {
+        let role = authVM.profile?.role ?? ""
+        return role == "Teen" || role == "Child"
+    }
     private var memberPermissions: MemberPermissions? { authVM.profile?.permissions }
+
+    // Returns true when the owner has explicitly disabled this notification for a restricted member.
+    private func ownerLocked(_ perm: Bool?) -> Bool {
+        isRestrictedRole && perm == false
+    }
 
     private var billNotifs: Binding<Bool> {
         Binding(
-            get: { isRestrictedRole ? (memberPermissions?.receiveExpenseAlerts     ?? prefs.notifBills)       : prefs.notifBills },
-            set: { if !isRestrictedRole { prefs.notifBills = $0 } }
+            get: { ownerLocked(memberPermissions?.receiveExpenseAlerts)     ? false : prefs.notifBills },
+            set: { if !ownerLocked(memberPermissions?.receiveExpenseAlerts)     { prefs.notifBills       = $0 } }
         )
     }
     private var mealNotifs: Binding<Bool> {
         Binding(
-            get: { isRestrictedRole ? (memberPermissions?.receiveMealAlerts        ?? prefs.notifMeals)       : prefs.notifMeals },
-            set: { if !isRestrictedRole { prefs.notifMeals = $0 } }
+            get: { ownerLocked(memberPermissions?.receiveMealAlerts)        ? false : prefs.notifMeals },
+            set: { if !ownerLocked(memberPermissions?.receiveMealAlerts)        { prefs.notifMeals       = $0 } }
         )
     }
     private var scheduleNotifs: Binding<Bool> {
         Binding(
-            get: { isRestrictedRole ? (memberPermissions?.receiveCalendarAlerts    ?? prefs.notifSchedule)    : prefs.notifSchedule },
-            set: { if !isRestrictedRole { prefs.notifSchedule = $0 } }
+            get: { ownerLocked(memberPermissions?.receiveCalendarAlerts)    ? false : prefs.notifSchedule },
+            set: { if !ownerLocked(memberPermissions?.receiveCalendarAlerts)    { prefs.notifSchedule    = $0 } }
         )
     }
     private var maintenanceNotifs: Binding<Bool> {
         Binding(
-            get: { isRestrictedRole ? (memberPermissions?.receiveMaintenanceAlerts ?? prefs.notifMaintenance) : prefs.notifMaintenance },
-            set: { if !isRestrictedRole { prefs.notifMaintenance = $0 } }
+            get: { ownerLocked(memberPermissions?.receiveMaintenanceAlerts) ? false : prefs.notifMaintenance },
+            set: { if !ownerLocked(memberPermissions?.receiveMaintenanceAlerts) { prefs.notifMaintenance = $0 } }
         )
+    }
+
+    private var hasAnyOwnerLock: Bool {
+        guard isRestrictedRole, let p = memberPermissions else { return false }
+        return !p.receiveExpenseAlerts || !p.receiveMealAlerts
+            || !p.receiveCalendarAlerts || !p.receiveMaintenanceAlerts
     }
 
     @State private var systemNotifsGranted = true
@@ -79,11 +92,6 @@ struct SettingsView: View {
     // ── Subscription helpers ───────────────────────────────────────────────
     private var isTrial:  Bool { authVM.trialDaysRemaining > 0 }
     private var isActive: Bool { authVM.isSubscriptionActive && !isTrial }
-
-    private var isRestrictedRole: Bool {
-        let role = authVM.profile?.role ?? ""
-        return role == "Teen" || role == "Child"
-    }
 
     private var subColor: Color {
         isTrial ? Color(hex: "#E67E22")! : isActive ? Color(hex: "#2E7D32")! : .red
@@ -112,7 +120,7 @@ struct SettingsView: View {
                     VStack(spacing: 18) {
                         accountGroup
                         notificationsGroup
-                            .disabled(isRestrictedRole)
+                            .disabled(!systemNotifsGranted)
                         preferenceSyncGroup
                         aboutGroup
                         signOutButton
@@ -298,6 +306,21 @@ struct SettingsView: View {
     // MARK: - Notifications Group
     private var notificationsGroup: some View {
         SettingsGroup(header: "NOTIFICATIONS", headerIcon: "bell.fill") {
+            if hasAnyOwnerLock {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color.bpTextSub)
+                    Text("Some notifications are managed by your household owner")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Color.bpTextSub)
+                    Spacer()
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+                .background(Color.bpDivider.opacity(0.5))
+                Color.bpDivider.frame(height: 1)
+            }
+
             if !systemNotifsGranted {
                 Button {
                     if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -324,21 +347,6 @@ struct SettingsView: View {
                 Color.bpDivider.frame(height: 1)
             }
 
-            if isRestrictedRole {
-                HStack(spacing: 8) {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color.bpTextSub)
-                    Text("Managed by your household owner")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(Color.bpTextSub)
-                    Spacer()
-                }
-                .padding(.horizontal, 16).padding(.vertical, 10)
-                .background(Color.bpDivider.opacity(0.5))
-                Color.bpDivider.frame(height: 1)
-            }
-
             SettingsToggleRow(
                 icon: "bell.badge.fill", color: Color(hex: "#C62828")!,
                 label: "Bill Reminders",
@@ -346,6 +354,7 @@ struct SettingsView: View {
                 tint: Color(hex: "#C62828")!,
                 isOn: billNotifs
             )
+            .disabled(ownerLocked(memberPermissions?.receiveExpenseAlerts))
             .onChange(of: prefs.notifBills) { _, enabled in
                 if !enabled { NotificationService.shared.cancelAllBillReminders() }
             }
@@ -357,6 +366,7 @@ struct SettingsView: View {
                 tint: Color(hex: "#E67E22")!,
                 isOn: mealNotifs
             )
+            .disabled(ownerLocked(memberPermissions?.receiveMealAlerts))
             .onChange(of: prefs.notifMeals) { _, enabled in
                 if !enabled { NotificationService.shared.cancelMealReminders() }
             }
@@ -368,6 +378,7 @@ struct SettingsView: View {
                 tint: Color(hex: "#6A1B9A")!,
                 isOn: scheduleNotifs
             )
+            .disabled(ownerLocked(memberPermissions?.receiveCalendarAlerts))
             .onChange(of: prefs.notifSchedule) { _, enabled in
                 if !enabled { NotificationService.shared.cancelAllEventReminders() }
             }
@@ -379,6 +390,7 @@ struct SettingsView: View {
                 tint: Color(hex: "#4E342E")!,
                 isOn: maintenanceNotifs
             )
+            .disabled(ownerLocked(memberPermissions?.receiveMaintenanceAlerts))
             .onChange(of: prefs.notifMaintenance) { _, enabled in
                 if !enabled { NotificationService.shared.cancelAllMaintenanceReminders() }
             }

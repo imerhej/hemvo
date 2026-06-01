@@ -8,6 +8,7 @@ internal import Foundation
 struct CalendarEvent: Codable, Identifiable, Equatable {
     let id: UUID
     var title: String
+    var location: String
     var date: Date
     var endDate: Date?
     var assignedToID: UUID?
@@ -25,6 +26,7 @@ struct CalendarEvent: Codable, Identifiable, Equatable {
     init(
         id: UUID = UUID(),
         title: String,
+        location: String = "",
         date: Date = Date(),
         endDate: Date? = nil,
         assignedToID: UUID? = nil,
@@ -41,6 +43,7 @@ struct CalendarEvent: Codable, Identifiable, Equatable {
     ) {
         self.id           = id
         self.title        = title
+        self.location     = location
         self.date         = date
         self.endDate      = endDate
         self.assignedToID = assignedToID
@@ -61,6 +64,7 @@ struct CalendarEvent: Codable, Identifiable, Equatable {
         let c          = try decoder.container(keyedBy: CodingKeys.self)
         id             = try c.decode(UUID.self, forKey: .id)
         title          = try c.decode(String.self, forKey: .title)
+        location       = (try? c.decodeIfPresent(String.self, forKey: .location)) ?? ""
         date           = try c.decode(Date.self, forKey: .date)
         endDate        = try c.decodeIfPresent(Date.self, forKey: .endDate)
         assignedToID   = try c.decodeIfPresent(UUID.self, forKey: .assignedToID)

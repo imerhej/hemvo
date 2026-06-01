@@ -176,10 +176,11 @@ struct FamilyCalendarView: View {
                 jumpToDate = nil
             }
             .sheet(isPresented: $showAddEvent) {
-                NativeAddEventSheet(store: calSvc, preselectedDate: selectedDate) { event, cat, repeatRule, travelTime, alertOption, colorHex, inviteeIDs, scope in
+                NativeAddEventSheet(store: calSvc, preselectedDate: selectedDate) { event, cat, repeatRule, travelTime, alertOption, colorHex, location, inviteeIDs, scope in
                     calSvc.fetchEvents(for: selectedDate)
                     let hbEvent = CalendarEvent(
                         title:       event.title ?? "",
+                        location:    location,
                         date:        event.startDate,
                         endDate:     event.endDate,
                         isAllDay:    event.isAllDay,
@@ -497,14 +498,20 @@ struct FamilyCalendarView: View {
                     }
                 }
                 .onAppear {
-                    // Re-anchor scroll position after view recreation (mode switch / sheet dismiss).
-                    // Without this the LazyVStack snapping picks the wrong month on first touch.
+                    // Re-anchor on first mount / mode switch.
                     if let id = monthScrollID {
                         DispatchQueue.main.async {
                             proxy.scrollTo(id, anchor: .top)
                         }
                     }
                 }
+                // LazyVStack loses its position while a sheet covers it, causing the
+                // two-way scrollPosition binding to overwrite monthScrollID with a
+                // wrong month on dismiss.  Re-anchor after the sheet animation finishes.
+                .onChange(of: showAddEvent)  { _, showing in reanchorIfNeeded(showing, proxy: proxy) }
+                .onChange(of: showCalendars) { _, showing in reanchorIfNeeded(showing, proxy: proxy) }
+                .onChange(of: eventToEdit)   { _, ev     in if ev == nil { reanchorScroll(proxy: proxy) } }
+                .onChange(of: eventToView)   { _, ev     in if ev == nil { reanchorScroll(proxy: proxy) } }
             }
         }
     }
@@ -543,7 +550,7 @@ struct FamilyCalendarView: View {
                 Divider()
             }
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 2)
     }
 
     @ViewBuilder
@@ -612,7 +619,7 @@ struct FamilyCalendarView: View {
                     }
                 }
                 .frame(maxHeight: 60)
-                .padding(.horizontal, 3)
+                .padding(.horizontal, 1)
             } else {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(events, id: \.eventIdentifier) { ev in
@@ -631,7 +638,7 @@ struct FamilyCalendarView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 3)
+                .padding(.horizontal, 1)
             }
 
             Spacer(minLength: 0)
@@ -641,20 +648,15 @@ struct FamilyCalendarView: View {
     }
 
     private func eventPill(title: String, color: Color, isAllDay: Bool, icon: String? = nil) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: icon ?? "star.circle.fill")
-                .font(.system(size: 9))
-                .foregroundColor(color)
-            Text(title)
-                .font(.system(size: 11, weight: .medium))
-                .lineLimit(1)
-                .foregroundColor(color)
-        }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 2.5)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.opacity(0.15))
-        .cornerRadius(5)
+        Text(title)
+            .font(.system(size: 12, weight: .medium))
+            .lineLimit(1)
+            .foregroundColor(color)
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(color.opacity(0.15))
+            .cornerRadius(4)
     }
 
     // MARK: - Selected day events list
@@ -1158,6 +1160,20 @@ struct FamilyCalendarView: View {
     }
 
     // MARK: - Helpers
+
+    private func reanchorIfNeeded(_ isShowing: Bool, proxy: ScrollViewProxy) {
+        guard !isShowing else { return }
+        reanchorScroll(proxy: proxy)
+    }
+
+    private func reanchorScroll(proxy: ScrollViewProxy) {
+        guard let id = monthScrollID else { return }
+        // Wait for the sheet-dismiss animation (~0.35 s) before scrolling.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            proxy.scrollTo(id, anchor: .top)
+        }
+    }
+
     private func calendarWeeks(for month: Date) -> [[Date?]] {
         let first   = cal.date(from: cal.dateComponents([.year, .month], from: month))!
         let weekday = (cal.component(.weekday, from: first) - cal.firstWeekday + 7) % 7
@@ -1313,14 +1329,16 @@ struct NativeAddEventSheet: View {
 
     @ObservedObject var store: NativeCalendarService
     var preselectedDate: Date
-    var onSave: (EKEvent, CalendarEvent.EventCategory, CalendarEvent.RecurrenceRule, String, String, String, [UUID], CalendarEvent.EventScope) -> Void
+    var onSave: (EKEvent, CalendarEvent.EventCategory, CalendarEvent.RecurrenceRule, String, String, String, String, [UUID], CalendarEvent.EventScope) -> Void
 
     @Environment(\.dismiss) var dismiss
-    @FocusState private var titleFocused: Bool
-    @FocusState private var notesFocused: Bool
+    @FocusState private var titleFocused:    Bool
+    @FocusState private var locationFocused: Bool
+    @FocusState private var notesFocused:   Bool
 
     // Basic fields
     @State private var title            = ""
+    @State private var location         = ""
     @State private var notes            = ""
     @State private var isAllDay         = false
     @State private var startDate: Date
@@ -1378,7 +1396,7 @@ struct NativeAddEventSheet: View {
         case oneDay     = "1 day before"
     }
 
-    init(store: NativeCalendarService, preselectedDate: Date, onSave: @escaping (EKEvent, CalendarEvent.EventCategory, CalendarEvent.RecurrenceRule, String, String, String, [UUID], CalendarEvent.EventScope) -> Void) {
+    init(store: NativeCalendarService, preselectedDate: Date, onSave: @escaping (EKEvent, CalendarEvent.EventCategory, CalendarEvent.RecurrenceRule, String, String, String, String, [UUID], CalendarEvent.EventScope) -> Void) {
         self.store           = store
         self.preselectedDate = preselectedDate
         self.onSave          = onSave
@@ -1396,11 +1414,16 @@ struct NativeAddEventSheet: View {
         NavigationStack {
             List {
 
-                // MARK: Title only
+                // MARK: Title + Location
                 Section {
                     TextField("Title", text: $title)
                         .font(.system(size: 17))
                         .focused($titleFocused)
+                        .submitLabel(.next)
+                        .onSubmit { locationFocused = true }
+                    TextField("Location", text: $location)
+                        .font(.system(size: 17))
+                        .focused($locationFocused)
                         .submitLabel(.next)
                         .onSubmit { notesFocused = true }
                 }
@@ -1763,8 +1786,6 @@ struct NativeAddEventSheet: View {
     private func saveEvent() {
         let eventTitle = title.trimmingCharacters(in: .whitespaces)
 
-        scheduleEventNotification(title: eventTitle, date: startDate, isAllDay: isAllDay, alertOption: alertOption)
-
         let recurrence: CalendarEvent.RecurrenceRule
         switch repeatRule {
         case .never:    recurrence = .never
@@ -1781,56 +1802,16 @@ struct NativeAddEventSheet: View {
         let ekStore    = EKEventStore()
         let ekEvent    = EKEvent(eventStore: ekStore)
         ekEvent.title    = eventTitle
+        ekEvent.location = location.isEmpty ? nil : location
         ekEvent.notes    = notes.isEmpty ? nil : notes
         ekEvent.isAllDay = isAllDay
         ekEvent.startDate = startDate
         ekEvent.endDate   = endDate
 
-        onSave(ekEvent, category, recurrence, travelTime.rawValue, alertOption.rawValue, selectedColorHex, Array(inviteeIDs), eventScope)
+        onSave(ekEvent, category, recurrence, travelTime.rawValue, alertOption.rawValue, selectedColorHex, location, Array(inviteeIDs), eventScope)
         dismiss()
     }
 
-    // MARK: - Local notification
-    private func scheduleEventNotification(title: String, date: Date, isAllDay: Bool, alertOption: AlertOption) {
-        guard alertOption != .none else { return }
-
-        let offsets: [AlertOption: TimeInterval] = [
-            .atTime: 0, .five: -300, .fifteen: -900,
-            .thirty: -1800, .oneHour: -3600, .oneDay: -86400,
-        ]
-        let fireDate = date.addingTimeInterval(offsets[alertOption] ?? 0)
-
-        // Don't schedule if the fire time is already in the past
-        guard fireDate > Date() else { return }
-
-        let center  = UNUserNotificationCenter.current()
-        let content = UNMutableNotificationContent()
-        content.title = "📅 \(title)"
-        content.body  = isAllDay
-            ? "You have an all-day event today."
-            : "Your event starts at \(date.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits)))."
-        content.sound = .default
-
-        let cal = Calendar.current
-        let components: DateComponents
-        if isAllDay {
-            // All-day events: fire at 9 AM on the event day regardless of offset
-            var c = cal.dateComponents([.year, .month, .day], from: date)
-            c.hour   = 9
-            c.minute = 0
-            components = c
-        } else {
-            components = cal.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
-        }
-
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-        let id      = "event-\(title.hashValue)-\(date.timeIntervalSince1970)"
-        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
-
-        center.add(request) { error in
-            if let error { print("Notification error: \(error)") }
-        }
-    }
 }
 
 // MARK: - Color extension for system red
@@ -1844,10 +1825,11 @@ struct EditCalendarEventSheet: View {
     @ObservedObject var vm: ScheduleViewModel
     @Environment(\.dismiss) var dismiss
 
-    private enum Field { case title, notes }
+    private enum Field { case title, location, notes }
     @FocusState private var focus: Field?
 
     @State private var title      = ""
+    @State private var location   = ""
     @State private var notes      = ""
     @State private var isAllDay   = false
     @State private var startDate  = Date()
@@ -1896,6 +1878,11 @@ struct EditCalendarEventSheet: View {
                     TextField("Title", text: $title)
                         .font(.system(size: 17))
                         .focused($focus, equals: .title)
+                        .submitLabel(.next)
+                        .onSubmit { focus = .location }
+                    TextField("Location", text: $location)
+                        .font(.system(size: 17))
+                        .focused($focus, equals: .location)
                         .submitLabel(.next)
                         .onSubmit { focus = .notes }
                 }
@@ -2233,6 +2220,7 @@ struct EditCalendarEventSheet: View {
             }
             .onAppear {
                 title            = event.title
+                location         = event.location
                 notes            = event.notes
                 isAllDay         = event.isAllDay
                 startDate        = event.date
@@ -2258,6 +2246,7 @@ struct EditCalendarEventSheet: View {
     private func save() {
         var updated           = event
         updated.title         = title.trimmingCharacters(in: .whitespaces)
+        updated.location      = location
         updated.notes         = notes
         updated.isAllDay      = isAllDay
         updated.date          = startDate
@@ -2367,6 +2356,16 @@ struct EventDetailSheet: View {
                                 }
                             }
                             divRow
+                        }
+
+                        // Location (if set)
+                        if !event.location.isEmpty {
+                            divRow
+                            infoRow(icon: "mappin.and.ellipse", iconColor: color) {
+                                Text(event.location)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.primary)
+                            }
                         }
 
                         // Category

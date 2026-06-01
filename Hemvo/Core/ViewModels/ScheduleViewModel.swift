@@ -935,6 +935,7 @@ final class ScheduleViewModel: ObservableObject {
         guard !deletedEventIDs.contains(event.id) else { return }
         struct EventPatch: Encodable {
             var title:        String
+            var location:     String
             var date:         Date
             var endDate:      Date?
             var assignedToId: UUID?
@@ -949,6 +950,7 @@ final class ScheduleViewModel: ObservableObject {
             var scope:        String
             enum CodingKeys: String, CodingKey {
                 case title
+                case location
                 case date
                 case endDate      = "end_date"
                 case assignedToId = "assigned_to_id"
@@ -965,6 +967,7 @@ final class ScheduleViewModel: ObservableObject {
         }
         let patch = EventPatch(
             title:        event.title,
+            location:     event.location,
             date:         event.date,
             endDate:      event.endDate,
             assignedToId: event.assignedToID,
@@ -1051,6 +1054,7 @@ private struct SupabaseEventRow: Codable {
     let id:           UUID
     let householdId:  UUID?
     var title:        String
+    var location:     String
     var date:         Date
     var endDate:      Date?
     var assignedToId: UUID?
@@ -1070,6 +1074,7 @@ private struct SupabaseEventRow: Codable {
         case id
         case householdId  = "household_id"
         case title
+        case location
         case date
         case endDate      = "end_date"
         case assignedToId = "assigned_to_id"
@@ -1091,6 +1096,7 @@ private struct SupabaseEventRow: Codable {
         createdBy        = event.createdBy.flatMap { UUID(uuidString: $0) } ?? userId
         self.householdId = householdId
         title            = event.title
+        location         = event.location
         date             = event.date
         endDate          = event.endDate
         assignedToId     = event.assignedToID
@@ -1109,6 +1115,7 @@ private struct SupabaseEventRow: Codable {
         CalendarEvent(
             id:           id,
             title:        title,
+            location:     location,
             date:         date,
             endDate:      endDate,
             assignedToID: assignedToId,
