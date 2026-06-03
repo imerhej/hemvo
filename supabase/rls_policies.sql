@@ -118,13 +118,20 @@ CREATE POLICY "house_tasks_insert"
   TO authenticated
   WITH CHECK (created_by = auth.uid());
 
--- Creator or assignee can update (e.g. toggle complete).
+-- Any household member can update tasks in their household.
+-- Role-based write restrictions (owner/adult) are enforced client-side.
 CREATE POLICY "house_tasks_update"
   ON house_tasks FOR UPDATE
   TO authenticated
   USING (
-    created_by = auth.uid()
-    OR assigned_to_id = auth.uid()
+    household_id IN (
+      SELECT household_id FROM profiles WHERE id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    household_id IN (
+      SELECT household_id FROM profiles WHERE id = auth.uid()
+    )
   );
 
 CREATE POLICY "house_tasks_delete"

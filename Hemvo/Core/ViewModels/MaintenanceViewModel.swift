@@ -116,7 +116,7 @@ final class MaintenanceViewModel: ObservableObject {
                 )
             }
         }
-        Task { await supabaseUpsert(item) }
+        Task { await supabaseUpdate(item) }
     }
 
     func markComplete(_ item: MaintenanceItem) {
@@ -421,6 +421,62 @@ final class MaintenanceViewModel: ObservableObject {
         }
     }
 
+    // Plain UPDATE — only hits the UPDATE RLS policy so any household member
+    // with write access can edit tasks they didn't create (upsert would fail
+    // the INSERT policy's `created_by = auth.uid()` check first).
+    private func supabaseUpdate(_ item: MaintenanceItem) async {
+        guard !deletedItemIDs.contains(item.id) else { return }
+        await resolveIDs()
+        guard cachedHouseholdID != nil else { return }
+
+        struct EditPayload: Encodable {
+            let title:             String
+            let area:              String
+            let frequency:         String
+            let estimatedMinutes:  Int
+            let assignedToId:      UUID?
+            let assignedMemberIds: [UUID]?
+            let dueDate:           Date
+            let priority:          String
+            let difficulty:        String
+            let notes:             String
+            enum CodingKeys: String, CodingKey {
+                case title
+                case area
+                case frequency
+                case estimatedMinutes  = "estimated_minutes"
+                case assignedToId      = "assigned_to_id"
+                case assignedMemberIds = "assigned_member_ids"
+                case dueDate           = "due_date"
+                case priority
+                case difficulty
+                case notes
+            }
+        }
+
+        let payload = EditPayload(
+            title:             item.title,
+            area:              item.area.rawValue,
+            frequency:         item.frequency.rawValue,
+            estimatedMinutes:  item.estimatedMinutes,
+            assignedToId:      item.assignedMemberIDs.first.flatMap { UUID(uuidString: $0) },
+            assignedMemberIds: item.assignedMemberIDs.isEmpty ? nil
+                               : item.assignedMemberIDs.compactMap { UUID(uuidString: $0) },
+            dueDate:           item.nextDue,
+            priority:          item.isOverdue ? "high" : (item.isDueSoon ? "medium" : "low"),
+            difficulty:        item.difficulty.rawValue,
+            notes:             item.notes
+        )
+        do {
+            try await supabase.from("house_tasks")
+                .update(payload)
+                .eq("id", value: item.id.uuidString)
+                .execute()
+        } catch {
+            print("[Supabase] update house_task error: \(error)")
+        }
+    }
+
     private func supabaseUpsert(_ item: MaintenanceItem) async {
         guard !deletedItemIDs.contains(item.id) else { return }
         await resolveIDs()
@@ -484,6 +540,9 @@ private struct SupabaseHouseTaskRow: Codable {
     let id:                 UUID
     let householdId:        UUID
     var title:              String
+    var area:               String?
+    var frequency:          String?
+    var estimatedMinutes:   Int?
     var assignedToId:       UUID?
     var assignedMemberIds:  [UUID]?
     var dueDate:            Date
@@ -498,6 +557,9 @@ private struct SupabaseHouseTaskRow: Codable {
         case id
         case householdId        = "household_id"
         case title
+        case area
+        case frequency
+        case estimatedMinutes   = "estimated_minutes"
         case assignedToId       = "assigned_to_id"
         case assignedMemberIds  = "assigned_member_ids"
         case dueDate            = "due_date"
@@ -511,9 +573,14 @@ private struct SupabaseHouseTaskRow: Codable {
 
     init(from item: MaintenanceItem, userId: UUID, householdId: UUID) {
         id                = item.id
-        createdBy         = userId
+        // Preserve the original creator's UUID so edits by other household members
+        // don't overwrite created_by and break the creator's own future update rights.
+        createdBy         = UUID(uuidString: item.createdBy ?? "") ?? userId
         self.householdId  = householdId
         title             = item.title
+        area              = item.area.rawValue
+        frequency         = item.frequency.rawValue
+        estimatedMinutes  = item.estimatedMinutes
         assignedMemberIds = item.assignedMemberIDs.isEmpty ? nil
                             : item.assignedMemberIDs.compactMap { UUID(uuidString: $0) }
         assignedToId      = item.assignedMemberIDs.first.flatMap { UUID(uuidString: $0) }
@@ -537,10 +604,13 @@ private struct SupabaseHouseTaskRow: Codable {
         return MaintenanceItem(
             id:                id,
             title:             title,
+            area:              MaintenanceItem.HomeArea(rawValue: area ?? "") ?? .general,
+            frequency:         MaintenanceItem.Frequency(rawValue: frequency ?? "") ?? .monthly,
             difficulty:        MaintenanceItem.Difficulty(rawValue: difficulty) ?? .medium,
             lastCompleted:     completedDate,
             nextDue:           dueDate,
             notes:             notes,
+            estimatedMinutes:  estimatedMinutes ?? 15,
             assignedMemberIDs: memberIDs,
             createdBy:         createdBy.uuidString
         )
@@ -551,9 +621,9 @@ private struct SupabaseHouseTaskRow: Codable {
             id:               id,
             originalID:       id,
             title:            title,
-            area:             .general,
-            frequency:        .monthly,
-            estimatedMinutes: 15,
+            area:             MaintenanceItem.HomeArea(rawValue: area ?? "") ?? .general,
+            frequency:        MaintenanceItem.Frequency(rawValue: frequency ?? "") ?? .monthly,
+            estimatedMinutes: estimatedMinutes ?? 15,
             notes:            notes,
             completedDate:    completedDate ?? Date(),
             nextDue:          dueDate,

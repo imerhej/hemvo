@@ -371,6 +371,11 @@ struct MaintenanceTaskDetailSheet: View {
         }
     }
 
+    private var creatorMember: HouseholdMembership? {
+        guard let createdBy = task.createdBy else { return nil }
+        return householdService.household?.members.first { $0.id == createdBy }
+    }
+
     private var statusColor: Color {
         if task.isOverdue  { return Color(hex: "#C0392B")! }
         if task.isDueSoon  { return Color(hex: "#E67E22")! }
@@ -433,6 +438,10 @@ struct MaintenanceTaskDetailSheet: View {
                             detailRow(icon: "house.fill", label: "Area", value: task.area.rawValue)
                             mvDivider.frame(height: 1).padding(.horizontal, 16)
                             detailRow(icon: "clock.fill", label: "Est. Time", value: "\(task.estimatedMinutes) min")
+                            if let creator = creatorMember {
+                                mvDivider.frame(height: 1).padding(.horizontal, 16)
+                                creatorRow(member: creator)
+                            }
                             if !assignedMembers.isEmpty {
                                 mvDivider.frame(height: 1).padding(.horizontal, 16)
                                 assignedRow(members: assignedMembers)
@@ -545,6 +554,38 @@ struct MaintenanceTaskDetailSheet: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(mvBrown)
                 .multilineTextAlignment(.trailing)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 14)
+    }
+
+    private func creatorRow(member: HouseholdMembership) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.badge.plus")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(mvAmber)
+                .frame(width: 22)
+            Text("Created By")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(mvMuted)
+            Spacer()
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(Color(hex: member.avatarHex) ?? mvAmber)
+                        .frame(width: 26, height: 26)
+                    Text(member.username.prefix(1).uppercased())
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(member.username)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(mvBrown)
+                    Text(member.role.rawValue)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(mvMuted)
+                }
+            }
         }
         .padding(.horizontal, 16).padding(.vertical, 14)
     }
