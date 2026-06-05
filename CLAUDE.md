@@ -44,7 +44,7 @@ HemvoApp
     ├─ !subscriptionActive → PaywallView
     └─ subscribed       → ContentView (5-tab shell with LiquidTabBar)
          ├─ Dashboard
-         ├─ Meals
+         ├─ Meals (MealPlannerView → MealHistoryView sheet for past meals, read-only)
          ├─ Budget
          ├─ Schedule
          └─ Maintenance
@@ -62,14 +62,12 @@ Deep links (`hemvo://reset-password?token=XXX`) are handled in `HemvoApp.onOpenU
 
 ### Authentication
 
-Managed by `AuthViewModel` + `AuthService` / `SocialAuthService`. All paths ultimately resolve to a Supabase session.
+Managed by `AuthViewModel` + `AuthService`. All paths ultimately resolve to a Supabase session. Apple/Google social sign-in has been removed.
 
 | Path | Mechanism |
 |------|-----------|
 | Email/password | `AuthService` → Supabase Auth; `login()` accepts email **or** username (resolves username→email via `profiles` table) |
 | Sign up | `AuthService.createAccount()` → `create-account` Edge Function (uses admin API to avoid GoTrue SMTP issues) |
-| Sign in with Apple | `ASAuthenticationServices` via `SocialAuthService` |
-| Google Sign-In | `GoogleSignIn` SDK, loaded dynamically via `NSClassFromString` |
 | Biometrics | `LocalAuthentication` (Face ID / Touch ID), enabled after first login |
 | Password reset | `send-password-reset-email` Edge Function → deep link `hemvo://reset-password?token=XXX` → `ResetPasswordView` |
 | Change password | `change_user_password` Supabase RPC (SECURITY DEFINER, avoids OTP reauthentication requirement) |
@@ -87,13 +85,12 @@ New users get a 7-day free trial (`AppConstants.trialDurationDays`). After trial
 | Service | Location | Responsibility |
 |---------|----------|----------------|
 | `AuthService` | `Core/Services/` | Supabase Auth: login (email/username), sign-up, profile CRUD, subscription status sync |
-| `SocialAuthService` | `Core/Services/` | Apple & Google OAuth |
 | `StoreKitService` | `Core/Services/` | In-app purchases, subscription verification |
 | `HouseholdService` | `Features/HouseHold/` | `@MainActor` singleton; manages household state, members, invites, Supabase Realtime subscriptions |
 | `PersistenceService` | `Core/Services/` | CoreData stack; use `.preview` for SwiftUI previews |
 | `UserPreferences` | `Core/Services/` | iCloud KV + UserDefaults sync for notification prefs and avatar color |
-| `PushNotificationService` | `Core/Services/` | Registers APNs tokens to `device_tokens` Supabase table; calls `notify-household` Edge Function |
-| `NotificationService` | `Core/Services/` | Local push notifications (bills, maintenance, meals, trial expiry) |
+| `PushNotificationService` | `Core/Services/` | Registers APNs tokens to `device_tokens` (upsert keyed on `user_id+device_id` IDFV to prevent duplicate delivery on token rotation); calls `notify-household` Edge Function |
+| `NotificationService` | `Core/Services/` | Local push notifications (bills, maintenance, meals, trial expiry); meal notifications are non-repeating (scheduled once per exact calendar date) |
 | `HouseholdInviteService` | `Core/Services/` | Invite codes, 7-day expiry, email dispatch |
 | `EmailService` | `Core/Services/` | Transactional email via Resend API (API key inside the service) |
 | `PasswordResetService` | `Core/Services/` | Legacy token generation/validation — superseded by Supabase Edge Function flow |
@@ -122,6 +119,7 @@ Deployed under `supabase/functions/`. All are invoked via `supabase.functions.in
 - **Apple Push Notification service (APNs)** — push delivery. Required Supabase secrets: `APNS_KEY_ID` (key VBY93G9JH7), `APNS_TEAM_ID`, `APNS_PRIVATE_KEY`. Debug builds use sandbox; release/TestFlight use production.
 - **App Store Connect** — StoreKit product IDs must exist in ASC before purchases work in production.
 - **CloudKit** — container `iCloud.com.hemvo.app`; entitlements differ between Debug (`Hemvo.entitlements`) and Release (`HemvoRelease.entitlements`). Sync is currently disabled.
+- **GitHub Actions** — `.github/workflows/supabase-keep-alive.yml` pings Supabase on a schedule to prevent the free-tier project from pausing.
 
 ## Key Conventions
 
