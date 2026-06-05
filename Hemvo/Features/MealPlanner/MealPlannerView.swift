@@ -13,8 +13,8 @@ private let mpBrown   = Color(hex: "#1A1208")!   // primary text
 private let mpMuted   = Color(hex: "#7A6A55")!   // secondary text
 private let mpDivider = Color(hex: "#E6DDD0")!   // borders
 
-// Meal type tint colours (matching screenshot)
-private func mealBg(_ type: Meal.MealType) -> Color {
+// Meal type tint colours (matching screenshot) — internal so MealHistoryView can reuse them
+func mealBg(_ type: Meal.MealType) -> Color {
     switch type {
     case .breakfast: return Color(hex: "#FEF3E2")!   // warm peach
     case .lunch:     return Color(hex: "#E8F5E9")!   // mint green
@@ -22,7 +22,7 @@ private func mealBg(_ type: Meal.MealType) -> Color {
     case .snack:     return Color(hex: "#F3E5F5")!   // lavender
     }
 }
-private func mealAccent(_ type: Meal.MealType) -> Color {
+func mealAccent(_ type: Meal.MealType) -> Color {
     switch type {
     case .breakfast: return Color(hex: "#C8922A")!
     case .lunch:     return Color(hex: "#3D7A52")!
@@ -49,6 +49,7 @@ struct MealPlannerView: View {
     @State private var addMealRequest: AddMealRequest? = nil
     @State private var showGroceryList     = false
     @State private var selectedMeal: Meal? = nil
+    @State private var showHistory         = false
     @State private var refreshID = UUID()
 
     private var canWrite: Bool {
@@ -56,6 +57,10 @@ struct MealPlannerView: View {
               let member = householdService.household?.members.first(where: { $0.id == uid })
         else { return true }
         return member.role.canWrite
+    }
+
+    private var isPastDate: Bool {
+        selectedDate < Calendar.current.startOfDay(for: Date())
     }
 
     private var mealsForDay: [Meal] { mealVM.meals(for: selectedDate) }
@@ -91,6 +96,9 @@ struct MealPlannerView: View {
                 AddMealView(mealVM: mealVM, preselectedDate: req.date, preselectedType: req.type)
                     .onDisappear { refreshID = UUID() }
             }
+            .sheet(isPresented: $showHistory) {
+                MealHistoryView(mealVM: mealVM)
+            }
             .sheet(isPresented: $showGroceryList) {
                 GroceryListView(groceryVM: groceryVM)
             }
@@ -112,18 +120,31 @@ struct MealPlannerView: View {
                     .foregroundColor(mpBrown)
             }
             Spacer()
-            // Amber circle grocery button
-            Button {
-                groceryVM.syncFromMeals(mealVM.meals)
-                showGroceryList = true
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color(hex: "#F5E4C3")!)
-                        .frame(width: 52, height: 52)
-                    Image(systemName: "cart.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(mpAmber)
+            HStack(spacing: 10) {
+                // History button
+                Button { showHistory = true } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: "#F5E4C3")!)
+                            .frame(width: 52, height: 52)
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(mpAmber)
+                    }
+                }
+                // Amber circle grocery button
+                Button {
+                    groceryVM.syncFromMeals(mealVM.meals)
+                    showGroceryList = true
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: "#F5E4C3")!)
+                            .frame(width: 52, height: 52)
+                        Image(systemName: "cart.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(mpAmber)
+                    }
                 }
             }
         }
@@ -215,7 +236,9 @@ struct MealPlannerView: View {
                 )
                 .font(.system(size: 13, weight: .heavy)).kerning(1.5)
                 .foregroundColor(mpAmber)
-                Text("\(mealsForDay.count) meal\(mealsForDay.count == 1 ? "" : "s") planned")
+                Text(isPastDate
+                     ? "\(mealsForDay.count) meal\(mealsForDay.count == 1 ? "" : "s") · history"
+                     : "\(mealsForDay.count) meal\(mealsForDay.count == 1 ? "" : "s") planned")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(mpMuted)
             }
@@ -233,12 +256,25 @@ struct MealPlannerView: View {
                 MealTypeSection(
                     mealType: type,
                     meals:    mealVM.meals(for: selectedDate, type: type),
-                    onAdd:    canWrite ? { addMealRequest = AddMealRequest(date: selectedDate, type: type) } : nil,
+                    onAdd:    (canWrite && !isPastDate) ? { addMealRequest = AddMealRequest(date: selectedDate, type: type) } : nil,
                     onTap:    { selectedMeal = $0 }
                 )
             }
         }
         .padding(.horizontal, 16)
+    }
+
+    // Days within the next 7 days (today inclusive) that have no meal planned.
+    private var daysOpenCount: Int {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        guard let nextWeek = cal.date(byAdding: .day, value: 7, to: today) else { return 0 }
+        let coveredDays = Set(
+            mealVM.meals
+                .filter { $0.date >= today && $0.date < nextWeek }
+                .map { cal.startOfDay(for: $0.date) }
+        )
+        return max(0, 7 - coveredDays.count)
     }
 
     // MARK: - Weekly Summary Card
@@ -248,10 +284,7 @@ struct MealPlannerView: View {
             Rectangle().fill(mpDivider).frame(width: 1, height: 32)
             summaryCol(value: "\(mealVM.allIngredients.count)", label: "INGREDIENTS")
             Rectangle().fill(mpDivider).frame(width: 1, height: 32)
-            summaryCol(
-                value: "\(max(0, Meal.Weekday.allCases.count - Set(mealVM.meals.map { $0.day }).count))",
-                label: "DAYS OPEN"
-            )
+            summaryCol(value: "\(daysOpenCount)", label: "DAYS OPEN")
         }
         .padding(.vertical, 20)
         .frame(maxWidth: .infinity)
@@ -517,4 +550,8 @@ struct WeeklySummaryCard: View {
     var body: some View { EmptyView() }
 }
 
-#Preview { MealPlannerView() }
+#Preview {
+    MealPlannerView()
+        .environmentObject(AuthViewModel())
+        .environmentObject(HouseholdService.shared)
+}

@@ -276,42 +276,61 @@ struct MealDetailView: View {
     // MARK: - Action Buttons
     private func actionButtons(meal: Meal) -> some View {
         VStack(spacing: 10) {
-            // Edit — owners and adults only
-            if canWrite {
-                Button { showEditMeal = true } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "pencil.circle.fill")
-                            .font(.system(size: 20))
-                        Text("Edit Meal")
-                            .font(.system(size: 16, weight: .bold))
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(typeColor(for: meal))
-                    .cornerRadius(14)
-                    .shadow(color: typeColor(for: meal).opacity(0.35), radius: 10, y: 4)
+            if meal.isPast {
+                // Past meals are read-only — show an informational badge instead of actions
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Past meal — read only")
+                        .font(.system(size: 13, weight: .semibold))
                 }
-            }
-
-            // Delete — only for the creator and write-enabled roles
-            if canWrite && mealVM.canDelete(meal) {
-                Button { showDeleteAlert = true } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 14, weight: .semibold))
-                        Text("Remove Meal")
-                            .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Color(hex: "#7A6A55")!)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color(hex: "#F2EDE5")!)
+                .cornerRadius(14)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color(hex: "#E6DDD0")!, lineWidth: 1)
+                )
+            } else {
+                // Edit — owners and adults only
+                if canWrite {
+                    Button { showEditMeal = true } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "pencil.circle.fill")
+                                .font(.system(size: 20))
+                            Text("Edit Meal")
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(typeColor(for: meal))
+                        .cornerRadius(14)
+                        .shadow(color: typeColor(for: meal).opacity(0.35), radius: 10, y: 4)
                     }
-                    .foregroundColor(.red)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.red.opacity(0.07))
-                    .cornerRadius(14)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(Color.red.opacity(0.2), lineWidth: 1)
-                    )
+                }
+
+                // Delete — write-enabled roles only, future meals only
+                if mealVM.canDelete(meal) {
+                    Button { showDeleteAlert = true } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("Remove Meal")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .foregroundColor(.red)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.red.opacity(0.07))
+                        .cornerRadius(14)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Color.red.opacity(0.2), lineWidth: 1)
+                        )
+                    }
                 }
             }
         }
@@ -356,4 +375,6 @@ private struct DetailStatPill: View {
     )
     vm.addMeal(sampleMeal)
     return MealDetailView(mealID: sampleMeal.id, mealVM: vm)
+        .environmentObject(AuthViewModel())
+        .environmentObject(HouseholdService.shared)
 }

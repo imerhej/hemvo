@@ -11,7 +11,6 @@
 internal import SwiftUI
 internal import LocalAuthentication
 internal import Combine
-internal import AuthenticationServices
 
 enum AuthMode { case login, signUp }
 
@@ -176,18 +175,6 @@ struct LoginView: View {
                             }
 
                             toggleMode
-
-                            HStack {
-                                Rectangle().fill(Color.white.opacity(0.25)).frame(height: 0.5)
-                                Text("or")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.7))
-                                    .padding(.horizontal, 10)
-                                Rectangle().fill(Color.white.opacity(0.25)).frame(height: 0.5)
-                            }
-                            .padding(.horizontal, 20)
-
-                            socialButtons
 
                             if isSignUp {
                                 Text("By creating an account you agree to our Terms of Service and Privacy Policy.")
@@ -603,43 +590,6 @@ struct LoginView: View {
             }
             .font(.subheadline).bold().foregroundColor(.white).underline()
         }
-    }
-
-    // MARK: - Social Buttons
-    private var socialButtons: some View {
-        VStack(spacing: 10) {
-            Button { authVM.loginWithApple() } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "apple.logo")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("Continue with Apple").font(.subheadline).bold()
-                }
-                .foregroundColor(Color(.systemBackground))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Color(.label))
-                .cornerRadius(14)
-                .overlay(RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color(.systemGray4), lineWidth: 0.5))
-            }
-
-            Button { authVM.loginWithGoogle() } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "globe")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("Continue with Google").font(.subheadline).bold()
-                }
-                .foregroundColor(Color(.label))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Color(.systemBackground))
-                .cornerRadius(14)
-                .overlay(RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color(.systemGray4), lineWidth: 0.5))
-            }
-        }
-        .padding(.horizontal, 20)
-        .disabled(authVM.isLoading)
     }
 
     // MARK: - Email Verification Sheet

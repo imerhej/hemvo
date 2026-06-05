@@ -2,12 +2,7 @@
 //  Hemvo
 
 internal import SwiftUI
-internal import StoreKit
-internal import CoreData
-internal import CloudKit
 internal import Foundation
-internal import Combine
-internal import UserNotifications
 
 // MARK: - AddMealView
 struct AddMealView: View {
@@ -155,7 +150,11 @@ struct AddMealView: View {
             prepTimeMinutes: prepTime,
             servings:        servings
         )
-        mealVM.addMeal(meal)
+        if isEditing {
+            mealVM.updateMeal(meal)
+        } else {
+            mealVM.addMeal(meal)
+        }
         DispatchQueue.main.async { dismiss() }
     }
 }

@@ -41,6 +41,14 @@ final class MealPlanViewModel: ObservableObject {
         meals.flatMap { $0.ingredients }
     }
 
+    /// Past meals in reverse-chronological order — read-only historical record.
+    var pastMeals: [Meal] {
+        let today = Calendar.current.startOfDay(for: Date())
+        return meals
+            .filter { $0.date < today }
+            .sorted { $0.date > $1.date }
+    }
+
     // MARK: - Query (date-based — fixes week-leakage bug)
     func meals(for date: Date) -> [Meal] {
         let cal = Calendar.current
@@ -131,21 +139,23 @@ final class MealPlanViewModel: ObservableObject {
 
     // MARK: - Ownership check
     func canDelete(_ meal: Meal) -> Bool {
-        hasWriteAccess
+        hasWriteAccess && !meal.isPast
     }
 
     func clearWeek() {
-        for meal in meals {
+        let today = Calendar.current.startOfDay(for: Date())
+        let futureMeals = meals.filter { $0.date >= today }
+        for meal in futureMeals {
             deletedMealIDs.insert(meal.id)
             pendingUploadIDs.remove(meal.id)
         }
         persistDeletedIDs()
         persistPendingUploadIDs()
-        meals.removeAll()
+        meals.removeAll { $0.date >= today }
         persist()
         notif.cancelMealReminders()
         objectWillChange.send()
-        Task { await supabaseDeleteAll() }
+        Task { await supabaseDeleteFuture() }
     }
 
     // MARK: - Persistence
@@ -428,21 +438,27 @@ final class MealPlanViewModel: ObservableObject {
         return row.toMeal()
     }
 
-    private func supabaseDeleteAll() async {
+    private func supabaseDeleteFuture() async {
         await resolveIDs()
         guard let uid = cachedUserID else { return }
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        let todayStr = fmt.string(from: Calendar.current.startOfDay(for: Date()))
         do {
             if let hid = cachedHouseholdID {
                 try await supabase.from("meals").delete()
-                    .eq("household_id", value: hid.uuidString).execute()
+                    .eq("household_id", value: hid.uuidString)
+                    .gte("meal_date", value: todayStr)
+                    .execute()
             } else {
                 try await supabase.from("meals").delete()
-                    .eq("created_by", value: uid.uuidString).execute()
+                    .eq("created_by", value: uid.uuidString)
+                    .gte("meal_date", value: todayStr)
+                    .execute()
             }
-            deletedMealIDs.removeAll()
-            persistDeletedIDs()
         } catch {
-            print("[Supabase] delete all meals error: \(error)")
+            print("[Supabase] delete future meals error: \(error)")
         }
     }
 }

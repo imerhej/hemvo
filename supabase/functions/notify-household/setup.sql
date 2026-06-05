@@ -8,8 +8,9 @@ CREATE TABLE IF NOT EXISTS device_tokens (
     user_id      UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     household_id UUID,
     token        TEXT        NOT NULL,
+    device_id    TEXT        NOT NULL DEFAULT '',
     updated_at   TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (user_id, token)
+    UNIQUE (user_id, device_id)
 );
 
 -- Keep updated_at current so we can prune stale tokens later.

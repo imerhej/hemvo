@@ -318,11 +318,6 @@ final class BudgetViewModel: ObservableObject {
         load()
         updateCategorySpend()
         Task { await loadFromSupabase() }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            if UserPreferences.shared.notifBills {
-                NotificationService.shared.rescheduleAllBills(from: self.expenses)
-            }
-        }
         // Reload whenever the app returns from background so any changes
         // made by other household members while inactive are picked up immediately.
         NotificationCenter.default
@@ -471,6 +466,9 @@ final class BudgetViewModel: ObservableObject {
             for e in expenses where e.scope == .household { autoCreateCategory(for: e.category) }
             updateCategorySpend()
             persist()
+            if UserPreferences.shared.notifBills {
+                NotificationService.shared.rescheduleAllBills(from: expenses)
+            }
             for e in pendingLocal { Task { await supabaseUpsert(e) } }
         } catch {
             print("[Supabase] fetch expenses error: \(error)")

@@ -21,6 +21,11 @@ struct Meal: Identifiable, Equatable {
         Weekday.from(calendarWeekday: Calendar.current.component(.weekday, from: date))
     }
 
+    /// True when the meal date is before today (start of day). Past meals are read-only.
+    var isPast: Bool {
+        date < Calendar.current.startOfDay(for: Date())
+    }
+
     init(
         id: UUID = UUID(),
         name: String,

@@ -109,7 +109,9 @@ final class AuthViewModel: ObservableObject {
 
     /// True when the current user owns their household (or has no household yet).
     /// Defaults to true so new users without a household still hit the regular paywall.
+    /// Returns false when not logged in so no subscription UI flashes during sign-out.
     var isOwner: Bool {
+        guard isLoggedIn else { return false }
         guard let uid = userID?.uuidString,
               let h   = HouseholdService.shared.household else { return true }
         return h.ownerUserID == uid
@@ -123,6 +125,7 @@ final class AuthViewModel: ObservableObject {
     /// Only owners need a personal active subscription or trial.
     /// Members are covered by the owner — their own trial expiry is irrelevant.
     var trialExpired: Bool {
+        guard isLoggedIn else { return false }
         guard isOwner else { return false }
         guard !isSubscriptionActive else { return false }
         if let end = UserDefaults.standard.object(forKey: "hemvo_trialEndDate") as? Date {
@@ -271,92 +274,6 @@ final class AuthViewModel: ObservableObject {
             errorMessage = friendlyAuthError(error)
         }
         isLoading = false
-    }
-
-    // MARK: - Sign in with Apple
-    func loginWithApple() {
-        Task {
-            isLoading    = true
-            errorMessage = nil
-            do {
-                let result = try await SocialAuthService.shared.signInWithApple()
-                await completeSocialLogin(result)
-            } catch let err as SocialAuthError where err == .cancelled {
-                // Silent — user dismissed the sheet
-            } catch {
-                errorMessage = friendlyAuthError(error)
-            }
-            isLoading = false
-        }
-    }
-
-    // MARK: - Sign in with Google
-    func loginWithGoogle() {
-        let vc = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap { $0.windows }
-            .first(where: { $0.isKeyWindow })?.rootViewController
-        guard let vc else { return }
-
-        Task {
-            isLoading    = true
-            errorMessage = nil
-            do {
-                let result = try await SocialAuthService.shared.signInWithGoogle(
-                    presentingViewController: vc)
-                await completeSocialLogin(result)
-            } catch let err as SocialAuthError where err == .cancelled {
-                // Silent
-            } catch {
-                errorMessage = friendlyAuthError(error)
-            }
-            isLoading = false
-        }
-    }
-
-    // MARK: - Social login completion
-    private func completeSocialLogin(_ result: SocialAuthResult) async {
-        do {
-            // Try signing in first — account may already exist
-            try await auth.login(emailOrUsername: result.email, password: result.email)
-            isLoggedIn        = true
-            isResolvingAccess = true
-            UserDefaults.standard.removeObject(forKey: "hemvo_lockedOut")
-            userID = await auth.currentUserID()
-            await loadProfile()
-            await refreshSubscriptionStatus()
-            isResolvingAccess = false
-            PushNotificationService.shared.refreshToken()
-        } catch {
-            // Account doesn't exist — create it with a random password
-            // (social users authenticate via Apple/Google, not this password)
-            let username = result.email
-                .components(separatedBy: "@").first?
-                .replacingOccurrences(of: ".", with: "_")
-                ?? UUID().uuidString
-            do {
-                try await auth.createAccount(
-                    email:    result.email,
-                    password: UUID().uuidString,
-                    fullName: result.name,
-                    username: username
-                )
-                isLoggedIn        = true
-                isResolvingAccess = true
-                UserDefaults.standard.removeObject(forKey: "hemvo_lockedOut")
-                userID = await auth.currentUserID()
-                await startTrial()
-                isResolvingAccess = false
-                await loadProfile()
-                PushNotificationService.shared.refreshToken()
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
-                    await offerBiometricEnrollment()
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
     }
 
     // MARK: - Biometrics

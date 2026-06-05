@@ -15,6 +15,7 @@
 
 internal import Foundation
 internal import Supabase
+internal import UIKit
 
 final class PushNotificationService {
 
@@ -46,9 +47,14 @@ final class PushNotificationService {
 
     private func saveTokenToSupabase(_ token: String) async {
         guard let uid = await AuthService.shared.currentUserID() else { return }
-        // HouseholdService is @MainActor — read it on the main actor to avoid a data race.
-        let householdID: UUID? = await MainActor.run {
-            HouseholdService.shared.household.flatMap { UUID(uuidString: $0.id) }
+        // HouseholdService is @MainActor — read both household ID and device ID together.
+        let (householdID, deviceID): (UUID?, String) = await MainActor.run {
+            let hid = HouseholdService.shared.household.flatMap { UUID(uuidString: $0.id) }
+            // IDFV is stable across reinstalls as long as any vendor app remains installed.
+            // Using it as the conflict key means token rotation updates the row in-place
+            // instead of inserting a duplicate, preventing multi-notification delivery.
+            let did = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+            return (hid, did)
         }
 
         struct Row: Encodable {
@@ -56,11 +62,13 @@ final class PushNotificationService {
             let householdId:     UUID?
             let token:           String
             let apnsEnvironment: String
+            let deviceId:        String
             enum CodingKeys: String, CodingKey {
                 case userId          = "user_id"
                 case householdId     = "household_id"
                 case token
                 case apnsEnvironment = "apns_environment"
+                case deviceId        = "device_id"
             }
         }
 
@@ -68,8 +76,9 @@ final class PushNotificationService {
             try await supabase
                 .from("device_tokens")
                 .upsert(Row(userId: uid, householdId: householdID, token: token,
-                            apnsEnvironment: PushNotificationService.apnsEnvironment),
-                        onConflict: "user_id,token")
+                            apnsEnvironment: PushNotificationService.apnsEnvironment,
+                            deviceId: deviceID),
+                        onConflict: "user_id,device_id")
                 .execute()
         } catch {
             print("[Push] save token error: \(error)")

@@ -74,20 +74,28 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: - ── MEALS ────────────────────────────────────────────────────────
 
-    /// Schedules one notification per weekday that has meals planned,
-    /// firing the EVENING BEFORE at 8pm so the user knows what's coming.
-    /// Call whenever the meal plan changes.
+    /// Schedules one notification per future meal date, firing the EVENING
+    /// BEFORE at 8pm. Uses exact year/month/day components (repeats: false)
+    /// so notifications do not recur weekly after the meal date passes.
     func scheduleMealReminders(meals: [Meal]) {
-        // Cancel all existing meal notifications first
         center.getPendingNotificationRequests { pending in
             let ids = pending.map { $0.identifier }.filter { $0.hasPrefix(Prefix.mealTomorrow) }
             self.center.removePendingNotificationRequests(withIdentifiers: ids)
 
-            // Group meals by weekday
-            let grouped = Dictionary(grouping: meals, by: { $0.day })
+            let cal = Calendar.current
+            let now = Date()
 
-            for (weekday, dayMeals) in grouped where !dayMeals.isEmpty {
-                // Build a natural-language meal summary
+            // Group by actual calendar date (not weekday) so each date slot is independent.
+            let grouped = Dictionary(grouping: meals, by: { cal.startOfDay(for: $0.date) })
+
+            for (mealDate, dayMeals) in grouped where !dayMeals.isEmpty {
+                // Compute the specific "evening before" fire date.
+                guard let dayBefore = cal.date(byAdding: .day, value: -1, to: mealDate) else { continue }
+                var comp        = cal.dateComponents([.year, .month, .day], from: dayBefore)
+                comp.hour       = 20
+                comp.minute     = 0
+                guard let fireDate = cal.date(from: comp), fireDate > now else { continue }
+
                 let names = dayMeals
                     .sorted { $0.mealType.sortOrder < $1.mealType.sortOrder }
                     .map { $0.name }
@@ -100,29 +108,21 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                     summary = "\(all) and \(names.last!)"
                 }
 
+                let weekdayLabel = Meal.Weekday.from(
+                    calendarWeekday: cal.component(.weekday, from: mealDate)
+                ).label
+
                 let content       = UNMutableNotificationContent()
                 content.title     = "🍽️ Tomorrow's Meals"
-                content.body      = "\(weekday.label): \(summary)"
+                content.body      = "\(weekdayLabel): \(summary)"
                 content.sound     = .default
-                // No badge
 
-                // Fire every week on the DAY BEFORE this weekday at 8pm.
-                // Weekday in DateComponents: 1=Sun, 2=Mon… 7=Sat
-                // Our Weekday enum: 1=Mon…7=Sun
-                // Day-before: subtract 1, wrapping Sunday(7) → Saturday(6)
-                let todayWD    = weekday.rawValue == 1 ? 7 : weekday.rawValue - 1
-                // Convert our enum value back to Calendar weekday component
-                // Our 1=Mon → Calendar 2, Our 7=Sun → Calendar 1
-                let calWD = todayWD == 7 ? 1 : todayWD + 1
-
-                var components          = DateComponents()
-                components.weekday      = calWD
-                components.hour         = 20
-                components.minute       = 0
-
-                let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+                // repeats: false — fires once for this specific date, never again.
+                let trigger = UNCalendarNotificationTrigger(dateMatching: comp, repeats: false)
+                let dateKey = cal.dateComponents([.year, .month, .day], from: mealDate)
+                let identifier = "\(Prefix.mealTomorrow)\(dateKey.year ?? 0)-\(dateKey.month ?? 0)-\(dateKey.day ?? 0)"
                 let request = UNNotificationRequest(
-                    identifier: "\(Prefix.mealTomorrow)\(weekday.rawValue)",
+                    identifier: identifier,
                     content:    content,
                     trigger:    trigger
                 )
@@ -329,7 +329,9 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     // MARK: - ── BILLS ────────────────────────────────────────────────────────
 
     func scheduleBillReminder(for expense: Expense) {
-        guard expense.isRecurring, !expense.isPaid, expense.date > Date() else { return }
+        let today  = Calendar.current.startOfDay(for: Date())
+        let dueDay = Calendar.current.startOfDay(for: expense.date)
+        guard expense.isRecurring, !expense.isPaid, dueDay >= today else { return }
 
         // Day-of at 9am
         let onDueContent       = UNMutableNotificationContent()
