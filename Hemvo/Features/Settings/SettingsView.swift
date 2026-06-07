@@ -30,7 +30,7 @@ struct SettingsView: View {
 
     private var isRestrictedRole: Bool {
         let role = authVM.profile?.role ?? ""
-        return role == "Teen" || role == "Child"
+        return role == "Teen"
     }
     private var memberPermissions: MemberPermissions? { authVM.profile?.permissions }
 
@@ -293,8 +293,6 @@ struct SettingsView: View {
             SettingsDivider()
             SettingsNavRow(icon: "house.fill",           color: Color(hex: "#1565C0")!, label: "Household Members",   chevron: true) { showHousehold = true }
             if authVM.isOwner {
-                SettingsDivider()
-                SettingsNavRow(icon: "crown.fill",      color: Color(hex: "#E67E22")!, label: "Manage Subscription", chevron: true) { showSubscription = true }
                 SettingsDivider()
                 SettingsNavRow(icon: "arrow.clockwise", color: Color(hex: "#2E7D32")!, label: "Restore Purchases",   chevron: false) {
                     Task { await storeKit.restorePurchases() }

@@ -22,7 +22,7 @@ struct ContentView: View {
         return householdService.household?.members.first { $0.id == uid }?.role
     }
 
-    /// Owners and adults can add, edit, and delete. Teens and children are read-only.
+    /// Owners and adults can add, edit, and delete. Teens are read-only.
     private var canWrite: Bool {
         guard let role = currentRole else { return true }
         return role.canWrite

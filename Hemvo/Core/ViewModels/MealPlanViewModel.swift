@@ -79,6 +79,14 @@ final class MealPlanViewModel: ObservableObject {
 
     private let notif = NotificationService.shared
 
+    // Shared ISO date formatter used by scheduleMealPush and supabaseDeleteFuture.
+    private static let isoFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
     // MARK: - CRUD
     func addMeal(_ meal: Meal) {
         var stamped = meal
@@ -94,16 +102,23 @@ final class MealPlanViewModel: ObservableObject {
         persistPendingUploadIDs()
         Task { await supabaseUpsert(stamped) }
         Task {
-            await PushNotificationService.shared.notifyHouseholdFiltered(
-                permission: \.receiveMealAlerts,
+            await resolveIDs()
+            guard let hid = cachedHouseholdID else { return }
+            // Immediate push to all household members (excludes sender via creator_id).
+            await PushNotificationService.shared.notifyHousehold(
+                householdID: hid.uuidString,
+                creatorID:   cachedUserID?.uuidString,
                 title: "🍽️ Meal Planned",
-                body: "\(stamped.name) · \(stamped.day.label) \(stamped.mealType.rawValue)"
+                body:  "\(stamped.name) · \(stamped.day.label) \(stamped.mealType.rawValue)"
             )
+            // Scheduled 8 PM push the evening before for the whole household.
+            await scheduleMealPush(forDate: stamped.date)
         }
     }
 
     func updateMeal(_ meal: Meal) {
         if let idx = meals.firstIndex(where: { $0.id == meal.id }) {
+            let oldDate = meals[idx].date
             meals[idx] = meal
             persist()
             if UserPreferences.shared.notifMeals {
@@ -111,6 +126,13 @@ final class MealPlanViewModel: ObservableObject {
             }
             objectWillChange.send()
             Task { await supabaseUpsert(meal) }
+            Task {
+                await resolveIDs()
+                await scheduleMealPush(forDate: meal.date)
+                if !Calendar.current.isDate(oldDate, inSameDayAs: meal.date) {
+                    await scheduleMealPush(forDate: oldDate)
+                }
+            }
         }
     }
 
@@ -119,6 +141,7 @@ final class MealPlanViewModel: ObservableObject {
         pendingUploadIDs.remove(meal.id)
         persistDeletedIDs()
         persistPendingUploadIDs()
+        let deletedDate = meal.date
         meals.removeAll { $0.id == meal.id }
         persist()
         if UserPreferences.shared.notifMeals {
@@ -126,6 +149,7 @@ final class MealPlanViewModel: ObservableObject {
         }
         objectWillChange.send()
         Task { await supabaseDelete(id: meal.id) }
+        Task { await resolveIDs(); await scheduleMealPush(forDate: deletedDate) }
     }
 
     // MARK: - Role-based write access
@@ -338,6 +362,87 @@ final class MealPlanViewModel: ObservableObject {
         }
     }
 
+    /// Inserts (or replaces) a `notification_schedule` row that fires at 8 PM
+    /// the evening before `mealDate`, consolidating all meals for that day into
+    /// a single push. If no meals remain for the date the row is deleted only.
+    private func scheduleMealPush(forDate mealDate: Date) async {
+        guard let hid = cachedHouseholdID else { return }
+        let cal          = Calendar.current
+        let dayStart     = cal.startOfDay(for: mealDate)
+        let dateKey      = MealPlanViewModel.isoFmt.string(from: dayStart)
+
+        // Remove any existing unsent meal push for this date so we can replace it.
+        do {
+            try await supabase
+                .from("notification_schedule")
+                .delete()
+                .eq("household_id", value: hid.uuidString)
+                .eq("source",       value: "meal")
+                .eq("meal_date",    value: dateKey)
+                .eq("sent",         value: false)
+                .execute()
+        } catch {
+            print("[Supabase] cancel meal push schedule error: \(error)")
+        }
+
+        let mealsForDate = meals.filter { cal.isDate($0.date, inSameDayAs: dayStart) }
+        guard !mealsForDate.isEmpty else { return }
+
+        // 8 PM the evening before, in the device's local timezone.
+        guard let dayBefore = cal.date(byAdding: .day, value: -1, to: dayStart) else { return }
+        var comp    = cal.dateComponents([.year, .month, .day], from: dayBefore)
+        comp.hour   = 20
+        comp.minute = 0
+        guard let fireAt = cal.date(from: comp), fireAt > Date() else { return }
+
+        // Consolidated meal summary (same format as local notification).
+        let names = mealsForDate
+            .sorted { $0.mealType.sortOrder < $1.mealType.sortOrder }
+            .map { $0.name }
+        let summary: String
+        switch names.count {
+        case 1:  summary = names[0]
+        case 2:  summary = "\(names[0]) and \(names[1])"
+        default:
+            let leading = names.dropLast().joined(separator: ", ")
+            summary = "\(leading) and \(names.last!)"
+        }
+        let weekdayLabel = Meal.Weekday.from(
+            calendarWeekday: cal.component(.weekday, from: dayStart)
+        ).label
+
+        struct Row: Encodable {
+            let householdId: UUID
+            let fireAt:      Date
+            let title:       String
+            let body:        String
+            let source:      String
+            let mealDate:    String
+            enum CodingKeys: String, CodingKey {
+                case householdId = "household_id"
+                case fireAt      = "fire_at"
+                case title, body, source
+                case mealDate    = "meal_date"
+            }
+        }
+
+        do {
+            try await supabase
+                .from("notification_schedule")
+                .insert(Row(
+                    householdId: hid,
+                    fireAt:      fireAt,
+                    title:       "🍽️ Tomorrow's Meals",
+                    body:        "\(weekdayLabel): \(summary)",
+                    source:      "meal",
+                    mealDate:    dateKey
+                ))
+                .execute()
+        } catch {
+            print("[Supabase] scheduleMealPush error: \(error)")
+        }
+    }
+
     private func supabaseDelete(id: UUID) async {
         do {
             try await supabase.from("meals").delete().eq("id", value: id.uuidString).execute()
@@ -441,10 +546,7 @@ final class MealPlanViewModel: ObservableObject {
     private func supabaseDeleteFuture() async {
         await resolveIDs()
         guard let uid = cachedUserID else { return }
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyy-MM-dd"
-        fmt.locale = Locale(identifier: "en_US_POSIX")
-        let todayStr = fmt.string(from: Calendar.current.startOfDay(for: Date()))
+        let todayStr = MealPlanViewModel.isoFmt.string(from: Calendar.current.startOfDay(for: Date()))
         do {
             if let hid = cachedHouseholdID {
                 try await supabase.from("meals").delete()

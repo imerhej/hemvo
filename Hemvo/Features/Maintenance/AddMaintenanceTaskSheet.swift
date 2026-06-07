@@ -18,7 +18,6 @@ struct AddMaintenanceTaskSheet: View {
     @State private var title:            String                       = ""
     @State private var area:             MaintenanceItem.HomeArea    = .general
     @State private var frequency:        MaintenanceItem.Frequency   = .monthly
-    @State private var difficulty:       MaintenanceItem.Difficulty  = .medium
     @State private var estimatedMinutes: Int                         = 30
     @State private var notes:            String                      = ""
     @State private var nextDueDate:      Date                        = Date()
@@ -35,14 +34,12 @@ struct AddMaintenanceTaskSheet: View {
         guard let members = householdService.household?.members,
               !assignedMemberIDs.isEmpty else { return nil }
         let roles = assignedMemberIDs.compactMap { id in members.first(where: { $0.id == id })?.role }
-        if roles.contains(.child) { return .child }
-        if roles.contains(.teen)  { return .teen }
+        if roles.contains(.teen) { return .teen }
         return nil
     }
 
     private var libraryMaxDifficulty: MaintenanceItem.Difficulty {
         switch youngestAssignedRole {
-        case .child: return .easy
         case .teen:  return .medium
         default:     return .hard
         }
@@ -115,46 +112,6 @@ struct AddMaintenanceTaskSheet: View {
                             .stroke(titleFocused ? amber.opacity(0.6) : divider,
                                     lineWidth: titleFocused ? 2 : 1))
                         .animation(.easeInOut(duration: 0.15), value: titleFocused)
-
-                        // ── Difficulty ─────────────────────────────────
-                        VStack(alignment: .leading, spacing: 12) {
-                            sectionLabel(icon: "chart.bar.fill", text: "DIFFICULTY")
-                            HStack(spacing: 10) {
-                                ForEach(MaintenanceItem.Difficulty.allCases) { diff in
-                                    let isSel = difficulty == diff
-                                    let diffColor = Color(hex: diff.colorHex)!
-                                    Button {
-                                        withAnimation(.spring(response: 0.25)) { difficulty = diff }
-                                    } label: {
-                                        VStack(spacing: 5) {
-                                            ZStack {
-                                                RoundedRectangle(cornerRadius: 12)
-                                                    .fill(isSel ? diffColor : diffColor.opacity(0.1))
-                                                    .frame(height: 44)
-                                                HStack(spacing: 5) {
-                                                    Image(systemName: diff.icon)
-                                                        .font(.system(size: 13, weight: .bold))
-                                                    Text(diff.rawValue)
-                                                        .font(.system(size: 13, weight: .bold))
-                                                }
-                                                .foregroundColor(isSel ? .white : diffColor)
-                                            }
-                                            Text(diff.ageLabel)
-                                                .font(.system(size: 10, weight: .medium))
-                                                .foregroundColor(isSel ? diffColor : muted)
-                                        }
-                                        .scaleEffect(isSel ? 1.04 : 1.0)
-                                        .animation(.spring(response: 0.25), value: isSel)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .frame(maxWidth: .infinity)
-                                }
-                            }
-                        }
-                        .padding(16)
-                        .background(Color.white)
-                        .cornerRadius(18)
-                        .overlay(RoundedRectangle(cornerRadius: 18).stroke(divider, lineWidth: 1))
 
                         // ── Frequency ──────────────────────────────────
                         VStack(alignment: .leading, spacing: 12) {
@@ -384,7 +341,7 @@ struct AddMaintenanceTaskSheet: View {
                                         Text("Suggested Chores")
                                             .font(.system(size: 15, weight: .bold))
                                             .foregroundColor(brown)
-                                        Text("Browse tasks suitable for \(role == .child ? "children" : "teens")")
+                                        Text("Browse tasks suitable for teens and up")
                                             .font(.system(size: 12, weight: .medium))
                                             .foregroundColor(muted)
                                     }
@@ -476,7 +433,6 @@ struct AddMaintenanceTaskSheet: View {
                     title             = item.title
                     area              = item.area
                     frequency         = item.frequency
-                    difficulty        = item.difficulty
                     estimatedMinutes  = item.estimatedMinutes
                     notes             = item.notes
                     nextDueDate       = item.nextDue
@@ -502,7 +458,6 @@ struct AddMaintenanceTaskSheet: View {
             updated.title             = title.trimmingCharacters(in: .whitespaces)
             updated.area              = area
             updated.frequency         = frequency
-            updated.difficulty        = difficulty
             updated.estimatedMinutes  = estimatedMinutes
             updated.notes             = notes
             updated.nextDue           = nextDueDate
@@ -513,7 +468,6 @@ struct AddMaintenanceTaskSheet: View {
                 title:             title.trimmingCharacters(in: .whitespaces),
                 area:              area,
                 frequency:         frequency,
-                difficulty:        difficulty,
                 nextDue:           nextDueDate,
                 notes:             notes,
                 estimatedMinutes:  estimatedMinutes,
@@ -529,7 +483,6 @@ struct AddMaintenanceTaskSheet: View {
             title            = template.title
             area             = template.area
             frequency        = template.frequency
-            difficulty       = template.difficulty
             estimatedMinutes = template.estimatedMinutes
             nextDueDate      = Calendar.current.date(byAdding: .day, value: template.frequency.days, to: Date()) ?? Date()
         }

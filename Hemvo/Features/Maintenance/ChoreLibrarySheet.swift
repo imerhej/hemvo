@@ -9,7 +9,7 @@ internal import SwiftUI
 
 enum ChoreLibrary {
     static let all: [ChoreTemplate] = [
-        // Easy — suitable for children and up (ages 4+)
+        // Easy — suitable for teens and up
         ChoreTemplate(id: "e01", title: "Put toys away",                area: .general,  frequency: .daily,     difficulty: .easy,   estimatedMinutes: 5),
         ChoreTemplate(id: "e02", title: "Put dirty clothes in hamper",  area: .bedroom,  frequency: .daily,     difficulty: .easy,   estimatedMinutes: 5),
         ChoreTemplate(id: "e03", title: "Help set the table",           area: .kitchen,  frequency: .daily,     difficulty: .easy,   estimatedMinutes: 5),

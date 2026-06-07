@@ -206,6 +206,34 @@ final class PushNotificationService {
         await notifyUsers(targetIDs, title: title, body: body)
     }
 
+    /// Sends a push to every member of the given household, optionally skipping
+    /// the creator. Use this when the household ID is already resolved so the
+    /// call doesn't depend on HouseholdService in-memory state being loaded.
+    func notifyHousehold(householdID: String, creatorID: String?, title: String, body: String) async {
+        struct Payload: Encodable {
+            let householdId: String
+            let creatorId:   String?
+            let title:       String
+            let body:        String
+            enum CodingKeys: String, CodingKey {
+                case householdId = "household_id"
+                case creatorId   = "creator_id"
+                case title, body
+            }
+        }
+        do {
+            try await supabase.functions.invoke(
+                "notify-household",
+                options: FunctionInvokeOptions(
+                    body: Payload(householdId: householdID, creatorId: creatorID,
+                                  title: title, body: body)
+                )
+            )
+        } catch {
+            print("[Push] notify-household error: \(error)")
+        }
+    }
+
     /// Sends a push notification to every household member except the creator.
     /// Fire-and-forget — errors are logged but never surface to the UI.
     func notifyHousehold(title: String, body: String) async {

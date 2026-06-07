@@ -17,7 +17,7 @@ struct Household: Codable, Identifiable {
 // MARK: - MemberPermissions
 
 /// Per-member notification flags. Stored as JSONB in profiles.permissions.
-/// Defaults vary by role: teens/children are excluded from financial alerts.
+/// Defaults vary by role: teens are excluded from financial alerts.
 struct MemberPermissions: Codable, Equatable {
     var receiveExpenseAlerts:     Bool
     var receiveMealAlerts:        Bool
@@ -32,9 +32,6 @@ struct MemberPermissions: Codable, Equatable {
         case .teen:
             return MemberPermissions(receiveExpenseAlerts: false, receiveMealAlerts: true,
                                      receiveCalendarAlerts: true,  receiveMaintenanceAlerts: true)
-        case .child:
-            return MemberPermissions(receiveExpenseAlerts: false, receiveMealAlerts: true,
-                                     receiveCalendarAlerts: true,  receiveMaintenanceAlerts: false)
         }
     }
 }
@@ -86,14 +83,12 @@ enum HouseholdRole: String, Codable, CaseIterable {
     case owner = "Owner"
     case adult = "Adult"
     case teen  = "Teen"
-    case child = "Child"
 
     var icon: String {
         switch self {
         case .owner: return "crown.fill"
         case .adult: return "person.fill"
         case .teen:  return "person.crop.circle"
-        case .child: return "figure.child"
         }
     }
 

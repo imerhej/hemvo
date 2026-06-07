@@ -46,7 +46,7 @@ struct HouseholdMembersView: View {
     private var canInvite: Bool { currentMember?.role.canInvite ?? false }
     private var isOwner:   Bool { currentMember?.role == .owner }
     private var isRestrictedRole: Bool {
-        currentMember?.role == .teen || currentMember?.role == .child
+        currentMember?.role == .teen
     }
 
     // MARK: - Body

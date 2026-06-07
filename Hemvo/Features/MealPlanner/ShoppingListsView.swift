@@ -37,7 +37,7 @@ struct ShoppingListsView: View {
 
     private var canWrite: Bool {
         let role = authVM.profile?.role ?? ""
-        return role != "Teen" && role != "Child"
+        return role != "Teen"
     }
 
     var body: some View {
@@ -239,7 +239,7 @@ struct ShoppingListDetailView: View {
 
     private var canWrite: Bool {
         let role = authVM.profile?.role ?? ""
-        return role != "Teen" && role != "Child"
+        return role != "Teen"
     }
 
     private var list: ShoppingList? { vm.lists.first { $0.id == listID } }

@@ -184,6 +184,7 @@ struct HemvoApp: App {
 private struct RootView: View {
     @EnvironmentObject var authVM:           AuthViewModel
     @EnvironmentObject var householdService: HouseholdService
+    @AppStorage("hemvo_hasSeenWalkthrough") private var hasSeenWalkthrough = false
 
     var body: some View {
         Group {
@@ -204,6 +205,11 @@ private struct RootView: View {
                     .environmentObject(authVM)
                     .environmentObject(householdService)
 
+            } else if !hasSeenWalkthrough {
+                AppWalkthroughView {
+                    hasSeenWalkthrough = true
+                }
+
             } else if householdService.household == nil {
                 HouseholdSetupView()
                     .environmentObject(authVM)
@@ -219,6 +225,7 @@ private struct RootView: View {
         .animation(.easeInOut, value: authVM.trialExpired)
         .animation(.easeInOut, value: authVM.ownerSubscriptionLapsed)
         .animation(.easeInOut, value: householdService.household == nil)
+        .animation(.easeInOut, value: hasSeenWalkthrough)
         .fullScreenCover(
             isPresented: Binding(
                 get: { authVM.showResetPassword },

@@ -451,7 +451,7 @@ struct BillCard: View {
                 }
                 .disabled(bill.isPaid)
 
-                // Edit — hidden for Teen/Child roles
+                // Edit — hidden for Teen role
                 if canEdit {
                     Button { onEdit() } label: {
                         HStack(spacing: 6) {

@@ -2472,7 +2472,7 @@ struct EventDetailSheet: View {
 
                     // ── Action buttons ────────────────────────────
                     HStack(spacing: 12) {
-                        // Edit — hidden for Teen/Child roles
+                        // Edit — hidden for Teen role
                         if canEdit {
                             Button {
                                 dismiss()

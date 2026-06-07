@@ -185,8 +185,8 @@ struct MaintenanceItem: Codable, Identifiable, Equatable {
 
         var ageLabel: String {
             switch self {
-            case .easy:   return "Ages 4+"
-            case .medium: return "Ages 10+"
+            case .easy:   return "Ages 13+"
+            case .medium: return "Ages 13+"
             case .hard:   return "Ages 16+"
             }
         }

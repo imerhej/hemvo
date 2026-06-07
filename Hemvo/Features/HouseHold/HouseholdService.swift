@@ -509,7 +509,7 @@ final class HouseholdService: ObservableObject {
 
     // MARK: - Change Member Role
 
-    /// Changes a member's role (Owner → Adult/Teen/Child not allowed; use leaveHousehold for ownership transfer).
+    /// Changes a member's role (Owner → Adult/Teen not allowed; use leaveHousehold for ownership transfer).
     /// Resets permissions to the new role's defaults and syncs both to Supabase via SECURITY DEFINER RPCs.
     func changeRole(memberID: String,
                     newRole: HouseholdRole,
