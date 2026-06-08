@@ -6,7 +6,6 @@
 //  frequency list with amber selected row.
 
 internal import SwiftUI
-internal import Combine
 
 struct AddMaintenanceTaskSheet: View {
 
@@ -326,7 +325,7 @@ struct AddMaintenanceTaskSheet: View {
                         }
 
                         // ── Suggested Chores Banner ────────────────────
-                        if let role = youngestAssignedRole {
+                        if youngestAssignedRole != nil {
                             Button { showChoreLibrary = true } label: {
                                 HStack(spacing: 14) {
                                     ZStack {
