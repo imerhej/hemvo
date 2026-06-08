@@ -596,7 +596,7 @@ struct LoginView: View {
     private var emailVerificationSheet: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "#F4F6FB")!.ignoresSafeArea()
+                Color(.systemGroupedBackground).ignoresSafeArea()
                 VStack(spacing: 28) {
                     ZStack {
                         Circle().fill(modeAccent.opacity(0.12)).frame(width: 90, height: 90)
@@ -634,9 +634,10 @@ struct LoginView: View {
                             .keyboardType(.numberPad)
                             .font(.system(size: 28, weight: .bold, design: .monospaced))
                             .multilineTextAlignment(.center)
+                            .foregroundStyle(Color(.label))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .background(Color.white)
+                            .background(Color(.secondarySystemGroupedBackground))
                             .cornerRadius(14)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 14)
@@ -703,7 +704,7 @@ struct LoginView: View {
     private var forgotPasswordSheet: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "#F4F6FB")!.ignoresSafeArea()
+                Color(.systemGroupedBackground).ignoresSafeArea()
                 VStack(spacing: 28) {
                     Spacer().frame(height: 8)
 
@@ -762,12 +763,13 @@ struct LoginView: View {
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
                                     .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(Color(.label))
                                     .focused($focus, equals: .resetEmail)
                                     .submitLabel(.done)
                                     .onSubmit { if !resetButtonDisabled { sendResetLink() } }
                             }
                             .padding(16)
-                            .background(Color.white)
+                            .background(Color(.secondarySystemGroupedBackground))
                             .cornerRadius(14)
                             .overlay(RoundedRectangle(cornerRadius: 14)
                                 .stroke(modeAccent.opacity(0.35), lineWidth: 1.5))

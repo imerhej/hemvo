@@ -68,10 +68,20 @@ struct HemvoApp: App {
                 .environment(\.managedObjectContext,
                              persistence.container.viewContext)
                 .onOpenURL { url in
-                    // Exchange the recovery deep-link for a Supabase session.
-                    // This fires authStateChanges(.passwordRecovery), which
-                    // AuthViewModel catches to show ResetPasswordView.
-                    Task { try? await supabase.auth.session(from: url) }
+                    // Show the reset form immediately so the user isn't left
+                    // on the sign-in page while session(from:) runs async.
+                    // session(from:) then establishes the recovery session in
+                    // the background — well before the user finishes typing.
+                    if url.host == "reset-password" {
+                        authVM.showResetPassword = true
+                    }
+                    Task {
+                        do {
+                            try await supabase.auth.session(from: url)
+                        } catch {
+                            print("[DeepLink] session(from:) failed: \(error)")
+                        }
+                    }
                 }
                 .task {
                     // 1. Request local + remote notification permission
@@ -184,8 +194,6 @@ struct HemvoApp: App {
 private struct RootView: View {
     @EnvironmentObject var authVM:           AuthViewModel
     @EnvironmentObject var householdService: HouseholdService
-    @AppStorage("hemvo_hasSeenWalkthrough") private var hasSeenWalkthrough = false
-
     var body: some View {
         Group {
             if authVM.isCheckingSession || authVM.isResolvingAccess {
@@ -205,11 +213,6 @@ private struct RootView: View {
                     .environmentObject(authVM)
                     .environmentObject(householdService)
 
-            } else if !hasSeenWalkthrough {
-                AppWalkthroughView {
-                    hasSeenWalkthrough = true
-                }
-
             } else if householdService.household == nil {
                 HouseholdSetupView()
                     .environmentObject(authVM)
@@ -225,7 +228,6 @@ private struct RootView: View {
         .animation(.easeInOut, value: authVM.trialExpired)
         .animation(.easeInOut, value: authVM.ownerSubscriptionLapsed)
         .animation(.easeInOut, value: householdService.household == nil)
-        .animation(.easeInOut, value: hasSeenWalkthrough)
         .fullScreenCover(
             isPresented: Binding(
                 get: { authVM.showResetPassword },
