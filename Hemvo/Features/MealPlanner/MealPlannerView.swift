@@ -264,7 +264,7 @@ struct MealPlannerView: View {
         .padding(.horizontal, 16)
     }
 
-    // Days within the next 7 days (today inclusive) that have no meal planned.
+    // MARK: - Weekly Summary Card
     private var daysOpenCount: Int {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
@@ -277,7 +277,6 @@ struct MealPlannerView: View {
         return max(0, 7 - coveredDays.count)
     }
 
-    // MARK: - Weekly Summary Card
     private var summaryCard: some View {
         HStack(spacing: 0) {
             summaryCol(value: "\(mealVM.meals.count)", label: "MEALS")

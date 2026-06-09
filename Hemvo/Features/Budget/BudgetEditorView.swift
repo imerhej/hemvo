@@ -77,11 +77,12 @@ struct BudgetEditorView: View {
             }
             .navigationTitle("Edit Budget")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Color.bpSlate)
+                        .foregroundColor(.primary)
                 }
             }
             .onAppear {

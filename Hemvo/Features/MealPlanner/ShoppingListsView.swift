@@ -89,6 +89,7 @@ struct ShoppingListsView: View {
             }
             .navigationTitle("Shopping Lists")
             .navigationBarTitleDisplayMode(.large)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .navigationDestination(for: ShoppingList.self) { list in
                 ShoppingListDetailView(listID: list.id, vm: vm)
             }
@@ -303,6 +304,7 @@ struct ShoppingListDetailView: View {
         }
         .navigationTitle(list?.name ?? "List")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.light, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
@@ -669,6 +671,7 @@ struct NewShoppingListSheet: View {
             }
             .navigationTitle("New List")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }.foregroundColor(accent)
@@ -802,6 +805,7 @@ struct ShoppingItemFormSheet: View {
             }
             .navigationTitle(isEditing ? "Edit Item" : "Add Item")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }.foregroundColor(slAmber)

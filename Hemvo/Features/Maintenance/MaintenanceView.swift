@@ -528,6 +528,7 @@ struct MaintenanceTaskDetailSheet: View {
             }
             .navigationTitle("Task Details")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }

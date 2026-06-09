@@ -68,6 +68,7 @@ struct SubscriptionStatusView: View {
             }
             .navigationTitle("Subscription")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }

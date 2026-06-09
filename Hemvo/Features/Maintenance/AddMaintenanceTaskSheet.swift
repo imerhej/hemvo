@@ -395,6 +395,7 @@ struct AddMaintenanceTaskSheet: View {
             }
             .navigationTitle(isEditing ? "Edit Task" : "New Task")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }

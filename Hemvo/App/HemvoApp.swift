@@ -234,7 +234,11 @@ private struct RootView: View {
                 set: { authVM.showResetPassword = $0 }
             )
         ) {
-            ResetPasswordView(onComplete: { authVM.showResetPassword = false })
+            ResetPasswordView(onComplete: {
+                authVM.showResetPassword = false
+                Task { try? await supabase.auth.signOut() }
+                authVM.signOut()
+            })
         }
     }
 }

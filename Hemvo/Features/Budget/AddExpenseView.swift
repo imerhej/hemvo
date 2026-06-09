@@ -170,6 +170,7 @@ struct AddExpenseView: View {
             }
             .navigationTitle("Add Expense")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .onAppear {
                 scope = vm.selectedScope
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { amountFocused = true }
@@ -178,7 +179,7 @@ struct AddExpenseView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Color.bpSlate)
+                        .foregroundColor(.primary)
                 }
 
             }

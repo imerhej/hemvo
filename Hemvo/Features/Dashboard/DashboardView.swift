@@ -631,6 +631,7 @@ struct CalendarDetailView: View {
         }
         .navigationTitle(selectedDate.relativeLabel)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.light, for: .navigationBar)
         .tint(Color(hex: "#C8922A")!)
     }
 }

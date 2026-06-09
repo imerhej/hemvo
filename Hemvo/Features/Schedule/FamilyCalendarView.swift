@@ -1774,7 +1774,7 @@ struct NativeAddEventSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { saveEvent() }
-                        .foregroundColor(canSave ? Color.systemRed : Color(.systemGray4))
+                        .foregroundColor(canSave ? Color.primary : Color(.systemGray4))
                         .fontWeight(.semibold)
                         .disabled(!canSave)
                 }

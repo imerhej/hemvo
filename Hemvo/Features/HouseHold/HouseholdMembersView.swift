@@ -63,6 +63,7 @@ struct HouseholdMembersView: View {
             }
             .navigationTitle("Household")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -491,6 +492,7 @@ struct HouseholdInviteSheet: View {
             }
             .navigationTitle("Invite Member")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -731,6 +733,7 @@ struct MemberPermissionsSheet: View {
             }
             .navigationTitle("Permissions")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

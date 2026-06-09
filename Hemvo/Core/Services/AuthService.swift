@@ -116,9 +116,15 @@ final class AuthService {
 
     // MARK: - Reset Password (deep-link recovery session, no current password needed)
     // Called from ResetPasswordView after Supabase has validated the reset token.
+    // Uses the reset-user-password Edge Function (admin API) to bypass
+    // secure_password_change — same reason changePassword uses a custom RPC.
     // nonisolated for the same reason as changePassword above.
     nonisolated func resetPassword(to newPassword: String) async throws {
-        _ = try await supabase.auth.update(user: UserAttributes(password: newPassword))
+        struct Payload: Encodable { let newPassword: String }
+        try await supabase.functions.invoke(
+            "reset-user-password",
+            options: FunctionInvokeOptions(body: Payload(newPassword: newPassword))
+        )
     }
 
     // MARK: - Delete Account

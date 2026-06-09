@@ -119,6 +119,7 @@ struct ChoreLibrarySheet: View {
             }
             .navigationTitle("Chore Library")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search chores…")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

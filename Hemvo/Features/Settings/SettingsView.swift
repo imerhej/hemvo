@@ -134,11 +134,12 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.light, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button("Done") { dismiss() }
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Color.bpSlate)
+                    .foregroundColor(.primary)
             }
         }
         .onAppear {

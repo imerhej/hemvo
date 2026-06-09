@@ -197,6 +197,7 @@ struct EditExpenseView: View {
             }
             .navigationTitle("Edit Expense")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

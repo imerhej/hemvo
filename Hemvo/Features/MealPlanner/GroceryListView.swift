@@ -346,6 +346,7 @@ struct GroceryListView: View {
             }
             .navigationTitle("Add Item")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { showAddItem = false }.foregroundColor(green)
