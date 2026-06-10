@@ -181,7 +181,6 @@ struct AddExpenseView: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.primary)
                 }
-
             }
         }
     }
