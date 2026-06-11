@@ -9,6 +9,7 @@
 internal import SwiftUI
 internal import Foundation
 internal import Combine
+internal import OSLog
 internal import Supabase
 internal import UIKit
 
@@ -327,7 +328,7 @@ final class MealPlanViewModel: ObservableObject {
             }
             for m in pendingLocal { Task { await supabaseUpsert(m) } }
         } catch {
-            print("[Supabase] fetch meals error: \(error)")
+            Logger.meals.error("fetch meals error: \(error.localizedDescription)")
         }
     }
 
@@ -358,7 +359,7 @@ final class MealPlanViewModel: ObservableObject {
                 persistPendingUploadIDs()
             }
         } catch {
-            print("[Supabase] upsert meal error: \(error)")
+            Logger.meals.error("upsert meal error: \(error.localizedDescription)")
         }
     }
 
@@ -382,7 +383,7 @@ final class MealPlanViewModel: ObservableObject {
                 .eq("sent",         value: false)
                 .execute()
         } catch {
-            print("[Supabase] cancel meal push schedule error: \(error)")
+            Logger.meals.error("cancel meal push schedule error: \(error.localizedDescription)")
         }
 
         let mealsForDate = meals.filter { cal.isDate($0.date, inSameDayAs: dayStart) }
@@ -439,7 +440,7 @@ final class MealPlanViewModel: ObservableObject {
                 ))
                 .execute()
         } catch {
-            print("[Supabase] scheduleMealPush error: \(error)")
+            Logger.meals.error("scheduleMealPush error: \(error.localizedDescription)")
         }
     }
 
@@ -452,7 +453,7 @@ final class MealPlanViewModel: ObservableObject {
             // Tombstones are cleared in loadFromSupabase once the row is confirmed
             // gone, or in applyRealtimeChange when the Realtime DELETE event arrives.
         } catch {
-            print("[Supabase] delete meal error: \(error)")
+            Logger.meals.error("delete meal error: \(error.localizedDescription)")
         }
     }
 
@@ -479,7 +480,7 @@ final class MealPlanViewModel: ObservableObject {
             do {
                 try await channel.subscribeWithError()
             } catch {
-                print("[Realtime] meals subscribe error: \(error)")
+                Logger.realtime.error("meals subscribe error: \(error.localizedDescription)")
                 await MainActor.run { [weak self] in self?.realtimeTask = nil }
                 return
             }
@@ -560,7 +561,7 @@ final class MealPlanViewModel: ObservableObject {
                     .execute()
             }
         } catch {
-            print("[Supabase] delete future meals error: \(error)")
+            Logger.meals.error("delete future meals error: \(error.localizedDescription)")
         }
     }
 }

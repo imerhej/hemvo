@@ -8,6 +8,7 @@
 internal import Foundation
 internal import SwiftUI
 internal import Combine
+internal import OSLog
 internal import Supabase
 
 
@@ -133,7 +134,7 @@ final class UserPreferences: ObservableObject {
                     .eq("id", value: uid.uuidString)
                     .execute()
             } catch {
-                print("[UserPreferences] Failed to save notification prefs: \(error)")
+                Logger.prefs.error("Failed to save notification prefs: \(error.localizedDescription)")
             }
         }
     }

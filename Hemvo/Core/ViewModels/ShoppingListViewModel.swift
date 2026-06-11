@@ -7,6 +7,7 @@
 
 internal import SwiftUI
 internal import Combine
+internal import OSLog
 internal import Supabase
 
 @MainActor
@@ -222,7 +223,7 @@ final class ShoppingListViewModel: ObservableObject {
             }
             persist()
         } catch {
-            print("[Supabase] fetch shopping_lists error: \(error)")
+            Logger.shopping.error("fetch shopping_lists error: \(error.localizedDescription)")
         }
     }
 
@@ -243,7 +244,7 @@ final class ShoppingListViewModel: ObservableObject {
         do {
             try await supabase.from("shopping_lists").upsert(row, onConflict: "id").execute()
         } catch {
-            print("[Supabase] upsert shopping_list error: \(error)")
+            Logger.shopping.error("upsert shopping_list error: \(error.localizedDescription)")
         }
     }
 
@@ -255,7 +256,7 @@ final class ShoppingListViewModel: ObservableObject {
             deletedListIDs.remove(id)
             persistDeletedIDs()
         } catch {
-            print("[Supabase] delete shopping_list error: \(error)")
+            Logger.shopping.error("delete shopping_list error: \(error.localizedDescription)")
         }
     }
 
@@ -266,7 +267,7 @@ final class ShoppingListViewModel: ObservableObject {
         do {
             try await supabase.from("shopping_items").upsert(row, onConflict: "id").execute()
         } catch {
-            print("[Supabase] upsert shopping_item error: \(error)")
+            Logger.shopping.error("upsert shopping_item error: \(error.localizedDescription)")
         }
     }
 
@@ -277,7 +278,7 @@ final class ShoppingListViewModel: ObservableObject {
             deletedItemIDs.remove(id)
             persistDeletedIDs()
         } catch {
-            print("[Supabase] delete shopping_item error: \(error)")
+            Logger.shopping.error("delete shopping_item error: \(error.localizedDescription)")
         }
     }
 }

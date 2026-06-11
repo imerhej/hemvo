@@ -12,6 +12,7 @@
 
 internal import Foundation
 internal import Supabase
+internal import OSLog
 
 final class EmailService {
 
@@ -25,13 +26,13 @@ final class EmailService {
         to email:         String,
         inviterName:      String,
         householdName:    String,
-        token:            String
+        code:             String
     ) async -> Bool {
         struct Payload: Encodable {
             let to:            String
             let inviterName:   String
             let householdName: String
-            let token:         String
+            let code:          String
         }
 
         do {
@@ -43,11 +44,11 @@ final class EmailService {
                         to:            email,
                         inviterName:   inviterName,
                         householdName: householdName,
-                        token:         token
+                        code:          code
                     )
                 )
             )
-            print("EmailService: ✅ invite dispatched to \(email)")
+            Logger.email.debug("invite dispatched to \(email, privacy: .private)")
             return true
         } catch let fnError as FunctionsError {
             // FunctionsError.httpError carries the raw response body from the Edge Function,
@@ -55,13 +56,13 @@ final class EmailService {
             switch fnError {
             case let .httpError(code, data):
                 let body = String(data: data, encoding: .utf8) ?? "<unreadable>"
-                print("EmailService: ❌ HTTP \(code) — \(body)")
+                Logger.email.error("HTTP \(code) error: \(body)")
             case .relayError:
-                print("EmailService: ❌ Relay error (network/timeout reaching Edge Function)")
+                Logger.email.error("relay error (network/timeout reaching Edge Function)")
             }
             return false
         } catch {
-            print("EmailService: ❌ Unexpected error — \(error)")
+            Logger.email.error("unexpected error: \(error.localizedDescription)")
             return false
         }
     }

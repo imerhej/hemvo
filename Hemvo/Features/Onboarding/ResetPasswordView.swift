@@ -284,7 +284,10 @@ struct ResetPasswordView: View {
         Task {
             do {
                 try await AuthService.shared.resetPassword(to: newPassword)
-                isLoading = false
+                // Clear sensitive state from memory immediately on success.
+                newPassword = ""
+                confirmPass = ""
+                isLoading   = false
                 withAnimation(.spring()) { isSuccess = true }
             } catch {
                 isLoading    = false

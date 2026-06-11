@@ -2274,6 +2274,7 @@ struct EventDetailSheet: View {
     var canEdit:        Bool = true
 
     @Environment(\.dismiss) var dismiss
+    @Environment(\.openURL) private var openURL
 
     private var color: Color { Color(hex: event.colorHex) ?? Color(UIColor.systemRed) }
 
@@ -2358,13 +2359,36 @@ struct EventDetailSheet: View {
                             divRow
                         }
 
-                        // Location (if set)
+                        // Location (if set) — tap opens Apple Maps, long-press for other apps
                         if !event.location.isEmpty {
                             divRow
                             infoRow(icon: "mappin.and.ellipse", iconColor: color) {
-                                Text(event.location)
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.primary)
+                                Menu {
+                                    Button { openLocation(in: .appleMaps) } label: {
+                                        Label("Open in Apple Maps", systemImage: "map.fill")
+                                    }
+                                    Button { openLocation(in: .googleMaps) } label: {
+                                        Label("Open in Google Maps", systemImage: "map")
+                                    }
+                                    Button { openLocation(in: .waze) } label: {
+                                        Label("Open in Waze", systemImage: "car.fill")
+                                    }
+                                    Button { UIPasteboard.general.string = event.location } label: {
+                                        Label("Copy Location", systemImage: "doc.on.doc")
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Text(event.location)
+                                            .font(.system(size: 15, weight: .semibold))
+                                            .foregroundColor(color)
+                                            .multilineTextAlignment(.leading)
+                                        Image(systemName: "arrow.up.right.square")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundColor(.secondary)
+                                    }
+                                } primaryAction: {
+                                    openLocation(in: .appleMaps)
+                                }
                             }
                         }
 
@@ -2527,6 +2551,31 @@ struct EventDetailSheet: View {
 
     private var divRow: some View {
         Divider().padding(.leading, 60)
+    }
+
+    private enum MapApp {
+        case appleMaps, googleMaps, waze
+    }
+
+    // Universal links: open the app when installed, otherwise fall back to the browser
+    private func openLocation(in app: MapApp) {
+        var components: URLComponents?
+        switch app {
+        case .appleMaps:
+            components = URLComponents(string: "https://maps.apple.com/")
+            components?.queryItems = [URLQueryItem(name: "q", value: event.location)]
+        case .googleMaps:
+            components = URLComponents(string: "https://www.google.com/maps/search/")
+            components?.queryItems = [
+                URLQueryItem(name: "api", value: "1"),
+                URLQueryItem(name: "query", value: event.location)
+            ]
+        case .waze:
+            components = URLComponents(string: "https://waze.com/ul")
+            components?.queryItems = [URLQueryItem(name: "q", value: event.location)]
+        }
+        guard let url = components?.url else { return }
+        openURL(url)
     }
 
     @ViewBuilder

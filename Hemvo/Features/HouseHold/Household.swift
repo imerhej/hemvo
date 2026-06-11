@@ -111,10 +111,13 @@ enum HouseholdRole: String, Codable, CaseIterable {
 
 struct HouseholdInviteRecord: Codable, Identifiable {
     var id: String
+    /// UUID of the row in the `household_invites` Supabase table (used for revocation).
+    var supabaseID: String?
     var householdID: String
     var householdName: String
     var inviterName: String
-    var token: String         // HB-<base64url payload> — self-contained, emailed to recipient
+    /// Short alphanumeric code ("ABCD-EFGH") stored server-side and emailed to the recipient.
+    var code: String
     var inviteeEmail: String
     var role: HouseholdRole
     /// Owner-specified permissions applied to the member's profile when they join.
@@ -123,11 +126,78 @@ struct HouseholdInviteRecord: Codable, Identifiable {
     var createdAt: Date
     var acceptedAt: Date?
 
-    // Short label for display in the pending-invites list (not used for validation)
-    var displayCode: String { String(token.dropFirst(3).prefix(8)) }
+    var displayCode: String { code }
 
     var isExpired: Bool {
         Date().timeIntervalSince(createdAt) > 60 * 60 * 24 * 7 // 7 days
     }
     var isPending: Bool { acceptedAt == nil && !isExpired }
+
+    // MARK: Memberwise init
+
+    init(id: String, supabaseID: String? = nil, householdID: String,
+         householdName: String, inviterName: String, code: String,
+         inviteeEmail: String, role: HouseholdRole,
+         permissions: MemberPermissions? = nil,
+         createdAt: Date, acceptedAt: Date? = nil) {
+        self.id            = id
+        self.supabaseID    = supabaseID
+        self.householdID   = householdID
+        self.householdName = householdName
+        self.inviterName   = inviterName
+        self.code          = code
+        self.inviteeEmail  = inviteeEmail
+        self.role          = role
+        self.permissions   = permissions
+        self.createdAt     = createdAt
+        self.acceptedAt    = acceptedAt
+    }
+
+    // MARK: Codable — backward-compat with v1 (HMAC token) records cached in UserDefaults
+
+    private enum CodingKeys: String, CodingKey {
+        case id, supabaseID, householdID, householdName, inviterName
+        case code, token        // v1 used 'token'; v2+ uses 'code'
+        case inviteeEmail, role, permissions, createdAt, acceptedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c         = try decoder.container(keyedBy: CodingKeys.self)
+        id            = try c.decode(String.self,                      forKey: .id)
+        supabaseID    = try c.decodeIfPresent(String.self,             forKey: .supabaseID)
+        householdID   = try c.decode(String.self,                      forKey: .householdID)
+        householdName = try c.decode(String.self,                      forKey: .householdName)
+        inviterName   = try c.decode(String.self,                      forKey: .inviterName)
+        inviteeEmail  = try c.decode(String.self,                      forKey: .inviteeEmail)
+        role          = try c.decode(HouseholdRole.self,               forKey: .role)
+        permissions   = try c.decodeIfPresent(MemberPermissions.self,  forKey: .permissions)
+        createdAt     = try c.decode(Date.self,                        forKey: .createdAt)
+        acceptedAt    = try c.decodeIfPresent(Date.self,               forKey: .acceptedAt)
+
+        // v2+ stores the short code; v1 stored a long HMAC-signed token.
+        // Accept both so cached records survive an app update without data loss.
+        // Old tokens expire within 7 days and will be pruned automatically.
+        if let c2 = try? c.decode(String.self, forKey: .code), !c2.isEmpty {
+            code = c2
+        } else if let old = try? c.decode(String.self, forKey: .token) {
+            code = String(old.dropFirst(3).prefix(9)) // display stub only
+        } else {
+            code = ""
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id,                      forKey: .id)
+        try c.encodeIfPresent(supabaseID,     forKey: .supabaseID)
+        try c.encode(householdID,             forKey: .householdID)
+        try c.encode(householdName,           forKey: .householdName)
+        try c.encode(inviterName,             forKey: .inviterName)
+        try c.encode(code,                    forKey: .code)
+        try c.encode(inviteeEmail,            forKey: .inviteeEmail)
+        try c.encode(role,                    forKey: .role)
+        try c.encodeIfPresent(permissions,    forKey: .permissions)
+        try c.encode(createdAt,               forKey: .createdAt)
+        try c.encodeIfPresent(acceptedAt,     forKey: .acceptedAt)
+    }
 }

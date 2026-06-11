@@ -7,6 +7,7 @@
 
 internal import SwiftUI
 internal import Combine
+internal import OSLog
 internal import Supabase
 
 @MainActor
@@ -367,7 +368,7 @@ final class MaintenanceViewModel: ObservableObject {
             }
             for i in pendingLocal { Task { await supabaseUpsert(i) } }
         } catch {
-            print("[Supabase] fetch maintenance_items error: \(error)")
+            Logger.maintenance.error("fetch maintenance_items error: \(error.localizedDescription)")
         }
     }
 
@@ -386,7 +387,7 @@ final class MaintenanceViewModel: ObservableObject {
             do {
                 try await channel.subscribeWithError()
             } catch {
-                print("[Realtime] maintenance subscribe error: \(error)")
+                Logger.realtime.error("maintenance subscribe error: \(error.localizedDescription)")
                 self?.realtimeTask = nil
                 return
             }
@@ -473,7 +474,7 @@ final class MaintenanceViewModel: ObservableObject {
                 .eq("id", value: item.id.uuidString)
                 .execute()
         } catch {
-            print("[Supabase] update house_task error: \(error)")
+            Logger.maintenance.error("update house_task error: \(error.localizedDescription)")
         }
     }
 
@@ -487,7 +488,7 @@ final class MaintenanceViewModel: ObservableObject {
             pendingUploadIDs.remove(item.id)
             persistPendingUploadIDs()
         } catch {
-            print("[Supabase] upsert house_task error: \(error)")
+            Logger.maintenance.error("upsert house_task error: \(error.localizedDescription)")
         }
     }
 
@@ -506,7 +507,7 @@ final class MaintenanceViewModel: ObservableObject {
                 .eq("id", value: id.uuidString)
                 .execute()
         } catch {
-            print("[Supabase] markComplete house_task error: \(error)")
+            Logger.maintenance.error("markComplete house_task error: \(error.localizedDescription)")
         }
     }
 
@@ -516,7 +517,7 @@ final class MaintenanceViewModel: ObservableObject {
                 .eq("id", value: id.uuidString).execute()
             // Tombstone cleared in loadFromSupabase once the row is confirmed absent.
         } catch {
-            print("[Supabase] delete house_task error: \(error)")
+            Logger.maintenance.error("delete house_task error: \(error.localizedDescription)")
         }
     }
 }

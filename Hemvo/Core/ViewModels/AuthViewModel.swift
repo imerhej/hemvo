@@ -11,6 +11,11 @@
 //   withCheckedContinuation so it never runs on MainActor.
 // • isBiometricEnabled is plain @Published, loaded in init(), saved manually.
 // • biometricType is a plain computed var — lazy var is not actor-safe.
+//
+// KEYCHAIN STORAGE:
+// Sensitive flags (biometric, locked-out, trial date, grace period) are stored
+// in the Keychain instead of UserDefaults so they survive app reinstalls and
+// cannot be read by other apps or inspected on jailbroken devices.
 
 internal import SwiftUI
 internal import LocalAuthentication
@@ -20,6 +25,7 @@ internal import CoreData
 internal import UserNotifications
 internal import Supabase
 internal import Auth
+internal import OSLog
 
 @MainActor
 final class AuthViewModel: ObservableObject {
@@ -57,9 +63,75 @@ final class AuthViewModel: ObservableObject {
     private let auth     = AuthService.shared
     private let storeKit = StoreKitService.shared
 
+    // MARK: - Keychain Keys (sensitive data — never UserDefaults)
+    private enum KC {
+        static let biometricEnabled = "hemvo_biometricEnabled"
+        static let lockedOut        = "hemvo_lockedOut"
+        static let trialEndDate     = "hemvo_trialEndDate"
+        static func gracePeriod(householdID: String) -> String {
+            "hemvo_ownerLapsedAt_\(householdID)"
+        }
+    }
+
+    // MARK: - Keychain helpers
+
+    private static func kcBool(_ key: String) -> Bool {
+        KeychainHelper.shared.loadString(key: key, iCloudSync: false) == "1"
+    }
+    private static func setKCBool(_ key: String, _ value: Bool) {
+        KeychainHelper.shared.saveString(value ? "1" : "0", key: key, iCloudSync: false)
+    }
+    private static func deleteKCBool(_ key: String) {
+        KeychainHelper.shared.delete(key: key, iCloudSync: false)
+    }
+
+    private static func kcDate(_ key: String, iCloudSync: Bool = false) -> Date? {
+        KeychainHelper.shared.load(Date.self, key: key, iCloudSync: iCloudSync)
+    }
+    private static func setKCDate(_ key: String, _ date: Date, iCloudSync: Bool = false) {
+        KeychainHelper.shared.save(date, key: key, iCloudSync: iCloudSync)
+    }
+    private static func deleteKCDate(_ key: String, iCloudSync: Bool = false) {
+        KeychainHelper.shared.delete(key: key, iCloudSync: iCloudSync)
+    }
+
+    // MARK: - One-time migration: UserDefaults → Keychain
+    // Runs once on first launch after upgrade. Values are moved then removed
+    // from UserDefaults so they are no longer readable unencrypted.
+    private func migrateSensitiveDefaultsToKeychain() {
+        let ud = UserDefaults.standard
+
+        if !KeychainHelper.shared.exists(key: KC.biometricEnabled, iCloudSync: false) {
+            let val = ud.bool(forKey: KC.biometricEnabled)
+            Self.setKCBool(KC.biometricEnabled, val)
+            ud.removeObject(forKey: KC.biometricEnabled)
+        } else {
+            ud.removeObject(forKey: KC.biometricEnabled)
+        }
+
+        if !KeychainHelper.shared.exists(key: KC.lockedOut, iCloudSync: false) {
+            if ud.bool(forKey: KC.lockedOut) {
+                Self.setKCBool(KC.lockedOut, true)
+            }
+            ud.removeObject(forKey: KC.lockedOut)
+        } else {
+            ud.removeObject(forKey: KC.lockedOut)
+        }
+
+        if !KeychainHelper.shared.exists(key: KC.trialEndDate, iCloudSync: true) {
+            if let date = ud.object(forKey: KC.trialEndDate) as? Date {
+                Self.setKCDate(KC.trialEndDate, date, iCloudSync: true)
+            }
+            ud.removeObject(forKey: KC.trialEndDate)
+        } else {
+            ud.removeObject(forKey: KC.trialEndDate)
+        }
+    }
+
     // MARK: - Init
     init() {
-        isBiometricEnabled = UserDefaults.standard.bool(forKey: "hemvo_biometricEnabled")
+        migrateSensitiveDefaultsToKeychain()
+        isBiometricEnabled = Self.kcBool(KC.biometricEnabled)
         Task {
             await checkSession()
             isCheckingSession = false
@@ -79,7 +151,7 @@ final class AuthViewModel: ObservableObject {
                 isLoggedIn        = true
                 isResolvingAccess = true
                 userID     = session?.user.id
-                UserDefaults.standard.removeObject(forKey: "hemvo_lockedOut")
+                Self.deleteKCBool(KC.lockedOut)
                 await loadProfile()
                 if profile == nil {
                     try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -119,7 +191,7 @@ final class AuthViewModel: ObservableObject {
 
     // MARK: - Trial helpers
     var trialHasStarted: Bool {
-        UserDefaults.standard.object(forKey: "hemvo_trialEndDate") as? Date != nil
+        Self.kcDate(KC.trialEndDate, iCloudSync: true) != nil
     }
 
     /// Only owners need a personal active subscription or trial.
@@ -128,7 +200,7 @@ final class AuthViewModel: ObservableObject {
         guard isLoggedIn else { return false }
         guard isOwner else { return false }
         guard !isSubscriptionActive else { return false }
-        if let end = UserDefaults.standard.object(forKey: "hemvo_trialEndDate") as? Date {
+        if let end = Self.kcDate(KC.trialEndDate, iCloudSync: true) {
             return end < Date()
         }
         return false
@@ -138,7 +210,7 @@ final class AuthViewModel: ObservableObject {
     func checkSession() async {
         // If the user explicitly signed out, respect that — don't auto-restore.
         // Biometric login clears this flag to re-enter without a password.
-        guard !UserDefaults.standard.bool(forKey: "hemvo_lockedOut") else { return }
+        guard !Self.kcBool(KC.lockedOut) else { return }
         let active = await auth.restoreSession()
         if active {
             isLoggedIn = true
@@ -165,16 +237,16 @@ final class AuthViewModel: ObservableObject {
             profile = loaded
             UserPreferences.shared.seed(from: loaded)
             await HouseholdService.shared.syncWithProfile(loaded)
-            // Restore trial end date from Supabase if UserDefaults lost it
-            // (e.g. after reinstall or device migration) so the trial guard
-            // in login() can see the existing trial and not start a new one.
-            if UserDefaults.standard.object(forKey: "hemvo_trialEndDate") as? Date == nil,
+            // Restore trial end date from Supabase if Keychain lost it
+            // (e.g. complete device wipe without iCloud Keychain) so the
+            // trial guard in login() can see the existing trial.
+            if Self.kcDate(KC.trialEndDate, iCloudSync: true) == nil,
                let serverEnd = loaded.trialEndDate {
-                UserDefaults.standard.set(serverEnd, forKey: "hemvo_trialEndDate")
+                Self.setKCDate(KC.trialEndDate, serverEnd, iCloudSync: true)
             }
         } catch {
             // Not fatal — profile may not exist yet for brand new users
-            print("Profile load error: \(error.localizedDescription)")
+            Logger.auth.error("Profile load error: \(error.localizedDescription)")
         }
     }
 
@@ -247,7 +319,7 @@ final class AuthViewModel: ObservableObject {
             try await auth.login(emailOrUsername: emailOrUsername, password: password)
             isLoggedIn        = true
             isResolvingAccess = true
-            UserDefaults.standard.removeObject(forKey: "hemvo_lockedOut")
+            Self.deleteKCBool(KC.lockedOut)
             userID = await auth.currentUserID()
             await loadProfile()
             // Retry once — the DB trigger that creates the profiles row
@@ -260,7 +332,7 @@ final class AuthViewModel: ObservableObject {
             isResolvingAccess = false
             PushNotificationService.shared.refreshToken()
             // Start trial only for genuinely new accounts — i.e. no trial in
-            // UserDefaults (restored from Supabase above if it existed) AND
+            // Keychain (restored from Supabase above if it existed) AND
             // no trial recorded server-side. This prevents a password change
             // or reinstall from resetting the trial clock.
             if !trialHasStarted && profile?.trialEndDate == nil {
@@ -289,7 +361,7 @@ final class AuthViewModel: ObservableObject {
             let success  = await Self.evaluateBiometric(reason: "Sign in to Hemvo")
             if success {
                 // Clear the locked-out flag so the session can be restored
-                UserDefaults.standard.removeObject(forKey: "hemvo_lockedOut")
+                Self.deleteKCBool(KC.lockedOut)
                 let restored = await auth.restoreSession()
                 if restored {
                     isLoggedIn        = true
@@ -303,8 +375,8 @@ final class AuthViewModel: ObservableObject {
                     // Session truly expired (refresh token invalidated or device restored).
                     // Disable biometrics so the button disappears until next password login.
                     isBiometricEnabled = false
-                    UserDefaults.standard.set(false, forKey: "hemvo_biometricEnabled")
-                    UserDefaults.standard.set(true, forKey: "hemvo_lockedOut")
+                    Self.setKCBool(KC.biometricEnabled, false)
+                    Self.setKCBool(KC.lockedOut, true)
                     errorMessage = "Session expired. Please sign in with your password."
                 }
             }
@@ -321,14 +393,14 @@ final class AuthViewModel: ObservableObject {
             reason: "Enable \(biometricLabel) for Hemvo")
         if success {
             isBiometricEnabled = true
-            UserDefaults.standard.set(true, forKey: "hemvo_biometricEnabled")
+            Self.setKCBool(KC.biometricEnabled, true)
         }
         return success
     }
 
     func disableBiometrics() {
         isBiometricEnabled = false
-        UserDefaults.standard.set(false, forKey: "hemvo_biometricEnabled")
+        Self.setKCBool(KC.biometricEnabled, false)
     }
 
     private nonisolated static func evaluateBiometric(reason: String) async -> Bool {
@@ -379,7 +451,7 @@ final class AuthViewModel: ObservableObject {
             reason: "Enable biometric login for Hemvo")
         if enrolled {
             isBiometricEnabled = true
-            UserDefaults.standard.set(true, forKey: "hemvo_biometricEnabled")
+            Self.setKCBool(KC.biometricEnabled, true)
         }
     }
 
@@ -404,11 +476,11 @@ final class AuthViewModel: ObservableObject {
             value: AppConstants.trialDurationDays,
             to: Date()
         ) ?? Date()
-        UserDefaults.standard.set(end, forKey: "hemvo_trialEndDate")
+        Self.setKCDate(KC.trialEndDate, end, iCloudSync: true)
         trialDaysRemaining   = AppConstants.trialDurationDays
         isSubscriptionActive = true
-        // Persist to Supabase so the trial survives reinstalls and device
-        // migrations — loadProfile() restores it to UserDefaults on next login.
+        // Persist to Supabase so the trial survives full device wipes where
+        // iCloud Keychain is unavailable — loadProfile() restores it on next login.
         await auth.updateTrialEndDate(end)
     }
 
@@ -421,7 +493,7 @@ final class AuthViewModel: ObservableObject {
             isSubscriptionActive = true
             trialDaysRemaining   = 0
             isActive             = true
-        } else if let end = UserDefaults.standard.object(forKey: "hemvo_trialEndDate") as? Date {
+        } else if let end = Self.kcDate(KC.trialEndDate, iCloudSync: true) {
             let days = Calendar.current.dateComponents([.day], from: Date(), to: end).day ?? 0
             trialDaysRemaining   = max(days, 0)
             isSubscriptionActive = end > Date()
@@ -456,13 +528,13 @@ final class AuthViewModel: ObservableObject {
     }
 
     private func startOrCheckGracePeriod(householdID: String) {
-        let key = "hemvo_ownerLapsedAt_\(householdID)"
+        let key = KC.gracePeriod(householdID: householdID)
         let lapsedAt: Date
-        if let stored = UserDefaults.standard.object(forKey: key) as? Date {
+        if let stored = Self.kcDate(key) {
             lapsedAt = stored
         } else {
             lapsedAt = Date()
-            UserDefaults.standard.set(lapsedAt, forKey: key)
+            Self.setKCDate(key, lapsedAt)
         }
         let elapsed   = Calendar.current.dateComponents([.day], from: lapsedAt, to: Date()).day ?? 0
         let remaining = max(0, AppConstants.gracePeriodDays - elapsed)
@@ -472,7 +544,7 @@ final class AuthViewModel: ObservableObject {
 
     private func clearOwnerGracePeriod() {
         guard let h = HouseholdService.shared.household else { return }
-        UserDefaults.standard.removeObject(forKey: "hemvo_ownerLapsedAt_\(h.id)")
+        Self.deleteKCDate(KC.gracePeriod(householdID: h.id))
     }
 
     // MARK: - Sign Out
@@ -491,7 +563,7 @@ final class AuthViewModel: ObservableObject {
         // the session without re-entering a password. checkSession() skips auto-login
         // while this flag is set. deleteAccount() still calls auth.signOut() to fully
         // invalidate the server session when the account is permanently removed.
-        UserDefaults.standard.set(true, forKey: "hemvo_lockedOut")
+        Self.setKCBool(KC.lockedOut, true)
     }
 
     // MARK: - Delete Account
@@ -506,13 +578,12 @@ final class AuthViewModel: ObservableObject {
         do {
             try await auth.deleteAccount()
         } catch {
-            print("[Auth] deleteAccount RPC error: \(error.localizedDescription)")
+            Logger.auth.error("deleteAccount RPC error: \(error.localizedDescription)")
             return "Account deletion failed: \(error.localizedDescription). Please try again or contact support."
         }
 
-        // 2. Clear local UserDefaults cache
+        // 2. Clear local UserDefaults cache (non-sensitive data only)
         let keysToRemove: [String] = [
-            "hemvo_trialEndDate", "hemvo_biometricEnabled", "hemvo_lockedOut",
             "hb_meals", "hb_expenses", "hb_events", "hb_tasks",
             "hb_members", "hb_maintenanceItems", "hb_maintenanceHistory",
             "hb_paymentCards", "hb_avatarColor",
@@ -520,6 +591,7 @@ final class AuthViewModel: ObservableObject {
             "hb_groceryItems", "hb_shoppingLists", "hb_budget",
             "hb_seasonalCompleted", "hb_seasonalItemsV3",
             "hb_household_v2", "hb_householdInvites_v2",
+            "hb_apns_token",
         ]
         let ud = UserDefaults.standard
         keysToRemove.forEach { ud.removeObject(forKey: $0) }
@@ -544,8 +616,8 @@ final class AuthViewModel: ObservableObject {
 
         // 5. Sign out to invalidate the server session, then wipe the entire
         //    Keychain (including the Supabase session token stored via
-        //    KeychainAuthStorage). This ensures no stale credentials remain
-        //    that could interfere with a future sign-up for the same email.
+        //    KeychainAuthStorage, plus all sensitive flags migrated above).
+        //    This ensures no stale credentials remain.
         try? await auth.signOut()
         KeychainHelper.shared.deleteAll()
 

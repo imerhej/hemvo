@@ -7,6 +7,7 @@
 
 internal import CoreData
 internal import Foundation
+internal import OSLog
 
 final class PersistenceService {
 
@@ -43,7 +44,7 @@ final class PersistenceService {
         do {
             try ctx.save()
         } catch {
-            print("PersistenceService: Save failed — \(error.localizedDescription)")
+            Logger.persistence.error("Save failed: \(error.localizedDescription)")
         }
     }
 
@@ -56,7 +57,7 @@ final class PersistenceService {
             block(bgCtx)
             if bgCtx.hasChanges {
                 do { try bgCtx.save() }
-                catch { print("PersistenceService: Background save failed — \(error)") }
+                catch { Logger.persistence.error("Background save failed: \(error.localizedDescription)") }
             }
         }
     }

@@ -13,6 +13,7 @@ internal import CoreData
 internal import CloudKit
 internal import Foundation
 internal import Combine
+internal import OSLog
 internal import UserNotifications
 internal import Supabase
 internal import UIKit
@@ -360,7 +361,7 @@ final class ScheduleViewModel: ObservableObject {
                 .eq("sent",     value: false)
                 .execute()
         } catch {
-            print("[Supabase] cancelOldSchedules error: \(error)")
+            Logger.schedule.error("cancelOldSchedules error: \(error.localizedDescription)")
         }
 
         let timeStr = event.isAllDay
@@ -401,7 +402,7 @@ final class ScheduleViewModel: ObservableObject {
                 .insert(rows)
                 .execute()
         } catch {
-            print("[Supabase] scheduleEventPushes error: \(error)")
+            Logger.schedule.error("scheduleEventPushes error: \(error.localizedDescription)")
         }
     }
 
@@ -415,7 +416,7 @@ final class ScheduleViewModel: ObservableObject {
                 .eq("sent",     value: false)
                 .execute()
         } catch {
-            print("[Supabase] cancelEventPushSchedule error: \(error)")
+            Logger.schedule.error("cancelEventPushSchedule error: \(error.localizedDescription)")
         }
     }
 
@@ -658,7 +659,7 @@ final class ScheduleViewModel: ObservableObject {
             do {
                 try await channel.subscribeWithError()
             } catch {
-                print("[Realtime] schedule subscribe error: \(error)")
+                Logger.realtime.error("schedule subscribe error: \(error.localizedDescription)")
                 self?.realtimeTask = nil
                 return
             }
@@ -853,7 +854,7 @@ final class ScheduleViewModel: ObservableObject {
             }
             for ev in pendingLocal { Task { await supabaseUpsertEvent(ev) } }
         } catch {
-            print("[Supabase] fetch events error: \(error)")
+            Logger.schedule.error("fetch events error: \(error.localizedDescription)")
         }
     }
 
@@ -892,7 +893,7 @@ final class ScheduleViewModel: ObservableObject {
             }
             for t in pendingLocal { Task { await supabaseUpsertTask(t) } }
         } catch {
-            print("[Supabase] fetch tasks error: \(error)")
+            Logger.schedule.error("fetch tasks error: \(error.localizedDescription)")
         }
     }
 
@@ -924,7 +925,7 @@ final class ScheduleViewModel: ObservableObject {
             pendingUploadEventIDs.remove(event.id)
             persistPendingUploadIDs()
         } catch {
-            print("[Supabase] upsert event error: \(error)")
+            Logger.schedule.error("upsert event error: \(error.localizedDescription)")
         }
     }
 
@@ -987,7 +988,7 @@ final class ScheduleViewModel: ObservableObject {
                 .eq("id", value: event.id.uuidString)
                 .execute()
         } catch {
-            print("[Supabase] update event error: \(error)")
+            Logger.schedule.error("update event error: \(error.localizedDescription)")
         }
     }
 
@@ -999,7 +1000,7 @@ final class ScheduleViewModel: ObservableObject {
             // This prevents a silent RLS block (0 rows affected, no error thrown) from
             // causing the event to re-appear on the next sync.
         } catch {
-            print("[Supabase] delete event error: \(error)")
+            Logger.schedule.error("delete event error: \(error.localizedDescription)")
         }
     }
 
@@ -1013,7 +1014,7 @@ final class ScheduleViewModel: ObservableObject {
             pendingUploadTaskIDs.remove(task.id)
             persistPendingUploadIDs()
         } catch {
-            print("[Supabase] upsert task error: \(error)")
+            Logger.schedule.error("upsert task error: \(error.localizedDescription)")
         }
     }
 
@@ -1035,7 +1036,7 @@ final class ScheduleViewModel: ObservableObject {
                 .eq("id", value: task.id.uuidString)
                 .execute()
         } catch {
-            print("[Supabase] toggle task error: \(error)")
+            Logger.schedule.error("toggle task error: \(error.localizedDescription)")
         }
     }
 
@@ -1044,7 +1045,7 @@ final class ScheduleViewModel: ObservableObject {
             try await supabase.from("house_tasks").delete().eq("id", value: id.uuidString).execute()
             // Tombstone cleared in loadTasksFromSupabase once confirmed absent remotely.
         } catch {
-            print("[Supabase] delete task error: \(error)")
+            Logger.schedule.error("delete task error: \(error.localizedDescription)")
         }
     }
 }

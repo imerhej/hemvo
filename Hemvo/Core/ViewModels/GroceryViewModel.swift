@@ -9,6 +9,7 @@
 internal import SwiftUI
 internal import Foundation
 internal import Combine
+internal import OSLog
 internal import Supabase
 
 @MainActor
@@ -254,7 +255,7 @@ final class GroceryViewModel: ObservableObject {
             persist()
             for i in pendingLocal { Task { await supabaseUpsert(i) } }
         } catch {
-            print("[Supabase] fetch grocery_items error: \(error)")
+            Logger.grocery.error("fetch grocery_items error: \(error.localizedDescription)")
         }
     }
 
@@ -271,14 +272,14 @@ final class GroceryViewModel: ObservableObject {
     private func supabaseUpsert(_ item: GroceryItem) async {
         await resolveIDs()
         guard let uid = cachedUserID, let hid = cachedHouseholdID else {
-            print("[Grocery] upsert skipped — userID=\(cachedUserID?.uuidString ?? "nil") householdID=\(cachedHouseholdID?.uuidString ?? "nil")")
+            Logger.grocery.debug("upsert skipped — IDs not resolved")
             return
         }
         let row = SupabaseGroceryRow(from: item, userId: uid, householdId: hid)
         do {
             try await supabase.from("grocery_items").upsert(row, onConflict: "id").execute()
         } catch {
-            print("[Supabase] upsert grocery_item error: \(error)")
+            Logger.grocery.error("upsert grocery_item error: \(error.localizedDescription)")
         }
     }
 
@@ -290,7 +291,7 @@ final class GroceryViewModel: ObservableObject {
             // the row is gone — Supabase returns "success" even when RLS
             // silently blocks the delete, so clearing here is premature.
         } catch {
-            print("[Supabase] delete grocery_item error: \(error)")
+            Logger.grocery.error("delete grocery_item error: \(error.localizedDescription)")
         }
     }
 
@@ -310,7 +311,7 @@ final class GroceryViewModel: ObservableObject {
             deletedMealIngredientNames.removeAll()
             persistDeletedMealNames()
         } catch {
-            print("[Supabase] delete all grocery_items error: \(error)")
+            Logger.grocery.error("delete all grocery_items error: \(error.localizedDescription)")
         }
     }
 }

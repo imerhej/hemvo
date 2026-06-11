@@ -6,6 +6,7 @@
 
 internal import SwiftUI
 internal import Combine
+internal import OSLog
 
 // MARK: - HouseholdMembersView
 
@@ -379,7 +380,7 @@ struct HouseholdMembersView: View {
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(brown)
                             HStack(spacing: 4) {
-                                Text("Code: \(invite.displayCode)…")
+                                Text("Code: \(invite.displayCode)")
                                     .font(.system(size: 12, weight: .bold))
                                     .foregroundStyle(amber)
                                 Text("· \(invite.role.rawValue)")
@@ -436,7 +437,7 @@ struct HouseholdMembersView: View {
                 requestingUserID: currentUserID
             )
         } catch {
-            print("[HouseholdMembers] removeMember error: \(error.localizedDescription)")
+            Logger.household.error("removeMember error: \(error.localizedDescription)")
         }
     }
 

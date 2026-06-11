@@ -16,6 +16,7 @@
 internal import Foundation
 internal import Supabase
 internal import UIKit
+internal import OSLog
 
 final class PushNotificationService {
 
@@ -81,7 +82,7 @@ final class PushNotificationService {
                         onConflict: "user_id,device_id")
                 .execute()
         } catch {
-            print("[Push] save token error: \(error)")
+            Logger.push.error("save token error: \(error.localizedDescription)")
         }
     }
 
@@ -118,7 +119,7 @@ final class PushNotificationService {
                 )
             )
         } catch {
-            print("[Push] notify-users error: \(error)")
+            Logger.push.error("notify-users error: \(error.localizedDescription)")
         }
     }
 
@@ -132,7 +133,7 @@ final class PushNotificationService {
         guard let uid = await AuthService.shared.currentUserID() else { return }
         let householdID: String? = await MainActor.run { HouseholdService.shared.household?.id }
         guard let householdID else {
-            print("[Push] notifyHouseholdExcluding skipped — household not set")
+            Logger.push.debug("notifyHouseholdExcluding skipped — household not set")
             return
         }
 
@@ -164,7 +165,7 @@ final class PushNotificationService {
                 )
             )
         } catch {
-            print("[Push] notify-household-excluding error: \(error)")
+            Logger.push.error("notify-household-excluding error: \(error.localizedDescription)")
         }
     }
 
@@ -230,7 +231,7 @@ final class PushNotificationService {
                 )
             )
         } catch {
-            print("[Push] notify-household error: \(error)")
+            Logger.push.error("notify-household error: \(error.localizedDescription)")
         }
     }
 
@@ -240,7 +241,7 @@ final class PushNotificationService {
         guard let uid = await AuthService.shared.currentUserID() else { return }
         let householdID: String? = await MainActor.run { HouseholdService.shared.household?.id }
         guard let householdID else {
-            print("[Push] notifyHousehold skipped — household not set")
+            Logger.push.debug("notifyHousehold skipped — household not set")
             return
         }
 
@@ -269,7 +270,7 @@ final class PushNotificationService {
                 )
             )
         } catch {
-            print("[Push] notify-household error: \(error)")
+            Logger.push.error("notify-household error: \(error.localizedDescription)")
         }
     }
 }

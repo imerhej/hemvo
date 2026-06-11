@@ -182,24 +182,24 @@ struct HouseholdSetupView: View {
                 Text("INVITE CODE")
                     .font(.system(size: 10, weight: .heavy)).kerning(1.4)
                     .foregroundStyle(muted)
-                TextField("Paste invite token (HB-…)", text: $joinCode)
+                TextField("e.g. ABCD-EFGH", text: $joinCode)
                     .focused($codeFocused)
                     .submitLabel(.done)
-                    .textInputAutocapitalization(.never)
+                    .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
                     .padding(14)
                     .background(Color.white)
                     .cornerRadius(12)
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(codeFocused ? amber : divider, lineWidth: codeFocused ? 1.5 : 1))
-                    .font(.system(size: 14, weight: .medium))
-                    .multilineTextAlignment(.leading)
-                Text("Paste the invite token from the email your family member sent you.")
+                    .font(.system(size: 16, weight: .semibold))
+                    .multilineTextAlignment(.center)
+                Text("Enter the invite code from the email your family member sent you.")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(muted)
             }
             if let err = errorMessage { errorBanner(err) }
             let trimmed = joinCode.trimmingCharacters(in: .whitespacesAndNewlines)
-            let isDisabled = !trimmed.hasPrefix("HB-") || trimmed.count < 10 || isLoading
+            let isDisabled = trimmed.count < 4 || isLoading
             Button(action: joinHousehold) {
                 primaryLabel("Join Household", loading: isLoading)
             }

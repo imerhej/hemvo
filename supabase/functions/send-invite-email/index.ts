@@ -12,7 +12,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
-const FROM_ADDRESS   = Deno.env.get("FROM_ADDRESS") ?? "Hemvo <onboarding@resend.dev>";
+const FROM_ADDRESS   = Deno.env.get("FROM_ADDRESS") ?? "Hemvo <noreply@hemvo.app>";
 const APP_NAME       = "Hemvo";
 
 function htmlEscape(str: string): string {
@@ -37,9 +37,9 @@ serve(async (req: Request) => {
     });
   }
 
-  let to: string, inviterName: string, householdName: string, token: string;
+  let to: string, inviterName: string, householdName: string, code: string;
   try {
-    ({ to, inviterName, householdName, token } = await req.json());
+    ({ to, inviterName, householdName, code } = await req.json());
   } catch {
     return new Response(JSON.stringify({ error: "Invalid JSON" }), {
       status: 400,
@@ -47,8 +47,8 @@ serve(async (req: Request) => {
     });
   }
 
-  if (!to || !inviterName || !householdName || !token) {
-    return new Response(JSON.stringify({ error: "Missing required fields: to, inviterName, householdName, token" }), {
+  if (!to || !inviterName || !householdName || !code) {
+    return new Response(JSON.stringify({ error: "Missing required fields: to, inviterName, householdName, code" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
@@ -57,7 +57,7 @@ serve(async (req: Request) => {
   // Sanitize all user-supplied values before embedding in HTML.
   const safeInviter   = htmlEscape(inviterName);
   const safeHousehold = htmlEscape(householdName);
-  const safeToken     = htmlEscape(token);
+  const safeCode      = htmlEscape(code.toUpperCase());
   const year          = new Date().getFullYear();
 
   const subject = `${safeInviter} invited you to join ${safeHousehold} on ${APP_NAME}`;
@@ -74,14 +74,16 @@ serve(async (req: Request) => {
       <p style="color:#1A1208;font-size:16px;line-height:1.6;margin:0 0 24px;">
         Hi there! <strong>${safeInviter}</strong> has invited you to join <strong>${safeHousehold}</strong> on ${APP_NAME} — share meals, budgets, and schedules with your household.
       </p>
-      <p style="color:#1A1208;font-size:14px;font-weight:700;margin:0 0 8px;">Your invite token:</p>
-      <div style="background:#FAF7F2;border:2px solid #E6DDD0;border-radius:12px;padding:16px;word-break:break-all;font-size:12px;font-family:monospace;color:#C8922A;margin:0 0 24px;">${safeToken}</div>
+      <p style="color:#1A1208;font-size:14px;font-weight:700;margin:0 0 12px;">Your invite code:</p>
+      <div style="background:#FAF7F2;border:2px solid #C8922A;border-radius:14px;padding:20px;text-align:center;margin:0 0 24px;">
+        <span style="font-size:28px;font-weight:900;letter-spacing:4px;font-family:monospace;color:#C8922A;">${safeCode}</span>
+      </div>
       <p style="color:#1A1208;font-size:14px;font-weight:700;margin:0 0 12px;">How to join:</p>
       <ol style="color:#7A6A55;font-size:14px;line-height:1.8;margin:0 0 24px;padding-left:20px;">
         <li>Download ${APP_NAME} from the App Store</li>
         <li>Create your account (or sign in)</li>
         <li>Go to Settings &#8594; Join a Household</li>
-        <li>Paste the token above</li>
+        <li>Enter the invite code above</li>
       </ol>
       <p style="color:#7A6A55;font-size:13px;margin:0;">This invite expires in <strong>7 days</strong>.</p>
     </div>

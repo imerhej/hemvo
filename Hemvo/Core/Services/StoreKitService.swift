@@ -9,6 +9,7 @@ internal import CloudKit
 internal import Foundation
 internal import Combine
 internal import UserNotifications
+internal import OSLog
 
 // MARK: - StoreKitService
 @MainActor
@@ -40,7 +41,7 @@ final class StoreKitService: ObservableObject {
             products = try await Product.products(for: [StoreIDs.monthly, StoreIDs.annual])
                 .sorted { $0.price < $1.price }
         } catch {
-            print("StoreKit: Failed to load products — \(error.localizedDescription)")
+            Logger.store.error("Failed to load products: \(error.localizedDescription)")
         }
         isLoading = false
     }
@@ -76,7 +77,7 @@ final class StoreKitService: ObservableObject {
             try await AppStore.sync()
             await updateEntitlements()
         } catch {
-            print("StoreKit: Restore failed — \(error.localizedDescription)")
+            Logger.store.error("Restore failed: \(error.localizedDescription)")
         }
     }
 
@@ -124,7 +125,7 @@ final class StoreKitService: ObservableObject {
                     await self.updateEntitlements()
                     await tx.finish()
                 } catch {
-                    print("StoreKit: Transaction listener error — \(error)")
+                    Logger.store.error("Transaction listener error: \(error.localizedDescription)")
                 }
             }
         }

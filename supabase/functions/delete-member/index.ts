@@ -1,7 +1,9 @@
 // delete-member — Supabase Edge Function
-// Allows a household owner to delete another member's Supabase auth account.
+// Allows a household owner to remove another member from the household.
+// The member's auth account is preserved; only their household_id and role
+// are cleared so they can join or create a new household.
 // The requesting user's JWT is verified; they must hold the "Owner" role in
-// the same household as the member being deleted.
+// the same household as the member being removed.
 //
 // Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 // Deploy: supabase functions deploy delete-member
@@ -81,14 +83,18 @@ serve(async (req: Request) => {
     return jsonError(403, "Member does not belong to your household");
   }
 
-  // Delete the member's auth account. Cascades to their profile row.
-  const { error: deleteError } = await admin.auth.admin.deleteUser(memberID);
-  if (deleteError) {
-    console.error(`delete-member: deleteUser error: ${deleteError.message}`);
-    return jsonError(500, "Failed to delete member account");
+  // Detach the member from the household; their auth account is preserved.
+  const { error: updateError } = await admin
+    .from("profiles")
+    .update({ household_id: null, role: null })
+    .eq("id", memberID);
+
+  if (updateError) {
+    console.error(`delete-member: profile update error: ${updateError.message}`);
+    return jsonError(500, "Failed to remove member from household");
   }
 
-  return new Response(JSON.stringify({ deleted: true }), {
+  return new Response(JSON.stringify({ removed: true }), {
     headers: { "Content-Type": "application/json" },
   });
 });

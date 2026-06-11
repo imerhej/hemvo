@@ -6,6 +6,7 @@
 //    is_recurring, due_date, paid_date, notes, created_by, created_at
 
 internal import Foundation
+internal import OSLog
 internal import Combine
 internal import Supabase
 internal import UIKit
@@ -471,7 +472,7 @@ final class BudgetViewModel: ObservableObject {
             }
             for e in pendingLocal { Task { await supabaseUpsert(e) } }
         } catch {
-            print("[Supabase] fetch expenses error: \(error)")
+            Logger.budget.error("fetch expenses error: \(error.localizedDescription)")
         }
     }
 
@@ -493,7 +494,7 @@ final class BudgetViewModel: ObservableObject {
                 .upsert(row, onConflict: "id")
                 .execute()
         } catch {
-            print("[Supabase] upsert expense error: \(error)")
+            Logger.budget.error("upsert expense error: \(error.localizedDescription)")
         }
     }
 
@@ -522,7 +523,7 @@ final class BudgetViewModel: ObservableObject {
                 .eq("id", value: expense.id.uuidString)
                 .execute()
         } catch {
-            print("[Supabase] mark paid error: \(error)")
+            Logger.budget.error("mark paid error: \(error.localizedDescription)")
         }
     }
 
@@ -599,7 +600,7 @@ final class BudgetViewModel: ObservableObject {
                 .eq("id", value: expense.id.uuidString)
                 .execute()
         } catch {
-            print("[Supabase] update expense error: \(error)")
+            Logger.budget.error("update expense error: \(error.localizedDescription)")
         }
     }
 
@@ -628,7 +629,7 @@ final class BudgetViewModel: ObservableObject {
             do {
                 try await channel.subscribeWithError()
             } catch {
-                print("[Realtime] expenses subscribe error: \(error)")
+                Logger.realtime.error("expenses subscribe error: \(error.localizedDescription)")
                 // Clear so the next loadFromSupabase() can retry.
                 await MainActor.run { [weak self] in self?.realtimeTask = nil }
                 return
@@ -674,10 +675,10 @@ final class BudgetViewModel: ObservableObject {
                 .execute()
                 .value
             if deleted.isEmpty {
-                print("[Supabase] delete may have been blocked by RLS for id: \(id)")
+                Logger.budget.warning("delete may have been blocked by RLS")
             }
         } catch {
-            print("[Supabase] delete expense error: \(error)")
+            Logger.budget.error("delete expense error: \(error.localizedDescription)")
         }
     }
 
@@ -718,7 +719,7 @@ final class BudgetViewModel: ObservableObject {
                 await migrateBudgetToSupabase()
             }
         } catch {
-            print("[Supabase] loadBudget error: \(error)")
+            Logger.budget.error("loadBudget error: \(error.localizedDescription)")
         }
     }
 
@@ -743,9 +744,9 @@ final class BudgetViewModel: ObservableObject {
                     .upsert(rows, onConflict: "id")
                     .execute()
             }
-            print("[Supabase] budget migrated from UserDefaults")
+            Logger.budget.debug("budget migrated from UserDefaults")
         } catch {
-            print("[Supabase] migrateBudget error: \(error)")
+            Logger.budget.error("migrateBudget error: \(error.localizedDescription)")
         }
     }
 
@@ -771,7 +772,7 @@ final class BudgetViewModel: ObservableObject {
                     .execute()
             }
         } catch {
-            print("[Supabase] saveBudget error: \(error)")
+            Logger.budget.error("saveBudget error: \(error.localizedDescription)")
         }
     }
 
@@ -786,7 +787,7 @@ final class BudgetViewModel: ObservableObject {
                 .upsert(row, onConflict: "id")
                 .execute()
         } catch {
-            print("[Supabase] upsert category error: \(error)")
+            Logger.budget.error("upsert category error: \(error.localizedDescription)")
         }
     }
 
@@ -798,7 +799,7 @@ final class BudgetViewModel: ObservableObject {
                 .eq("id", value: id.uuidString)
                 .execute()
         } catch {
-            print("[Supabase] delete category error: \(error)")
+            Logger.budget.error("delete category error: \(error.localizedDescription)")
         }
     }
 
@@ -820,7 +821,7 @@ final class BudgetViewModel: ObservableObject {
             do {
                 try await channel.subscribeWithError()
             } catch {
-                print("[Realtime] budget_categories subscribe error: \(error)")
+                Logger.realtime.error("budget_categories subscribe error: \(error.localizedDescription)")
                 await MainActor.run { [weak self] in self?.budgetRealtimeTask = nil }
                 return
             }

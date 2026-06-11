@@ -12,6 +12,42 @@ internal import Combine     // ← required: ObservableObject lives in Combine
 internal import UIKit
 internal import Supabase
 internal import Auth
+internal import OSLog
+
+// MARK: - Jailbreak detection
+// Checks common jailbreak indicators at launch. On a compromised device the app
+// shows a blocking warning so the user knows their environment is untrusted.
+// This is defense-in-depth — a sophisticated attacker can bypass these checks —
+// but it raises the bar against casual exploitation of sensitive Keychain data.
+func isDeviceJailbroken() -> Bool {
+    #if targetEnvironment(simulator)
+    return false
+    #else
+    let paths: [String] = [
+        "/Applications/Cydia.app",
+        "/Applications/Sileo.app",
+        "/Applications/Zebra.app",
+        "/usr/sbin/sshd",
+        "/usr/bin/ssh",
+        "/etc/apt",
+        "/private/var/lib/apt/",
+        "/bin/bash",
+        "/bin/sh",
+        "/private/var/stash",
+    ]
+    if paths.contains(where: { FileManager.default.fileExists(atPath: $0) }) {
+        return true
+    }
+    // Attempt a write outside the sandbox — only succeeds on jailbroken devices.
+    let probeFile = "/private/hemvo_jb_probe_\(Int.random(in: 1_000_000...9_999_999))"
+    do {
+        try "probe".write(toFile: probeFile, atomically: true, encoding: .utf8)
+        try? FileManager.default.removeItem(atPath: probeFile)
+        return true
+    } catch { }
+    return false
+    #endif
+}
 
 // MARK: - APNs delegate
 // Receives the device token once iOS registers with Apple's push servers.
@@ -27,7 +63,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
-        print("[Push] APNs registration failed: \(error)")
+        Logger.push.error("APNs registration failed: \(error.localizedDescription)")
     }
 }
 
@@ -79,7 +115,7 @@ struct HemvoApp: App {
                         do {
                             try await supabase.auth.session(from: url)
                         } catch {
-                            print("[DeepLink] session(from:) failed: \(error)")
+                            Logger.deepLink.error("session(from:) failed: \(error.localizedDescription)")
                         }
                     }
                 }
@@ -196,7 +232,9 @@ private struct RootView: View {
     @EnvironmentObject var householdService: HouseholdService
     var body: some View {
         Group {
-            if authVM.isCheckingSession || authVM.isResolvingAccess {
+            if isDeviceJailbroken() {
+                JailbreakWarningView()
+            } else if authVM.isCheckingSession || authVM.isResolvingAccess {
                 // Show splash while the initial session check OR post-login
                 // subscription refresh is in flight, so trialExpired / paywall
                 // state is never evaluated before subscription status is known.
@@ -239,6 +277,28 @@ private struct RootView: View {
                 Task { try? await supabase.auth.signOut() }
                 authVM.signOut()
             })
+        }
+    }
+}
+
+// MARK: - Jailbreak warning — blocks all app functionality on compromised devices
+private struct JailbreakWarningView: View {
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 24) {
+                Image(systemName: "exclamationmark.shield.fill")
+                    .font(.system(size: 64))
+                    .foregroundColor(.red)
+                Text("Untrusted Device")
+                    .font(.system(size: 26, weight: .black))
+                    .foregroundColor(.white)
+                Text("Hemvo has detected that this device may be jailbroken. The app cannot run safely in this environment.\n\nYour household data and account credentials are protected.")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
         }
     }
 }

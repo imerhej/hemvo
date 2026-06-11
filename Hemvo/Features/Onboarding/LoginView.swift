@@ -902,6 +902,10 @@ struct LoginView: View {
                 await authVM.login(emailOrUsername: emailOrUsername, password: password)
                 if authVM.errorMessage != nil {
                     withAnimation { shakeTrigger += 1 }
+                } else {
+                    // Clear sensitive state from memory on successful login.
+                    password    = ""
+                    confirmPass = ""
                 }
             }
         }

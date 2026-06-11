@@ -11,6 +11,7 @@
 //  badge = 0 cleared on every launch).
 
 internal import Foundation
+internal import OSLog
 internal import UserNotifications
 
 final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
@@ -127,7 +128,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                     trigger:    trigger
                 )
                 self.center.add(request) { error in
-                    if let error { print("NotificationService meals: \(error)") }
+                    if let error { Logger.notif.error("meals schedule error: \(error.localizedDescription)") }
                 }
             }
         }
@@ -183,7 +184,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                         content:    atContent,
                         trigger:    trigger
                     )
-                    self.center.add(request) { if let e = $0 { print("NotificationService event at-time: \(e)") } }
+                    self.center.add(request) { if let e = $0 { Logger.notif.error("event at-time error: \(e.localizedDescription)") } }
                 }
 
                 // ── Notification BEFORE event time (based on alertOption) ────
@@ -228,7 +229,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                         content:    earlyContent,
                         trigger:    earlyTrigger
                     )
-                    self.center.add(earlyRequest) { if let e = $0 { print("NotificationService event before: \(e)") } }
+                    self.center.add(earlyRequest) { if let e = $0 { Logger.notif.error("event before error: \(e.localizedDescription)") } }
                 }
             }
         }
@@ -290,7 +291,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                         content:    earlyContent,
                         trigger:    earlyTrigger
                     )
-                    self.center.add(earlyRequest) { if let e = $0 { print("NotificationService maint early: \(e)") } }
+                    self.center.add(earlyRequest) { if let e = $0 { Logger.notif.error("maint early error: \(e.localizedDescription)") } }
                 }
 
                 // ── Day-of at 8am ────────────────────────────────────────────
@@ -314,7 +315,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                     content:    dueContent,
                     trigger:    dueTrigger
                 )
-                self.center.add(dueRequest) { if let e = $0 { print("NotificationService maint due: \(e)") } }
+                self.center.add(dueRequest) { if let e = $0 { Logger.notif.error("maint due error: \(e.localizedDescription)") } }
             }
         }
     }
@@ -350,7 +351,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             content:    onDueContent,
             trigger:    onDueTrigger
         )
-        center.add(onDueRequest) { if let e = $0 { print("NotificationService bill due: \(e)") } }
+        center.add(onDueRequest) { if let e = $0 { Logger.notif.error("bill due error: \(e.localizedDescription)") } }
 
         // Day-before at 9am
         guard let dayBefore = Calendar.current.date(byAdding: .day, value: -1, to: expense.date),
@@ -372,7 +373,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             content:    earlyContent,
             trigger:    earlyTrigger
         )
-        center.add(earlyRequest) { if let e = $0 { print("NotificationService bill early: \(e)") } }
+        center.add(earlyRequest) { if let e = $0 { Logger.notif.error("bill early error: \(e.localizedDescription)") } }
     }
 
     func rescheduleAllBills(from expenses: [Expense]) {
@@ -455,7 +456,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
         let request = UNNotificationRequest(
             identifier: Prefix.trial, content: content, trigger: trigger)
-        center.add(request) { if let e = $0 { print("NotificationService trial: \(e)") } }
+        center.add(request) { if let e = $0 { Logger.notif.error("trial error: \(e.localizedDescription)") } }
     }
 
     // MARK: - ── UTILITIES ────────────────────────────────────────────────────
@@ -480,8 +481,8 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
 
     func listPending() {
         center.getPendingNotificationRequests { requests in
-            print("NotificationService: \(requests.count) pending")
-            requests.forEach { print("  → \($0.identifier)") }
+            Logger.notif.debug("\(requests.count) pending notifications")
+            requests.forEach { Logger.notif.debug("  → \($0.identifier)") }
         }
     }
 }

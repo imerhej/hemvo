@@ -1,6 +1,7 @@
 internal import Foundation
 internal import Combine
 internal import Supabase
+internal import OSLog
 
 // MARK: - UserDefaults Keys
 
@@ -17,6 +18,7 @@ enum HouseholdError: LocalizedError {
     case alreadyMember
     case notFound
     case notOwner
+    case emailMismatch             // signed-in account email doesn't match invite recipient
     case emailFailed(code: String) // invite was saved but email delivery failed
 
     var errorDescription: String? {
@@ -26,6 +28,7 @@ enum HouseholdError: LocalizedError {
         case .alreadyMember:      return "You're already a member of a household."
         case .notFound:           return "Household not found."
         case .notOwner:           return "Only the household owner can do that."
+        case .emailMismatch:      return "This invite was sent to a different email address. Sign in with the account that received the invite."
         case .emailFailed(let c): return "Invite saved, but the email couldn't be delivered. Share this code manually: \(c)"
         }
     }
@@ -78,7 +81,7 @@ final class HouseholdService: ObservableObject {
             do {
                 try await channel.subscribeWithError()
             } catch {
-                print("[Realtime] profiles subscribe error: \(error)")
+                Logger.realtime.error("profiles subscribe error: \(error.localizedDescription)")
                 await MainActor.run { [weak self] in self?.profilesRealtimeTask = nil }
                 return
             }
@@ -187,7 +190,7 @@ final class HouseholdService: ObservableObject {
                                            name: String,
                                            ownerID: String) async {
         guard let ownerUUID = UUID(uuidString: ownerID) else {
-            print("[Supabase] createHousehold: ownerID is not a valid UUID — \(ownerID)")
+            Logger.household.error("createHousehold: ownerID is not a valid UUID")
             return
         }
         let row = SupabaseHouseholdRow(id: householdUUID,
@@ -208,15 +211,15 @@ final class HouseholdService: ObservableObject {
                 .eq("id", value: ownerID)
                 .execute()
 
-            print("[Supabase] household created: \(householdUUID.uuidString)")
+            Logger.household.debug("household created")
         } catch {
-            print("[Supabase] createHousehold error: \(error)")
+            Logger.household.error("createHousehold error: \(error.localizedDescription)")
         }
     }
 
     // MARK: - Invite a Member
 
-    /// Generates a `HouseholdInviteRecord`, persists it, and opens a mailto: link.
+    /// Inserts an invite row into `household_invites`, persists it locally, and sends the email.
     @discardableResult
     func inviteMember(email: String,
                       role: HouseholdRole,
@@ -228,30 +231,90 @@ final class HouseholdService: ObservableObject {
               requester.role.canInvite
         else { throw HouseholdError.notOwner }
 
+        let code      = generateInviteCode()
+        let expiresAt = Date().addingTimeInterval(60 * 60 * 24 * 7)
+
+        // Append locally first so the invite appears in the UI immediately,
+        // before the network round-trip completes.
+        let localID = UUID().uuidString
         let invite = HouseholdInviteRecord(
-            id: UUID().uuidString,
-            householdID: h.id,
+            id:            localID,
+            supabaseID:    nil,
+            householdID:   h.id,
             householdName: h.displayName,
-            inviterName: inviterName,
-            token: generateToken(householdID: h.id, householdName: h.displayName,
-                                 inviterName: inviterName, role: role, inviteeEmail: email),
-            inviteeEmail: email,
-            role: role,
-            permissions: permissions,
-            createdAt: Date(),
-            acceptedAt: nil
+            inviterName:   inviterName,
+            code:          code,
+            inviteeEmail:  email,
+            role:          role,
+            permissions:   permissions,
+            createdAt:     Date(),
+            acceptedAt:    nil
         )
         pendingInvites.append(invite)
         saveInvites()
+
+        struct InviteInsert: Encodable {
+            let code:          String
+            let householdId:   String
+            let householdName: String
+            let inviterName:   String
+            let inviteeEmail:  String
+            let role:          String
+            let permissions:   MemberPermissions?
+            let createdBy:     String
+            let expiresAt:     Date
+            enum CodingKeys: String, CodingKey {
+                case code
+                case householdId   = "household_id"
+                case householdName = "household_name"
+                case inviterName   = "inviter_name"
+                case inviteeEmail  = "invitee_email"
+                case role, permissions
+                case createdBy     = "created_by"
+                case expiresAt     = "expires_at"
+            }
+        }
+        struct InsertedRow: Decodable { let id: UUID }
+
+        // Persist to Supabase; remove the local ghost and rethrow on failure.
+        let rows: [InsertedRow]
+        do {
+            rows = try await supabase
+                .from("household_invites")
+                .insert(InviteInsert(
+                    code:          code,
+                    householdId:   h.id,
+                    householdName: h.displayName,
+                    inviterName:   inviterName,
+                    inviteeEmail:  email,
+                    role:          role.rawValue,
+                    permissions:   permissions,
+                    createdBy:     currentUserID,
+                    expiresAt:     expiresAt
+                ))
+                .select("id")
+                .execute()
+                .value
+        } catch {
+            pendingInvites.removeAll { $0.id == localID }
+            saveInvites()
+            throw error
+        }
+
+        // Stamp the server-assigned UUID so revokeInvite can target it precisely.
+        if let serverID = rows.first?.id.uuidString,
+           let idx = pendingInvites.firstIndex(where: { $0.id == localID }) {
+            pendingInvites[idx].supabaseID = serverID
+            saveInvites()
+        }
+
         let sent = await EmailService.shared.sendHouseholdInvite(
             to: email,
             inviterName: inviterName,
             householdName: h.displayName,
-            token: invite.token
+            code: code
         )
-        // Invite record is always persisted so the invitee can still join via code.
-        // Throw only if email delivery failed so the UI can surface a fallback message.
-        if !sent { throw HouseholdError.emailFailed(code: invite.displayCode) }
+        if !sent { throw HouseholdError.emailFailed(code: code) }
         return invite
     }
 
@@ -263,48 +326,77 @@ final class HouseholdService: ObservableObject {
                        email: String) async throws {
         guard household == nil else { throw HouseholdError.alreadyMember }
 
-        guard let decoded = decodeToken(code) else {
-            throw HouseholdError.invalidCode
+        struct Params: Encodable {
+            let pCode: String
+            enum CodingKeys: String, CodingKey { case pCode = "p_code" }
         }
-        guard decoded.expiresAt > Date() else {
-            throw HouseholdError.expiredCode
+        struct JoinResult: Decodable {
+            let householdId:   String
+            let householdName: String
+            let inviterName:   String
+            let role:          HouseholdRole
+            let permissions:   MemberPermissions?
+            enum CodingKeys: String, CodingKey {
+                case householdId   = "household_id"
+                case householdName = "household_name"
+                case inviterName   = "inviter_name"
+                case role, permissions
+            }
         }
 
+        let result: JoinResult
+        do {
+            result = try await supabase
+                .rpc("join_household_with_code",
+                     params: Params(pCode: code.uppercased().trimmingCharacters(in: .whitespaces)))
+                .execute()
+                .value
+        } catch {
+            let msg = error.localizedDescription.uppercased()
+            if msg.contains("INVALID_CODE") || msg.contains("ALREADY_USED") {
+                throw HouseholdError.invalidCode
+            } else if msg.contains("EXPIRED_CODE") {
+                throw HouseholdError.expiredCode
+            } else if msg.contains("EMAIL_MISMATCH") {
+                throw HouseholdError.emailMismatch
+            } else if msg.contains("ALREADY_MEMBER") {
+                throw HouseholdError.alreadyMember
+            }
+            throw error
+        }
+
+        // RPC already updated the profile; build local state for an instant UI response.
         let membership = HouseholdMembership(
             id: userID,
             username: username,
             email: email,
-            role: decoded.role,
+            role: result.role,
             avatarHex: "#C8922A",
-            joinedAt: Date()
+            joinedAt: Date(),
+            permissions: result.permissions
         )
-
         household = Household(
-            id: decoded.householdID,
-            name: decoded.householdName,
+            id: result.householdId,
+            name: result.householdName,
             ownerUserID: "",
             members: [membership],
             createdAt: Date()
         )
         saveHousehold()
-
-        // Write household_id and role to this user's Supabase profile.
-        // This lets every ViewModel scope its Supabase queries by household,
-        // and lets other members see the correct role on their next refresh.
-        do {
-            try await supabase
-                .from("profiles")
-                .update(["household_id": decoded.householdID,
-                         "role": decoded.role.rawValue])
-                .eq("id", value: userID)
-                .execute()
-        } catch {
-            print("[Supabase] joinHousehold: failed to update profile — \(error)")
-        }
-
-        // Fetch the full member list so this user immediately sees everyone in the household.
-        await fetchMembersFromSupabase(householdID: decoded.householdID)
+        await fetchMembersFromSupabase(householdID: result.householdId)
         PushNotificationService.shared.refreshToken()
+
+        // Notify the owner that their invitee has joined.
+        if let ownerID = household?.ownerUserID,
+           let ownerUUID = UUID(uuidString: ownerID) {
+            Task {
+                await PushNotificationService.shared.notifyUsers(
+                    [ownerUUID],
+                    title: "\(username) joined your household!",
+                    body: "\(username) accepted the invite and is now part of \(result.householdName)."
+                )
+            }
+        }
     }
 
     // MARK: - Leave / Remove
@@ -352,7 +444,7 @@ final class HouseholdService: ObservableObject {
 
     func deleteMemberFromSupabase(memberID: String) async {
         guard let memberUUID = UUID(uuidString: memberID) else {
-            print("[HouseholdService] deleteMember: invalid UUID — \(memberID)")
+            Logger.household.error("deleteMember: invalid UUID")
             return
         }
         struct Params: Encodable {
@@ -364,13 +456,13 @@ final class HouseholdService: ObservableObject {
                 .rpc("delete_household_member", params: Params(pMemberId: memberUUID))
                 .execute()
         } catch {
-            print("[HouseholdService] delete_household_member error: \(error.localizedDescription)")
+            Logger.household.error("delete_household_member error: \(error.localizedDescription)")
         }
     }
 
     func setMemberDisabled(memberID: String, disabled: Bool) async {
         guard let memberUUID = UUID(uuidString: memberID) else {
-            print("[HouseholdService] setMemberDisabled: invalid UUID — \(memberID)")
+            Logger.household.error("setMemberDisabled: invalid UUID")
             return
         }
         struct Params: Encodable {
@@ -394,7 +486,7 @@ final class HouseholdService: ObservableObject {
                 saveHousehold()
             }
         } catch {
-            print("[HouseholdService] set_member_disabled error: \(error.localizedDescription)")
+            Logger.household.error("set_member_disabled error: \(error.localizedDescription)")
         }
     }
 
@@ -418,9 +510,9 @@ final class HouseholdService: ObservableObject {
                 .update(NullFields())
                 .eq("id", value: userID)
                 .execute()
-            print("[Supabase] profile household cleared: \(userID)")
+            Logger.household.debug("profile household cleared")
         } catch {
-            print("[Supabase] clearProfileHousehold error: \(error)")
+            Logger.household.error("clearProfileHousehold error: \(error.localizedDescription)")
         }
     }
 
@@ -441,9 +533,9 @@ final class HouseholdService: ObservableObject {
                 .update(["role": HouseholdRole.owner.rawValue])
                 .eq("id", value: newOwnerID)
                 .execute()
-            print("[Supabase] ownership transferred to: \(newOwnerID)")
+            Logger.household.debug("ownership transferred")
         } catch {
-            print("[Supabase] transferOwnership error: \(error)")
+            Logger.household.error("transferOwnership error: \(error.localizedDescription)")
         }
         // Clear the leaving owner's own profile regardless of the above outcome.
         await clearProfileHousehold(userID: leavingUserID)
@@ -456,9 +548,9 @@ final class HouseholdService: ObservableObject {
                 .delete()
                 .eq("id", value: householdID)
                 .execute()
-            print("[Supabase] household deleted: \(householdID)")
+            Logger.household.debug("household deleted")
         } catch {
-            print("[Supabase] deleteHousehold error: \(error)")
+            Logger.household.error("deleteHousehold error: \(error.localizedDescription)")
         }
     }
 
@@ -483,9 +575,9 @@ final class HouseholdService: ObservableObject {
                 .update(["name": newName])
                 .eq("id", value: householdID)
                 .execute()
-            print("[Supabase] household renamed to: \(newName)")
+            Logger.household.debug("household renamed")
         } catch {
-            print("[Supabase] renameHousehold error: \(error)")
+            Logger.household.error("renameHousehold error: \(error.localizedDescription)")
         }
     }
 
@@ -503,8 +595,21 @@ final class HouseholdService: ObservableObject {
     // MARK: - Revoke Invite
 
     func revokeInvite(id: String) {
+        guard let invite = pendingInvites.first(where: { $0.id == id }) else { return }
         pendingInvites.removeAll { $0.id == id }
         saveInvites()
+        let code = invite.code
+        Task {
+            do {
+                try await supabase
+                    .from("household_invites")
+                    .delete()
+                    .eq("code", value: code)
+                    .execute()
+            } catch {
+                Logger.household.error("revokeInvite error: \(error.localizedDescription)")
+            }
+        }
     }
 
     // MARK: - Change Member Role
@@ -547,7 +652,7 @@ final class HouseholdService: ObservableObject {
                      params: Params(pMemberId: memberID, pRole: role.rawValue))
                 .execute()
         } catch {
-            print("[HouseholdService] changeRole error: \(error)")
+            Logger.household.error("changeRole error: \(error.localizedDescription)")
         }
     }
 
@@ -588,7 +693,7 @@ final class HouseholdService: ObservableObject {
                      params: Params(pMemberId: memberID, pPermissions: permissions))
                 .execute()
         } catch {
-            print("[HouseholdService] updatePermissions error: \(error)")
+            Logger.household.error("updatePermissions error: \(error.localizedDescription)")
         }
     }
 
@@ -671,13 +776,69 @@ final class HouseholdService: ObservableObject {
                 Task { await self.updateMemberPermissionsInSupabase(memberID: memberID, permissions: invitePermissions) }
             }
 
-            // Drop pending invites whose invitee has now joined the household.
-            let memberEmails = Set(members.map { $0.email.lowercased() })
-            let before = pendingInvites.count
-            pendingInvites.removeAll { memberEmails.contains($0.inviteeEmail.lowercased()) }
-            if pendingInvites.count != before { saveInvites() }
+            // Refresh pending invites from the server so the list is always
+            // authoritative — picks up invites created on other devices and
+            // drops invites that were accepted or expired server-side.
+            await fetchPendingInvitesFromSupabase(householdID: householdID)
         } catch {
-            print("[HouseholdService] fetchMembers error: \(error)")
+            Logger.household.error("fetchMembers error: \(error.localizedDescription)")
+        }
+    }
+
+    private func fetchPendingInvitesFromSupabase(householdID: String) async {
+        struct InviteRow: Decodable {
+            let id:            UUID
+            let code:          String
+            let householdId:   UUID
+            let householdName: String
+            let inviterName:   String
+            let inviteeEmail:  String
+            let role:          String
+            let permissions:   MemberPermissions?
+            let createdAt:     Date
+            let acceptedAt:    Date?
+            let expiresAt:     Date
+            enum CodingKeys: String, CodingKey {
+                case id, code
+                case householdId   = "household_id"
+                case householdName = "household_name"
+                case inviterName   = "inviter_name"
+                case inviteeEmail  = "invitee_email"
+                case role, permissions
+                case createdAt     = "created_at"
+                case acceptedAt    = "accepted_at"
+                case expiresAt     = "expires_at"
+            }
+        }
+        do {
+            let rows: [InviteRow] = try await supabase
+                .from("household_invites")
+                .select("id,code,household_id,household_name,inviter_name,invitee_email,role,permissions,created_at,accepted_at,expires_at")
+                .eq("household_id", value: householdID)
+                .execute()
+                .value
+            let now = Date()
+            pendingInvites = rows
+                .filter { $0.acceptedAt == nil && $0.expiresAt > now }
+                .map { row in
+                    HouseholdInviteRecord(
+                        id:            row.id.uuidString,
+                        supabaseID:    row.id.uuidString,
+                        householdID:   row.householdId.uuidString,
+                        householdName: row.householdName,
+                        inviterName:   row.inviterName,
+                        code:          row.code,
+                        inviteeEmail:  row.inviteeEmail,
+                        role:          HouseholdRole(rawValue: row.role) ?? .adult,
+                        permissions:   row.permissions,
+                        createdAt:     row.createdAt,
+                        acceptedAt:    row.acceptedAt
+                    )
+                }
+            saveInvites()
+        } catch {
+            // Non-owners get an empty result via RLS — not an error condition.
+            Logger.household.error("fetchPendingInvites error: \(error.localizedDescription)")
         }
     }
 
@@ -720,7 +881,7 @@ final class HouseholdService: ObservableObject {
             }
         } catch {
             // Network failure — keep local state and retry on next login.
-            print("[HouseholdService] syncWithProfile: verification failed — \(error)")
+            Logger.household.error("syncWithProfile: verification failed: \(error.localizedDescription)")
         }
     }
 
@@ -732,57 +893,13 @@ final class HouseholdService: ObservableObject {
         UserDefaults.standard.removeObject(forKey: HouseholdStorageKeys.invites)
     }
 
-    // MARK: - Token Generation & Decoding
+    // MARK: - Invite Code Generation
 
-    private func generateToken(householdID: String, householdName: String,
-                               inviterName: String, role: HouseholdRole,
-                               inviteeEmail: String) -> String {
-        let expiry = Int(Date().addingTimeInterval(60 * 60 * 24 * 7).timeIntervalSince1970)
-        let payload = [householdID, householdName, inviterName, role.rawValue, inviteeEmail, "\(expiry)"]
-            .joined(separator: "|")
-        let b64 = Data(payload.utf8).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
-        return "HB-\(b64)"
-    }
-
-    private struct DecodedInvite {
-        let householdID: String
-        let householdName: String
-        let inviterName: String
-        let role: HouseholdRole
-        let inviteeEmail: String
-        let expiresAt: Date
-    }
-
-    private func decodeToken(_ token: String) -> DecodedInvite? {
-        let token = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard token.hasPrefix("HB-") else { return nil }
-        var b64 = String(token.dropFirst(3))
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        let remainder = b64.count % 4
-        if remainder != 0 { b64 += String(repeating: "=", count: 4 - remainder) }
-        guard let data = Data(base64Encoded: b64),
-              let payload = String(data: data, encoding: .utf8) else { return nil }
-        let parts = payload.components(separatedBy: "|")
-        guard parts.count == 6,
-              let role = HouseholdRole(rawValue: parts[3]),
-              let expTS = TimeInterval(parts[5]) else { return nil }
-        return DecodedInvite(
-            householdID: parts[0],
-            householdName: parts[1],
-            inviterName: parts[2],
-            role: role,
-            inviteeEmail: parts[4],
-            expiresAt: Date(timeIntervalSince1970: expTS)
-        )
-    }
-
-    private func generateCode(length: Int) -> String {
-        let chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no 0/O/1/I
-        return String((0..<length).compactMap { _ in chars.randomElement() })
+    private func generateInviteCode() -> String {
+        let chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no ambiguous 0/O/1/I
+        let part1 = String((0..<4).compactMap { _ in chars.randomElement() })
+        let part2 = String((0..<4).compactMap { _ in chars.randomElement() })
+        return "\(part1)-\(part2)"
     }
 }
 
