@@ -57,7 +57,7 @@ Deep links (`hemvo://reset-password?token=XXX`) are handled in `HemvoApp.onOpenU
 - **Supabase (PostgreSQL)** — primary backend for all user, household, and app data. Client configured in `Hemvo/SupabaseClient.swift` with certificate pinning and Keychain session storage. Credentials live in `Hemvo/AppSecrets.swift` (not committed).
 - **CoreData + NSPersistentCloudKitContainer** — local structured data via `PersistenceService`. CloudKit sync is disabled; the container is kept for offline caching.
 - **UserDefaults** — ViewModel-level caches (e.g. `hb_meals`, `hb_events`) and household data (`hb_household_v2`). All keys still use the legacy `hb_` prefix — migrate to `hemvo_` at a later point.
-- **UserPreferences** — `@MainActor` singleton that syncs five preference keys (notification toggles + avatar color) between `UserDefaults` and `NSUbiquitousKeyValueStore` (iCloud KV). Replaces the old `CloudSyncService`.
+- **UserPreferences** — `@MainActor` singleton that caches four notification toggles in `UserDefaults` and debounce-syncs them to Supabase `profiles` (0.5 s debounce). Avatar color is written to `UserDefaults` only and persisted via `AuthService.updateProfile()`. Seeded from the authoritative profile on login via `seed(from:)`.
 - **Keychain** — Supabase auth session token stored via `KeychainHelper` through a custom `KeychainAuthStorage` adapter (see `SupabaseClient.swift`).
 
 ### Authentication
@@ -88,7 +88,8 @@ New users get a 7-day free trial (`AppConstants.trialDurationDays`). After trial
 | `StoreKitService` | `Core/Services/` | In-app purchases, subscription verification |
 | `HouseholdService` | `Features/HouseHold/` | `@MainActor` singleton; manages household state, members, invites, Supabase Realtime subscriptions |
 | `PersistenceService` | `Core/Services/` | CoreData stack; use `.preview` for SwiftUI previews |
-| `UserPreferences` | `Core/Services/` | iCloud KV + UserDefaults sync for notification prefs and avatar color |
+| `UserPreferences` | `Core/Services/` | UserDefaults cache + Supabase `profiles` debounce-sync for notification prefs; avatar color persisted via `AuthService.updateProfile()` |
+| `GroceryViewModel` | `Core/ViewModels/` | Grocery list combining meal-sourced and manual items; syncs to `grocery_items` table with Supabase Realtime; uses `pendingUploadIDs` tombstone set to distinguish unconfirmed local items from remote deletes |
 | `PushNotificationService` | `Core/Services/` | Registers APNs tokens to `device_tokens` (upsert keyed on `user_id+device_id` IDFV to prevent duplicate delivery on token rotation); calls `notify-household` Edge Function |
 | `NotificationService` | `Core/Services/` | Local push notifications (bills, maintenance, meals, trial expiry); meal notifications are non-repeating (scheduled once per exact calendar date) |
 | `HouseholdInviteService` | `Core/Services/` | Invite codes, 7-day expiry, email dispatch |

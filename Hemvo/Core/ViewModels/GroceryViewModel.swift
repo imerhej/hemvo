@@ -21,6 +21,13 @@ final class GroceryViewModel: ObservableObject {
     private var cachedHouseholdID:         UUID?
     private var deletedIDs:                Set<UUID>   = []
     private var deletedMealIngredientNames: Set<String> = []
+    // IDs of items created locally that have not yet been confirmed by a successful Supabase upsert.
+    // Only these items are eligible for re-upload in loadFromSupabase.
+    // Everything else absent from remote was deleted by someone — don't re-insert.
+    private var pendingUploadIDs:          Set<UUID>   = []
+
+    private var groceryRealtimeTask:    Task<Void, Never>?
+    private var groceryRealtimeChannel: RealtimeChannelV2?
 
     // MARK: - Computed
     var checkedItems:   [GroceryItem] { items.filter {  $0.isChecked } }
@@ -63,6 +70,7 @@ final class GroceryViewModel: ObservableObject {
         }
 
         let oldMealItems = items.filter { $0.sourceMealID != nil }
+        for old in oldMealItems { pendingUploadIDs.remove(old.id) }
         items.removeAll { $0.sourceMealID != nil }
 
         var seen = Set<String>()
@@ -78,10 +86,12 @@ final class GroceryViewModel: ObservableObject {
                 var item          = ing
                 item.sourceMealID = meal.id
                 item.isChecked    = checkedByName[key] ?? false
+                pendingUploadIDs.insert(item.id)
                 items.append(item)
                 newMealItems.append(item)
             }
         }
+        persistPendingUploadIDs()
         persist()
 
         // Remove old meal-sourced items from Supabase and upsert the new ones
@@ -99,6 +109,8 @@ final class GroceryViewModel: ObservableObject {
     func addItem(_ item: GroceryItem) {
         var stamped = item
         if stamped.createdBy == nil { stamped.createdBy = cachedUserID?.uuidString }
+        pendingUploadIDs.insert(stamped.id)
+        persistPendingUploadIDs()
         items.append(stamped)
         persist()
         Task { await supabaseUpsert(stamped) }
@@ -116,11 +128,13 @@ final class GroceryViewModel: ObservableObject {
         guard canDelete(id: id) else { return }
         guard let item = items.first(where: { $0.id == id }) else { return }
         deletedIDs.insert(item.id)
+        pendingUploadIDs.remove(item.id)
         if item.sourceMealID != nil {
             deletedMealIngredientNames.insert(item.name.lowercased())
             persistDeletedMealNames()
         }
         persistDeletedIDs()
+        persistPendingUploadIDs()
         items.removeAll { $0.id == id }
         persist()
         Task { await supabaseDelete(id: item.id) }
@@ -130,12 +144,14 @@ final class GroceryViewModel: ObservableObject {
         let toDelete = checkedItems.filter { canDelete(id: $0.id) }
         for item in toDelete {
             deletedIDs.insert(item.id)
+            pendingUploadIDs.remove(item.id)
             if item.sourceMealID != nil {
                 deletedMealIngredientNames.insert(item.name.lowercased())
             }
         }
         persistDeletedIDs()
         persistDeletedMealNames()
+        persistPendingUploadIDs()
         items.removeAll { $0.isChecked && canDelete(id: $0.id) }
         persist()
         Task {
@@ -150,21 +166,112 @@ final class GroceryViewModel: ObservableObject {
                 deletedMealIngredientNames.insert(item.name.lowercased())
             }
         }
+        pendingUploadIDs.removeAll()
         persistDeletedIDs()
         persistDeletedMealNames()
+        persistPendingUploadIDs()
         items.removeAll()
         persist()
         Task { await supabaseDeleteAll() }
     }
 
+    // MARK: - Realtime
+
+    private func startGroceryRealtime(householdID: UUID) {
+        groceryRealtimeTask?.cancel()
+        groceryRealtimeTask = nil
+        if let ch = groceryRealtimeChannel {
+            Task { await supabase.realtimeV2.removeChannel(ch) }
+        }
+
+        let channel = supabase.realtimeV2.channel(
+            "grocery:\(householdID.uuidString.lowercased()):\(UUID().uuidString)"
+        )
+        groceryRealtimeChannel = channel
+
+        groceryRealtimeTask = Task { [weak self, channel] in
+            // Register listener BEFORE subscribing (required by SDK).
+            // Realtime CDC delivers UUIDs in lowercase — match with lowercased filter.
+            let changes = channel.postgresChange(
+                AnyAction.self,
+                schema: "public",
+                table: "grocery_items",
+                filter: .eq("household_id", value: householdID.uuidString.lowercased())
+            )
+
+            do {
+                try await channel.subscribeWithError()
+            } catch {
+                Logger.grocery.error("grocery realtime subscribe error: \(error.localizedDescription)")
+                await MainActor.run { [weak self] in self?.groceryRealtimeTask = nil }
+                return
+            }
+
+            for await change in changes {
+                guard !Task.isCancelled, let self else { break }
+                switch change {
+                case .insert(let action):
+                    guard let data = try? JSONEncoder().encode(action.record),
+                          let row  = try? JSONDecoder().decode(SupabaseGroceryRow.self, from: data)
+                    else { break }
+                    let item = row.toItem()
+                    guard !self.deletedIDs.contains(item.id),
+                          !self.items.contains(where: { $0.id == item.id }) else { break }
+                    self.items.append(item)
+                    self.persist()
+                case .update(let action):
+                    guard let data = try? JSONEncoder().encode(action.record),
+                          let row  = try? JSONDecoder().decode(SupabaseGroceryRow.self, from: data)
+                    else { break }
+                    let item = row.toItem()
+                    guard !self.deletedIDs.contains(item.id) else { break }
+                    if let idx = self.items.firstIndex(where: { $0.id == item.id }) {
+                        self.items[idx] = item
+                    } else {
+                        self.items.append(item)
+                    }
+                    self.persist()
+                case .delete(let action):
+                    // old_record contains PK columns with DEFAULT replica identity.
+                    if let data   = try? JSONEncoder().encode(action.oldRecord),
+                       let record = try? JSONDecoder().decode(GroceryDeleteRecord.self, from: data) {
+                        self.pendingUploadIDs.remove(record.id)
+                        self.items.removeAll { $0.id == record.id }
+                        self.persist()
+                    } else {
+                        // old_record empty — table may need REPLICA IDENTITY FULL — full refresh.
+                        await self.loadFromSupabase()
+                    }
+                default:
+                    break
+                }
+            }
+
+            if !Task.isCancelled {
+                await MainActor.run { [weak self] in self?.groceryRealtimeTask = nil }
+            }
+        }
+    }
+
+    private func stopGroceryRealtime() {
+        groceryRealtimeTask?.cancel()
+        groceryRealtimeTask = nil
+        if let ch = groceryRealtimeChannel {
+            Task { await supabase.realtimeV2.removeChannel(ch) }
+        }
+        groceryRealtimeChannel = nil
+    }
+
     // MARK: - Persistence
-    private let storageKey        = "hb_groceryItems"
-    private let deletedIDsKey     = "hb_groceryDeletedIDs"
-    private let deletedMealNamesKey = "hb_groceryDeletedMealNames"
+    private let storageKey           = "hb_groceryItems"
+    private let deletedIDsKey        = "hb_groceryDeletedIDs"
+    private let deletedMealNamesKey  = "hb_groceryDeletedMealNames"
+    private let pendingUploadIDsKey  = "hb_groceryPendingUploadIDs"
 
     init() {
         loadDeletedIDs()
         loadDeletedMealNames()
+        loadPendingUploadIDs()
         load()
         // Synchronously pre-populate from local household so adds that happen
         // before loadFromSupabase completes don't silently drop their data.
@@ -212,6 +319,19 @@ final class GroceryViewModel: ObservableObject {
         }
     }
 
+    private func loadPendingUploadIDs() {
+        guard let data = UserDefaults.standard.data(forKey: pendingUploadIDsKey),
+              let ids  = try? JSONDecoder().decode([UUID].self, from: data)
+        else { return }
+        pendingUploadIDs = Set(ids)
+    }
+
+    private func persistPendingUploadIDs() {
+        if let data = try? JSONEncoder().encode(Array(pendingUploadIDs)) {
+            UserDefaults.standard.set(data, forKey: pendingUploadIDsKey)
+        }
+    }
+
     // MARK: - Supabase Sync
 
     func loadFromSupabase() async {
@@ -223,6 +343,10 @@ final class GroceryViewModel: ObservableObject {
         }
         if cachedHouseholdID == nil {
             cachedHouseholdID = UUID(uuidString: HouseholdService.shared.household?.id ?? "")
+        }
+
+        if groceryRealtimeTask == nil, let hid = cachedHouseholdID {
+            startGroceryRealtime(householdID: hid)
         }
 
         do {
@@ -250,10 +374,24 @@ final class GroceryViewModel: ObservableObject {
 
             let remoteItems = rows.filter { !deletedIDs.contains($0.id) }.map { $0.toItem() }
             let remoteIDs   = Set(remoteItems.map { $0.id })
-            let pendingLocal = items.filter { !remoteIDs.contains($0.id) && !deletedIDs.contains($0.id) }
-            items = remoteItems + pendingLocal
+
+            // Only re-upload items that are explicitly pending their first successful upload.
+            // Anything else absent from remote was deleted by a user — never re-insert it.
+            let pendingLocal = items.filter {
+                pendingUploadIDs.contains($0.id) && !deletedIDs.contains($0.id)
+            }
+            // Drop any pendingUploadIDs that are already in remote (confirmed synced).
+            let syncedIDs = pendingUploadIDs.filter { remoteIDs.contains($0) }
+            if !syncedIDs.isEmpty {
+                pendingUploadIDs.subtract(syncedIDs)
+                persistPendingUploadIDs()
+            }
+
+            items = remoteItems + pendingLocal.filter { !remoteIDs.contains($0.id) }
             persist()
-            for i in pendingLocal { Task { await supabaseUpsert(i) } }
+            for i in pendingLocal where !remoteIDs.contains(i.id) {
+                Task { await supabaseUpsert(i) }
+            }
         } catch {
             Logger.grocery.error("fetch grocery_items error: \(error.localizedDescription)")
         }
@@ -278,6 +416,10 @@ final class GroceryViewModel: ObservableObject {
         let row = SupabaseGroceryRow(from: item, userId: uid, householdId: hid)
         do {
             try await supabase.from("grocery_items").upsert(row, onConflict: "id").execute()
+            // Upsert confirmed — this item no longer needs re-upload protection.
+            if pendingUploadIDs.remove(item.id) != nil {
+                persistPendingUploadIDs()
+            }
         } catch {
             Logger.grocery.error("upsert grocery_item error: \(error.localizedDescription)")
         }
@@ -310,6 +452,8 @@ final class GroceryViewModel: ObservableObject {
             persistDeletedIDs()
             deletedMealIngredientNames.removeAll()
             persistDeletedMealNames()
+            pendingUploadIDs.removeAll()
+            persistPendingUploadIDs()
         } catch {
             Logger.grocery.error("delete all grocery_items error: \(error.localizedDescription)")
         }
@@ -317,6 +461,12 @@ final class GroceryViewModel: ObservableObject {
 }
 
 // MARK: - Supabase row mapping
+
+// Minimal struct for decoding DELETE realtime events (only PK is guaranteed in old_record).
+private struct GroceryDeleteRecord: Decodable {
+    let id: UUID
+}
+
 private struct SupabaseGroceryRow: Codable {
     let id:           UUID
     let householdId:  UUID         // NOT NULL in DB

@@ -134,7 +134,7 @@ final class UserPreferences: ObservableObject {
                     .eq("id", value: uid.uuidString)
                     .execute()
             } catch {
-                Logger.prefs.error("Failed to save notification prefs: \(error.localizedDescription)")
+                print("[UserPreferences] Failed to save notification prefs:", error.localizedDescription)
             }
         }
     }

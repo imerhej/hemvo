@@ -50,10 +50,10 @@ struct BudgetDashboardView: View {
 
                         VStack(spacing: 0) {
                             headerBar
+                            scopePicker.padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 4)
 
                             ScrollView(showsIndicators: false) {
                                 VStack(spacing: 0) {
-                                    scopePicker.padding(.horizontal, 20).padding(.top, 16)
                                     monthStrip.padding(.horizontal, 20).padding(.top, 14)
 
                                     if vm.selectedScope == .household {
