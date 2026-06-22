@@ -242,8 +242,6 @@ final class GroceryViewModel: ObservableObject {
                         // old_record empty — table may need REPLICA IDENTITY FULL — full refresh.
                         await self.loadFromSupabase()
                     }
-                default:
-                    break
                 }
             }
 

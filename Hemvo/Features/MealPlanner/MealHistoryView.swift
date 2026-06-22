@@ -1,6 +1,6 @@
 //  MealHistoryView.swift
 //  Hemvo
-//  Read-only browsable log of past meals, grouped by month.
+//  Browsable log of past meals, grouped by month, with multi-select delete.
 
 internal import SwiftUI
 
@@ -9,6 +9,9 @@ struct MealHistoryView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedMeal: Meal? = nil
+    @State private var isEditing = false
+    @State private var selectedIDs: Set<UUID> = []
+    @State private var showDeleteConfirm = false
 
     private let cream   = Color(hex: "#F5F0E8")!
     private let amber   = Color(hex: "#C8922A")!
@@ -25,12 +28,19 @@ struct MealHistoryView: View {
             fmt.string(from: meal.date)
         }
 
-        // Sort months descending by the actual date of any meal in that group
         return dict
             .map { (key: $0.key, meals: $0.value.sorted { $0.date > $1.date }) }
             .sorted { group1, group2 in
                 (group1.meals.first?.date ?? .distantPast) > (group2.meals.first?.date ?? .distantPast)
             }
+    }
+
+    private var allIDs: Set<UUID> {
+        Set(mealVM.pastMeals.map(\.id))
+    }
+
+    private var allSelected: Bool {
+        !allIDs.isEmpty && selectedIDs == allIDs
     }
 
     var body: some View {
@@ -54,7 +64,11 @@ struct MealHistoryView: View {
                             }
                         }
                         .padding(.top, 8)
-                        .padding(.bottom, 40)
+                        .padding(.bottom, isEditing ? 100 : 40)
+                    }
+
+                    if isEditing {
+                        deleteBar
                     }
                 }
             }
@@ -62,18 +76,33 @@ struct MealHistoryView: View {
         .sheet(item: $selectedMeal) { meal in
             MealDetailView(mealID: meal.id, mealVM: mealVM)
         }
+        .confirmationDialog(
+            "Delete \(selectedIDs.count) meal\(selectedIDs.count == 1 ? "" : "s")?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { deleteSelected() }
+            Button("Cancel", role: .cancel) { }
+        }
     }
 
     private func monthCard(_ meals: [Meal]) -> some View {
         VStack(spacing: 0) {
             ForEach(Array(meals.enumerated()), id: \.element.id) { idx, meal in
-                Button { selectedMeal = meal } label: {
-                    historyRow(meal)
+                if isEditing {
+                    Button { toggleSelection(meal.id) } label: {
+                        historyRow(meal)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Button { selectedMeal = meal } label: {
+                        historyRow(meal)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 if idx < meals.count - 1 {
-                    divider.frame(height: 1).padding(.leading, 60)
+                    divider.frame(height: 1).padding(.leading, isEditing ? 68 : 60)
                 }
             }
         }
@@ -97,14 +126,58 @@ struct MealHistoryView: View {
                     .foregroundColor(brown)
             }
             Spacer()
-            Button { dismiss() } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color(hex: "#F5E4C3")!)
-                        .frame(width: 44, height: 44)
-                    Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .bold))
+
+            if isEditing {
+                Button {
+                    if allSelected {
+                        selectedIDs.removeAll()
+                    } else {
+                        selectedIDs = allIDs
+                    }
+                } label: {
+                    Text(allSelected ? "Deselect All" : "Select All")
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(amber)
+                }
+                .padding(.trailing, 8)
+
+                Button {
+                    isEditing = false
+                    selectedIDs.removeAll()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: "#F5E4C3")!)
+                            .frame(width: 44, height: 44)
+                        Text("Done")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(amber)
+                    }
+                }
+            } else {
+                Button {
+                    isEditing = true
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: "#F5E4C3")!)
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "pencil")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(amber)
+                    }
+                }
+                .padding(.trailing, 8)
+
+                Button { dismiss() } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: "#F5E4C3")!)
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(amber)
+                    }
                 }
             }
         }
@@ -113,6 +186,32 @@ struct MealHistoryView: View {
         .padding(.bottom, 12)
         .background(cream)
         .overlay(alignment: .bottom) { divider.frame(height: 1) }
+    }
+
+    // MARK: - Delete bar
+
+    private var deleteBar: some View {
+        VStack(spacing: 0) {
+            divider.frame(height: 1)
+            HStack {
+                Text(selectedIDs.isEmpty ? "Select meals to delete" : "\(selectedIDs.count) selected")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(selectedIDs.isEmpty ? muted : brown)
+                Spacer()
+                Button {
+                    showDeleteConfirm = true
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(selectedIDs.isEmpty ? muted : .red)
+                }
+                .disabled(selectedIDs.isEmpty)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+            .background(cream)
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     // MARK: - Month header
@@ -133,6 +232,14 @@ struct MealHistoryView: View {
 
     private func historyRow(_ meal: Meal) -> some View {
         HStack(spacing: 14) {
+            if isEditing {
+                Image(systemName: selectedIDs.contains(meal.id) ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundColor(selectedIDs.contains(meal.id) ? amber : muted.opacity(0.4))
+                    .frame(width: 24)
+                    .transition(.opacity.combined(with: .scale))
+            }
+
             // Date column
             VStack(spacing: 2) {
                 Text(dayNumber(meal.date))
@@ -170,12 +277,19 @@ struct MealHistoryView: View {
 
             Spacer()
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(muted.opacity(0.4))
+            if !isEditing {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(muted.opacity(0.4))
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
+        .contentShape(Rectangle())
+        .background(
+            selectedIDs.contains(meal.id) ? amber.opacity(0.06) : Color.clear
+        )
+        .animation(.easeInOut(duration: 0.15), value: selectedIDs.contains(meal.id))
     }
 
     // MARK: - Empty state
@@ -198,6 +312,25 @@ struct MealHistoryView: View {
     }
 
     // MARK: - Helpers
+
+    private func toggleSelection(_ id: UUID) {
+        if selectedIDs.contains(id) {
+            selectedIDs.remove(id)
+        } else {
+            selectedIDs.insert(id)
+        }
+    }
+
+    private func deleteSelected() {
+        let toDelete = mealVM.pastMeals.filter { selectedIDs.contains($0.id) }
+        for meal in toDelete {
+            mealVM.deleteMeal(meal)
+        }
+        selectedIDs.removeAll()
+        if mealVM.pastMeals.isEmpty {
+            isEditing = false
+        }
+    }
 
     private func dayNumber(_ date: Date) -> String {
         "\(Calendar.current.component(.day, from: date))"
