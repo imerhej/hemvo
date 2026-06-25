@@ -93,10 +93,21 @@ CREATE POLICY "events_insert"
   TO authenticated
   WITH CHECK (created_by = auth.uid());
 
+-- Any household member may update events (replaced created_by-only restriction
+-- in migration 20260510140000_events_update_allow_household).
 CREATE POLICY "events_update"
   ON events FOR UPDATE
   TO authenticated
-  USING (created_by = auth.uid());
+  USING (
+    household_id IN (
+      SELECT household_id FROM profiles WHERE id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    household_id IN (
+      SELECT household_id FROM profiles WHERE id = auth.uid()
+    )
+  );
 
 CREATE POLICY "events_delete"
   ON events FOR DELETE
@@ -125,14 +136,27 @@ CREATE POLICY "house_tasks_insert"
   TO authenticated
   WITH CHECK (created_by = auth.uid());
 
--- Any household member can update tasks in their household.
--- Role-based write restrictions (owner/adult) are enforced client-side.
+-- Owner/Adult: full write access to any task in their household.
+-- Teen: restricted to tasks they created or are assigned to (for marking complete).
+-- Migration 20260627120000 moved role enforcement from client-side to DB.
 CREATE POLICY "house_tasks_update"
   ON house_tasks FOR UPDATE
   TO authenticated
   USING (
     household_id IN (
-      SELECT household_id FROM profiles WHERE id = auth.uid()
+      SELECT household_id FROM profiles
+      WHERE id = auth.uid()
+        AND role IN ('Owner', 'Adult')
+    )
+    OR (
+      household_id IN (
+        SELECT household_id FROM profiles WHERE id = auth.uid()
+      )
+      AND (
+        created_by       = auth.uid()
+        OR assigned_to_id = auth.uid()
+        OR auth.uid()    = ANY(assigned_member_ids)
+      )
     )
   )
   WITH CHECK (

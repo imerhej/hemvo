@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS subscription_status_audit (
 ALTER TABLE subscription_status_audit ENABLE ROW LEVEL SECURITY;
 
 -- Authenticated users may only read their own rows.
+DROP POLICY IF EXISTS "subscription_audit_select" ON subscription_status_audit;
 CREATE POLICY "subscription_audit_select"
   ON subscription_status_audit FOR SELECT
   TO authenticated

@@ -14,6 +14,8 @@
 -- The internal_config table is RLS-enabled with no policies, so it is
 -- accessible only to the service_role (pg_cron runs as superuser and can read it).
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS internal_config (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -21,7 +23,7 @@ CREATE TABLE IF NOT EXISTS internal_config (
 ALTER TABLE internal_config ENABLE ROW LEVEL SECURITY;
 
 INSERT INTO internal_config (key, value)
-VALUES ('cron_secret', encode(gen_random_bytes(32), 'hex'))
+VALUES ('cron_secret', encode(extensions.gen_random_bytes(32), 'hex'))
 ON CONFLICT (key) DO NOTHING;
 
 SELECT cron.unschedule('process-scheduled-push');
