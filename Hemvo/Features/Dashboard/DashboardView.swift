@@ -29,12 +29,12 @@ struct DashboardView: View {
     @State private var showPaywall = false
 
     // Warm palette
-    private let amber   = Color(hex: "#C8922A")!
-    private let amberBg = Color(hex: "#F5E4C3")!
-    private let brown   = Color(hex: "#1A1208")!
-    private let muted   = Color(hex: "#7A6A55")!
-    private let divider = Color(hex: "#E6DDD0")!
-    private let cream   = Color(hex: "#FAF7F2")!
+    private let amber   = Color(hex: "#C8922A") ?? .clear
+    private let amberBg = Color(hex: "#F5E4C3") ?? .clear
+    private let brown   = Color(hex: "#1A1208") ?? .clear
+    private let muted   = Color(hex: "#7A6A55") ?? .clear
+    private let divider = Color(hex: "#E6DDD0") ?? .clear
+    private let cream   = Color(hex: "#FAF7F2") ?? .clear
 
     private var currentUserID: String {
         authVM.profile?.id.uuidString ?? authVM.userID?.uuidString ?? ""
@@ -142,7 +142,7 @@ struct DashboardView: View {
         }
         .background {
             LinearGradient(
-                colors: [Color(hex: "#A0681A")!, Color(hex: "#C8922A")!, Color(hex: "#E6A83A")!],
+                colors: [Color(hex: "#A0681A") ?? .clear, Color(hex: "#C8922A") ?? .clear, Color(hex: "#E6A83A") ?? .clear],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             )
             .ignoresSafeArea(edges: .top)
@@ -183,28 +183,28 @@ struct DashboardView: View {
                 value: "\(mealVM.todaysMeals.count) planned",
                 label: "Today's Meals",
                 icon: "fork.knife",
-                color: Color(hex: "#E67E22")!,
+                color: Color(hex: "#E67E22") ?? .clear,
                 action: { onSwitchToMeals?() }
             )
             WarmStatCard(
                 value: "\(budgetVM.allUpcomingBills.count) bills",
                 label: "Upcoming Bills",
                 icon: "calendar.badge.exclamationmark",
-                color: Color(hex: "#3949AB")!,
+                color: Color(hex: "#3949AB") ?? .clear,
                 action: { onSwitchToBudget?() }
             )
             WarmStatCard(
                 value: "\(scheduleVM.events(on: Date()).count) today",
                 label: "Events Today",
                 icon: "calendar",
-                color: Color(hex: "#9C27B0")!,
+                color: Color(hex: "#9C27B0") ?? .clear,
                 action: { onSwitchToSchedule?(Date()) }
             )
             WarmStatCard(
                 value: "\(maintenanceVM.dueSoonItems.count) due",
                 label: "Maintenance",
                 icon: "wrench.and.screwdriver.fill",
-                color: Color(hex: "#C0392B")!,
+                color: Color(hex: "#C0392B") ?? .clear,
                 action: { onSwitchToMaintenance?() }
             )
         }
@@ -215,7 +215,7 @@ struct DashboardView: View {
         WarmCard(
             title: "Upcoming Events",
             icon: "calendar",
-            iconColor: Color(hex: "#9C27B0")!,
+            iconColor: Color(hex: "#9C27B0") ?? .clear,
             actionLabel: "Full Calendar",
             action: { onSwitchToSchedule?(Date()) }
         ) {
@@ -229,7 +229,7 @@ struct DashboardView: View {
                         }
                         .buttonStyle(.plain)
                         if event.id != scheduleVM.upcomingEvents.prefix(4).last?.id {
-                            Color(hex: "#E6DDD0")!.frame(height: 1).padding(.vertical, 2)
+                            Color(hex: "#E6DDD0") ?? .clear.frame(height: 1).padding(.vertical, 2)
                         }
                     }
                 }
@@ -242,7 +242,7 @@ struct DashboardView: View {
         WarmCard(
             title: "Grocery Needs",
             icon: "cart.fill",
-            iconColor: Color(hex: "#3D7A52")!,
+            iconColor: Color(hex: "#3D7A52") ?? .clear,
             actionLabel: groceryVM.uncheckedItems.isEmpty ? nil : "View List",
             action: { showGrocery = true }
         ) {
@@ -250,7 +250,7 @@ struct DashboardView: View {
                 WarmEmptyRow(
                     icon: "checkmark.seal.fill",
                     message: "Pantry is stocked!",
-                    color: Color(hex: "#3D7A52")!
+                    color: Color(hex: "#3D7A52") ?? .clear
                 )
             } else {
                 VStack(spacing: 0) {
@@ -258,13 +258,13 @@ struct DashboardView: View {
                         Button { showGrocery = true } label: { WarmGroceryRow(item: item) }
                             .buttonStyle(.plain)
                         if item.id != groceryVM.uncheckedItems.prefix(3).last?.id {
-                            Color(hex: "#E6DDD0")!.frame(height: 1).padding(.vertical, 2)
+                            Color(hex: "#E6DDD0") ?? .clear.frame(height: 1).padding(.vertical, 2)
                         }
                     }
                     if groceryVM.uncheckedItems.count > 3 {
                         Text("+ \(groceryVM.uncheckedItems.count - 3) more items")
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color(hex: "#3D7A52")!)
+                            .foregroundColor(Color(hex: "#3D7A52") ?? .clear)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 8)
                     }
@@ -278,7 +278,7 @@ struct DashboardView: View {
         WarmCard(
             title: "Maintenance Alerts",
             icon: "exclamationmark.triangle.fill",
-            iconColor: Color(hex: "#C0392B")!,
+            iconColor: Color(hex: "#C0392B") ?? .clear,
             actionLabel: (maintenanceVM.overdueItems.isEmpty && maintenanceVM.dueSoonItems.isEmpty) ? nil : "View All",
             action: { onSwitchToMaintenance?() }
         ) {
@@ -287,7 +287,7 @@ struct DashboardView: View {
                 WarmEmptyRow(
                     icon: "checkmark.shield.fill",
                     message: "All maintenance up to date!",
-                    color: Color(hex: "#3D7A52")!
+                    color: Color(hex: "#3D7A52") ?? .clear
                 )
             } else {
                 VStack(spacing: 0) {
@@ -295,7 +295,7 @@ struct DashboardView: View {
                         Button { onSwitchToMaintenance?() } label: { WarmMaintenanceRow(item: item) }
                             .buttonStyle(.plain)
                         if item.id != alerts.prefix(3).last?.id {
-                            Color(hex: "#E6DDD0")!.frame(height: 1).padding(.vertical, 2)
+                            Color(hex: "#E6DDD0") ?? .clear.frame(height: 1).padding(.vertical, 2)
                         }
                     }
                 }
@@ -353,11 +353,11 @@ struct WarmMiniCalendarStrip: View {
                                 Text(day.formatted(.dateTime.day()))
                                     .font(.system(size: 15,
                                                   weight: isToday || isSelected ? .bold : .regular))
-                                    .foregroundColor(isSelected ? Color(hex: "#C8922A")! : .white)
+                                    .foregroundColor(isSelected ? Color(hex: "#C8922A") ?? .clear : .white)
                             }
 
                             Circle()
-                                .fill(hasEvent ? Color(hex: "#E53935")! : Color.clear)
+                                .fill(hasEvent ? Color(hex: "#E53935") ?? .clear : Color.clear)
                                 .frame(width: 5, height: 5)
                         }
                         .padding(.horizontal, 4)
@@ -391,10 +391,10 @@ struct WarmStatCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(value)
                         .font(.system(size: 16, weight: .black))
-                        .foregroundColor(Color(hex: "#1A1208")!)
+                        .foregroundColor(Color(hex: "#1A1208") ?? .clear)
                     Text(label)
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Color(hex: "#7A6A55")!)
+                        .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                 }
                 Spacer(minLength: 4)
                 HStack(spacing: 3) {
@@ -409,8 +409,8 @@ struct WarmStatCard: View {
             .frame(maxWidth: .infinity, minHeight: 130, alignment: .leading)
             .background(Color.white)
             .cornerRadius(18)
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(hex: "#E6DDD0")!, lineWidth: 1))
-            .shadow(color: Color(hex: "#1A1208")!.opacity(0.05), radius: 6, y: 2)
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(hex: "#E6DDD0") ?? .clear, lineWidth: 1))
+            .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.05), radius: 6, y: 2)
         }
         .buttonStyle(.plain)
     }
@@ -436,7 +436,7 @@ struct WarmCard<Content: View>: View {
                 }
                 Text(title)
                     .font(.system(size: 13, weight: .heavy))
-                    .foregroundColor(Color(hex: "#7A6A55")!)
+                    .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                     .kerning(0.3)
                 Spacer()
                 if let label = actionLabel, let action {
@@ -445,9 +445,9 @@ struct WarmCard<Content: View>: View {
                             Text(label).font(.system(size: 11, weight: .bold))
                             Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
                         }
-                        .foregroundColor(Color(hex: "#C8922A")!)
+                        .foregroundColor(Color(hex: "#C8922A") ?? .clear)
                         .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(Color(hex: "#F5E4C3")!).cornerRadius(20)
+                        .background(Color(hex: "#F5E4C3") ?? .clear).cornerRadius(20)
                     }
                 }
             }
@@ -456,8 +456,8 @@ struct WarmCard<Content: View>: View {
         .padding(16)
         .background(Color.white)
         .cornerRadius(20)
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color(hex: "#E6DDD0")!, lineWidth: 1))
-        .shadow(color: Color(hex: "#1A1208")!.opacity(0.04), radius: 8, y: 3)
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color(hex: "#E6DDD0") ?? .clear, lineWidth: 1))
+        .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.04), radius: 8, y: 3)
     }
 }
 
@@ -468,32 +468,32 @@ struct WarmEventRow: View {
         HStack(spacing: 12) {
             VStack(spacing: 0) {
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(Color(hex: event.colorHex) ?? Color(hex: "#9C27B0")!)
+                    .fill(Color(hex: event.colorHex) ?? Color(hex: "#9C27B0") ?? .clear)
                     .frame(width: 4)
             }
             .frame(width: 4, height: 44)
             VStack(spacing: 1) {
                 Text(event.date.formatted(.dateTime.month(.abbreviated)).uppercased())
-                    .font(.system(size: 9, weight: .heavy)).foregroundColor(Color(hex: "#7A6A55")!)
+                    .font(.system(size: 9, weight: .heavy)).foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                 Text(event.date.formatted(.dateTime.day()))
-                    .font(.system(size: 18, weight: .black)).foregroundColor(Color(hex: "#1A1208")!)
+                    .font(.system(size: 18, weight: .black)).foregroundColor(Color(hex: "#1A1208") ?? .clear)
             }
             .frame(width: 34)
             VStack(alignment: .leading, spacing: 3) {
                 Text(event.title)
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(Color(hex: "#1A1208")!)
+                    .foregroundColor(Color(hex: "#1A1208") ?? .clear)
                     .lineLimit(1)
                 HStack(spacing: 5) {
                     Image(systemName: event.category.iconName).font(.system(size: 9))
                     Text(event.isAllDay ? "All day" : event.formattedTime)
                         .font(.system(size: 11, weight: .medium))
                 }
-                .foregroundColor(Color(hex: "#7A6A55")!)
+                .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
             }
             Spacer()
             Image(systemName: "chevron.right")
-                .font(.system(size: 11)).foregroundColor(Color(hex: "#C5C0B8")!)
+                .font(.system(size: 11)).foregroundColor(Color(hex: "#C5C0B8") ?? .clear)
         }
         .padding(.vertical, 6)
     }
@@ -504,17 +504,17 @@ struct WarmGroceryRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Circle()
-                .stroke(Color(hex: "#E6DDD0")!, lineWidth: 1.5)
+                .stroke(Color(hex: "#E6DDD0") ?? .clear, lineWidth: 1.5)
                 .frame(width: 18, height: 18)
             Text(item.name)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(Color(hex: "#1A1208")!)
+                .foregroundColor(Color(hex: "#1A1208") ?? .clear)
             Spacer()
             Text(item.displayQuantity)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(Color(hex: "#7A6A55")!)
+                .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
             Image(systemName: "chevron.right")
-                .font(.system(size: 10)).foregroundColor(Color(hex: "#C5C0B8")!)
+                .font(.system(size: 10)).foregroundColor(Color(hex: "#C5C0B8") ?? .clear)
         }
         .padding(.vertical, 6)
     }
@@ -523,7 +523,7 @@ struct WarmGroceryRow: View {
 struct WarmMaintenanceRow: View {
     let item: MaintenanceItem
     private var rowColor: Color {
-        item.isOverdue ? Color(hex: "#C0392B")! : Color(hex: "#E67E22")!
+        item.isOverdue ? Color(hex: "#C0392B") ?? .clear : Color(hex: "#E67E22") ?? .clear
     }
     var body: some View {
         HStack(spacing: 10) {
@@ -531,14 +531,14 @@ struct WarmMaintenanceRow: View {
                 .font(.system(size: 14)).foregroundColor(rowColor)
             Text(item.title)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(Color(hex: "#1A1208")!)
+                .foregroundColor(Color(hex: "#1A1208") ?? .clear)
             Spacer()
             Text(item.statusLabel)
                 .font(.system(size: 11, weight: .bold)).foregroundColor(rowColor)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(rowColor.opacity(0.1)).cornerRadius(20)
             Image(systemName: "chevron.right")
-                .font(.system(size: 10)).foregroundColor(Color(hex: "#C5C0B8")!)
+                .font(.system(size: 10)).foregroundColor(Color(hex: "#C5C0B8") ?? .clear)
         }
         .padding(.vertical, 6)
     }
@@ -547,13 +547,13 @@ struct WarmMaintenanceRow: View {
 struct WarmEmptyRow: View {
     let icon:    String
     let message: String
-    var color:   Color = Color(hex: "#C8922A")!
+    var color:   Color = Color(hex: "#C8922A") ?? .clear
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: icon).font(.system(size: 16)).foregroundColor(color.opacity(0.6))
             Text(message)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(Color(hex: "#7A6A55")!)
+                .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
         }
         .padding(.vertical, 6)
     }
@@ -573,7 +573,7 @@ struct CalendarDetailView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "#FAF7F2")!.ignoresSafeArea()
+            Color(hex: "#FAF7F2") ?? .clear.ignoresSafeArea()
             VStack(spacing: 0) {
                 CalendarStrip(selectedDate: $selectedDate, vm: scheduleVM)
                     .background(Color.white)
@@ -632,7 +632,7 @@ struct CalendarDetailView: View {
         .navigationTitle(selectedDate.relativeLabel)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.light, for: .navigationBar)
-        .tint(Color(hex: "#C8922A")!)
+        .tint(Color(hex: "#C8922A") ?? .clear)
     }
 }
 

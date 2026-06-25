@@ -32,21 +32,21 @@ struct ResetPasswordView: View {
     private var canSubmit:      Bool { hasMinLength && hasUppercase && hasNumber && passwordsMatch }
 
     // Warm palette
-    private let amber   = Color(hex: "#C8922A")!
-    private let brown   = Color(hex: "#1A1208")!
-    private let muted   = Color(hex: "#7A6A55")!
-    private let divider = Color(hex: "#E6DDD0")!
+    private let amber   = Color(hex: "#C8922A") ?? .clear
+    private let brown   = Color(hex: "#1A1208") ?? .clear
+    private let muted   = Color(hex: "#7A6A55") ?? .clear
+    private let divider = Color(hex: "#E6DDD0") ?? .clear
 
     var body: some View {
         ZStack {
-            Color(hex: "#FAF7F2")!.ignoresSafeArea()
+            Color(hex: "#FAF7F2") ?? .clear.ignoresSafeArea()
 
             VStack(spacing: 0) {
 
                 // ── Header ──────────────────────────────────────
                 ZStack {
                     LinearGradient(
-                        colors: [Color(hex: "#C8922A")!, Color(hex: "#E6A83A")!],
+                        colors: [Color(hex: "#C8922A") ?? .clear, Color(hex: "#E6A83A") ?? .clear],
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     )
                     .ignoresSafeArea(edges: .top)
@@ -233,7 +233,7 @@ struct ResetPasswordView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 17)
-                .background(canSubmit ? amber : Color(hex: "#C5C0B8")!)
+                .background(canSubmit ? amber : Color(hex: "#C5C0B8") ?? .clear)
                 .cornerRadius(16)
                 .shadow(
                     color: canSubmit ? amber.opacity(0.4) : .clear,
@@ -263,10 +263,10 @@ struct ResetPasswordView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 17)
-                .background(Color(hex: "#3D7A52")!)
+                .background(Color(hex: "#3D7A52") ?? .clear)
                 .cornerRadius(16)
                 .shadow(
-                    color: Color(hex: "#3D7A52")!.opacity(0.4),
+                    color: Color(hex: "#3D7A52") ?? .clear.opacity(0.4),
                     radius: 10, y: 4
                 )
             }
@@ -307,11 +307,11 @@ struct ResetPasswordView: View {
         HStack(spacing: 10) {
             ZStack {
                 Circle()
-                    .stroke(met ? Color(hex: "#3D7A52")! : divider, lineWidth: 1.5)
+                    .stroke(met ? Color(hex: "#3D7A52") ?? .clear : divider, lineWidth: 1.5)
                     .frame(width: 18, height: 18)
                 if met {
                     Circle()
-                        .fill(Color(hex: "#3D7A52")!)
+                        .fill(Color(hex: "#3D7A52") ?? .clear)
                         .frame(width: 18, height: 18)
                     Image(systemName: "checkmark")
                         .font(.system(size: 9, weight: .black))
@@ -322,7 +322,7 @@ struct ResetPasswordView: View {
 
             Text(text)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(met ? Color(hex: "#3D7A52")! : brown)
+                .foregroundColor(met ? Color(hex: "#3D7A52") ?? .clear : brown)
                 .animation(.easeInOut(duration: 0.15), value: met)
         }
     }

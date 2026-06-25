@@ -5,13 +5,12 @@
 internal import SwiftUI
 internal import StoreKit
 internal import CoreData
-internal import CloudKit
 internal import Foundation
 internal import Combine
 internal import UserNotifications
 
 enum StoreIDs {
-    /// $7.99 / month auto-renewing subscription
+    /// $4.99 / month auto-renewing subscription
     static let monthly = "com.hemvo.app.subscription.monthly"
 
     /// $49.99 / year auto-renewing subscription

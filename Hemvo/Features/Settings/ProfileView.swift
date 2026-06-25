@@ -7,7 +7,6 @@
 internal import SwiftUI
 internal import StoreKit
 internal import CoreData
-internal import CloudKit
 internal import Foundation
 internal import Combine
 internal import UserNotifications
@@ -33,11 +32,11 @@ struct ProfileView: View {
         }
     }
 
-    private let amber   = Color(hex: "#C8922A")!
-    private let cream   = Color(hex: "#FAF7F2")!
-    private let brown   = Color(hex: "#1A1208")!
-    private let muted   = Color(hex: "#7A6A55")!
-    private let divider = Color(hex: "#E6DDD0")!
+    private let amber   = Color(hex: "#C8922A") ?? .clear
+    private let cream   = Color(hex: "#FAF7F2") ?? .clear
+    private let brown   = Color(hex: "#1A1208") ?? .clear
+    private let muted   = Color(hex: "#7A6A55") ?? .clear
+    private let divider = Color(hex: "#E6DDD0") ?? .clear
 
     private var selectedColor: String {
         get { prefs.avatarColor }
@@ -198,7 +197,7 @@ struct ProfileView: View {
         }
         .background(Color.white)
         .overlay(alignment: .bottom) { divider.frame(height: 1) }
-        .shadow(color: Color(hex: "#1A1208")!.opacity(0.04), radius: 4, y: 2)
+        .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.04), radius: 4, y: 2)
     }
 
     @ViewBuilder
@@ -216,11 +215,11 @@ struct WarmPersonalSection: View {
     @EnvironmentObject var authVM: AuthViewModel
     @EnvironmentObject var prefs:  UserPreferences
 
-    private let amber   = Color(hex: "#C8922A")!
-    private let amberBg = Color(hex: "#F5E4C3")!
-    private let brown   = Color(hex: "#1A1208")!
-    private let muted   = Color(hex: "#7A6A55")!
-    private let divider = Color(hex: "#E6DDD0")!
+    private let amber   = Color(hex: "#C8922A") ?? .clear
+    private let amberBg = Color(hex: "#F5E4C3") ?? .clear
+    private let brown   = Color(hex: "#1A1208") ?? .clear
+    private let muted   = Color(hex: "#7A6A55") ?? .clear
+    private let divider = Color(hex: "#E6DDD0") ?? .clear
 
     private var selectedColor: String {
         get { prefs.avatarColor }
@@ -279,7 +278,7 @@ struct WarmPersonalSection: View {
                 HStack(spacing: 14) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(hex: "#F5F0EB")!).frame(width: 32, height: 32)
+                            .fill(Color(hex: "#F5F0EB") ?? .clear).frame(width: 32, height: 32)
                         Image(systemName: "envelope.fill")
                             .font(.system(size: 13, weight: .semibold)).foregroundColor(muted)
                     }
@@ -299,7 +298,7 @@ struct WarmPersonalSection: View {
                         .font(.system(size: 11)).foregroundColor(muted.opacity(0.4)).padding(.trailing, 16)
                 }
                 .padding(.vertical, 14)
-                .background(Color(hex: "#F8F4EE")!)
+                .background(Color(hex: "#F8F4EE") ?? .clear)
             }
             .background(Color.white)
             .cornerRadius(18)
@@ -311,7 +310,7 @@ struct WarmPersonalSection: View {
                     )
                     .animation(.easeInOut(duration: 0.15), value: focused != nil)
             )
-            .shadow(color: Color(hex: "#1A1208")!.opacity(0.04), radius: 6, y: 2)
+            .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.04), radius: 6, y: 2)
             .shake(trigger: shake)
 
             // Account info card
@@ -327,7 +326,7 @@ struct WarmPersonalSection: View {
             .background(Color.white)
             .cornerRadius(18)
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(divider, lineWidth: 1))
-            .shadow(color: Color(hex: "#1A1208")!.opacity(0.04), radius: 6, y: 2)
+            .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.04), radius: 6, y: 2)
 
             // Save button
             Button { save() } label: {
@@ -354,13 +353,13 @@ struct WarmPersonalSection: View {
             if showToast {
                 HStack(spacing: 10) {
                     Image(systemName: toastError ? "xmark.circle.fill" : "checkmark.circle.fill")
-                        .foregroundColor(toastError ? .red : Color(hex: "#3D7A52")!)
+                        .foregroundColor(toastError ? .red : Color(hex: "#3D7A52") ?? .clear)
                     Text(toastMsg).font(.system(size: 14, weight: .bold)).foregroundColor(brown)
                 }
                 .padding(.horizontal, 20).padding(.vertical, 14)
                 .background(Color.white)
                 .cornerRadius(30)
-                .shadow(color: Color(hex: "#1A1208")!.opacity(0.1), radius: 12, y: 4)
+                .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.1), radius: 12, y: 4)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -384,7 +383,7 @@ struct WarmPersonalSection: View {
         HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(focused == field ? amberBg : Color(hex: "#F5F0EB")!)
+                    .fill(focused == field ? amberBg : Color(hex: "#F5F0EB") ?? .clear)
                     .frame(width: 32, height: 32)
                 Image(systemName: icon)
                     .font(.system(size: 13, weight: .semibold))
@@ -533,7 +532,7 @@ struct SecuritySection: View {
                     submitLabelType: .next,
                     onSubmitAction: { focusedField = .new }
                 )
-                Color(hex: "#DDE1EE")!.frame(height: 1).padding(.leading, 52)
+                Color(hex: "#DDE1EE") ?? .clear.frame(height: 1).padding(.leading, 52)
                 SecurityPasswordRow(
                     label: "New Password", icon: "lock.open.fill",
                     text: $newPassword, focused: $focusedField, tag: .new,
@@ -542,7 +541,7 @@ struct SecuritySection: View {
                     submitLabelType: .next,
                     onSubmitAction: { focusedField = .confirm }
                 )
-                Color(hex: "#DDE1EE")!.frame(height: 1).padding(.leading, 52)
+                Color(hex: "#DDE1EE") ?? .clear.frame(height: 1).padding(.leading, 52)
                 SecurityPasswordRow(
                     label: "Confirm New Password", icon: "checkmark.shield.fill",
                     text: $confirmPassword, focused: $focusedField, tag: .confirm,
@@ -603,7 +602,7 @@ struct SecuritySection: View {
             if showToast {
                 HStack(spacing: 10) {
                     Image(systemName: toastIsError ? "xmark.circle.fill" : "checkmark.circle.fill")
-                        .foregroundColor(toastIsError ? .red : Color(hex: "#2E7D32")!)
+                        .foregroundColor(toastIsError ? .red : Color(hex: "#2E7D32") ?? .clear)
                     Text(toastMessage).font(.system(size: 14, weight: .bold)).foregroundColor(Color.bpText)
                 }
                 .padding(.horizontal, 20).padding(.vertical, 14)
@@ -712,7 +711,7 @@ private struct SecurityPasswordRow: View {
         HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 7)
-                    .fill(isFocused ? Color.bpNavyLight : Color(hex: "#F2F4FB")!)
+                    .fill(isFocused ? Color.bpNavyLight : Color(hex: "#F2F4FB") ?? .clear)
                     .frame(width: 32, height: 32)
                 Image(systemName: icon)
                     .font(.system(size: 13, weight: .semibold)).foregroundColor(accentColor)
@@ -751,7 +750,7 @@ private struct SecurityPasswordRow: View {
             HStack(spacing: 10) {
                 if trailingCheck && !text.isEmpty {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 16)).foregroundColor(Color(hex: "#2E7D32")!)
+                        .font(.system(size: 16)).foregroundColor(Color(hex: "#2E7D32") ?? .clear)
                         .transition(.scale.combined(with: .opacity))
                 }
                 Button {
@@ -784,17 +783,17 @@ private struct SecurityHintRow: View {
         HStack(spacing: 10) {
             ZStack {
                 Circle()
-                    .stroke(active ? (met ? Color(hex: "#2E7D32")! : Color.bpTextSub.opacity(0.4)) : Color.bpDivider, lineWidth: 1.5)
+                    .stroke(active ? (met ? Color(hex: "#2E7D32") ?? .clear : Color.bpTextSub.opacity(0.4)) : Color.bpDivider, lineWidth: 1.5)
                     .frame(width: 18, height: 18)
                 if met && active {
-                    Circle().fill(Color(hex: "#2E7D32")!).frame(width: 18, height: 18)
+                    Circle().fill(Color(hex: "#2E7D32") ?? .clear).frame(width: 18, height: 18)
                     Image(systemName: "checkmark").font(.system(size: 9, weight: .black)).foregroundColor(.white)
                 }
             }
             .animation(.spring(response: 0.25), value: met)
             Text(text)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(active ? (met ? Color(hex: "#2E7D32")! : Color.bpText) : Color.bpTextSub)
+                .foregroundColor(active ? (met ? Color(hex: "#2E7D32") ?? .clear : Color.bpText) : Color.bpTextSub)
                 .animation(.easeInOut(duration: 0.15), value: met)
         }
     }
@@ -812,7 +811,7 @@ struct SubscriptionSection: View {
     private var isActive: Bool { authVM.isSubscriptionActive && !isTrial }
 
     private var statusColor: Color {
-        isTrial ? Color(hex: "#E67E22")! : isActive ? Color(hex: "#2E7D32")! : .red
+        isTrial ? Color(hex: "#E67E22") ?? .clear : isActive ? Color(hex: "#2E7D32") ?? .clear : .red
     }
     private var statusIcon: String {
         isTrial ? "clock.fill" : isActive ? "crown.fill" : "xmark.circle.fill"
@@ -875,9 +874,9 @@ struct SubscriptionSection: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 17)
-                .background(isActive ? Color.bpNavy : Color(hex: "#E67E22")!)
+                .background(isActive ? Color.bpNavy : Color(hex: "#E67E22") ?? .clear)
                 .cornerRadius(16)
-                .shadow(color: (isActive ? Color.bpNavy : Color(hex: "#E67E22")!).opacity(0.35), radius: 10, y: 4)
+                .shadow(color: (isActive ? Color.bpNavy : Color(hex: "#E67E22") ?? .clear).opacity(0.35), radius: 10, y: 4)
             }
 
             if isActive {

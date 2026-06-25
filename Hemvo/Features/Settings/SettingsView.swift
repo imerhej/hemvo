@@ -94,7 +94,7 @@ struct SettingsView: View {
     private var isActive: Bool { authVM.isSubscriptionActive && !isTrial }
 
     private var subColor: Color {
-        isTrial ? Color(hex: "#E67E22")! : isActive ? Color(hex: "#2E7D32")! : .red
+        isTrial ? Color(hex: "#E67E22") ?? .clear : isActive ? Color(hex: "#2E7D32") ?? .clear : .red
     }
     private var subIcon: String {
         isTrial ? "clock.fill" : isActive ? "crown.fill" : "xmark.circle.fill"
@@ -112,7 +112,7 @@ struct SettingsView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "#F4F6FB")!.ignoresSafeArea()
+            Color(hex: "#F4F6FB") ?? .clear.ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
@@ -292,10 +292,10 @@ struct SettingsView: View {
         SettingsGroup(header: "ACCOUNT", headerIcon: "person.fill") {
             SettingsNavRow(icon: "person.circle.fill",  color: accent,                  label: "Edit Profile",         chevron: true) { showProfile = true }
             SettingsDivider()
-            SettingsNavRow(icon: "house.fill",           color: Color(hex: "#1565C0")!, label: "Household Members",   chevron: true) { showHousehold = true }
+            SettingsNavRow(icon: "house.fill",           color: Color(hex: "#1565C0") ?? .clear, label: "Household Members",   chevron: true) { showHousehold = true }
             if authVM.isOwner {
                 SettingsDivider()
-                SettingsNavRow(icon: "arrow.clockwise", color: Color(hex: "#2E7D32")!, label: "Restore Purchases",   chevron: false) {
+                SettingsNavRow(icon: "arrow.clockwise", color: Color(hex: "#2E7D32") ?? .clear, label: "Restore Purchases",   chevron: false) {
                     Task { await storeKit.restorePurchases() }
                 }
             }
@@ -347,10 +347,10 @@ struct SettingsView: View {
             }
 
             SettingsToggleRow(
-                icon: "bell.badge.fill", color: Color(hex: "#C62828")!,
+                icon: "bell.badge.fill", color: Color(hex: "#C62828") ?? .clear,
                 label: "Bill Reminders",
                 detail: "Alerts before bills are due",
-                tint: Color(hex: "#C62828")!,
+                tint: Color(hex: "#C62828") ?? .clear,
                 isOn: billNotifs
             )
             .disabled(ownerLocked(memberPermissions?.receiveExpenseAlerts))
@@ -359,10 +359,10 @@ struct SettingsView: View {
             }
             SettingsDivider()
             SettingsToggleRow(
-                icon: "fork.knife.circle.fill", color: Color(hex: "#E67E22")!,
+                icon: "fork.knife.circle.fill", color: Color(hex: "#E67E22") ?? .clear,
                 label: "Meal Plan Reminders",
                 detail: "Daily meal planning nudges",
-                tint: Color(hex: "#E67E22")!,
+                tint: Color(hex: "#E67E22") ?? .clear,
                 isOn: mealNotifs
             )
             .disabled(ownerLocked(memberPermissions?.receiveMealAlerts))
@@ -371,10 +371,10 @@ struct SettingsView: View {
             }
             SettingsDivider()
             SettingsToggleRow(
-                icon: "calendar.badge.clock", color: Color(hex: "#6A1B9A")!,
+                icon: "calendar.badge.clock", color: Color(hex: "#6A1B9A") ?? .clear,
                 label: "Schedule Events",
                 detail: "Upcoming event & task alerts",
-                tint: Color(hex: "#6A1B9A")!,
+                tint: Color(hex: "#6A1B9A") ?? .clear,
                 isOn: scheduleNotifs
             )
             .disabled(ownerLocked(memberPermissions?.receiveCalendarAlerts))
@@ -383,10 +383,10 @@ struct SettingsView: View {
             }
             SettingsDivider()
             SettingsToggleRow(
-                icon: "wrench.and.screwdriver.fill", color: Color(hex: "#4E342E")!,
+                icon: "wrench.and.screwdriver.fill", color: Color(hex: "#4E342E") ?? .clear,
                 label: "Maintenance Reminders",
                 detail: "Home upkeep task alerts",
-                tint: Color(hex: "#4E342E")!,
+                tint: Color(hex: "#4E342E") ?? .clear,
                 isOn: maintenanceNotifs
             )
             .disabled(ownerLocked(memberPermissions?.receiveMaintenanceAlerts))
@@ -400,7 +400,7 @@ struct SettingsView: View {
     private var preferenceSyncGroup: some View {
         SettingsGroup(header: "PREFERENCES SYNC", headerIcon: "icloud.fill") {
             HStack(spacing: 14) {
-                SettingsIconBox(icon: "icloud.fill", color: Color(hex: "#00838F")!)
+                SettingsIconBox(icon: "icloud.fill", color: Color(hex: "#00838F") ?? .clear)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("iCloud Preferences")
                         .font(.system(size: 14, weight: .semibold)).foregroundColor(Color.bpText)
@@ -410,7 +410,7 @@ struct SettingsView: View {
                 Spacer()
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 17))
-                    .foregroundColor(Color(hex: "#2E7D32")!)
+                    .foregroundColor(Color(hex: "#2E7D32") ?? .clear)
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
         }
@@ -430,18 +430,18 @@ struct SettingsView: View {
                 Spacer()
                 Text("Latest")
                     .font(.system(size: 9, weight: .heavy)).kerning(0.3)
-                    .foregroundColor(Color(hex: "#2E7D32")!)
+                    .foregroundColor(Color(hex: "#2E7D32") ?? .clear)
                     .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(Color(hex: "#2E7D32")!.opacity(0.1)).cornerRadius(20)
+                    .background(Color(hex: "#2E7D32") ?? .clear.opacity(0.1)).cornerRadius(20)
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
 
             SettingsDivider()
-            SettingsLinkRow(icon: "lock.shield.fill",         color: Color(hex: "#1565C0")!, label: "Privacy Policy",   url: AppConstants.privacyPolicyURL)
+            SettingsLinkRow(icon: "lock.shield.fill",         color: Color(hex: "#1565C0") ?? .clear, label: "Privacy Policy",   url: AppConstants.privacyPolicyURL)
             SettingsDivider()
-            SettingsLinkRow(icon: "doc.text.fill",            color: Color(hex: "#1565C0")!, label: "Terms of Service", url: AppConstants.termsOfServiceURL)
+            SettingsLinkRow(icon: "doc.text.fill",            color: Color(hex: "#1565C0") ?? .clear, label: "Terms of Service", url: AppConstants.termsOfServiceURL)
             SettingsDivider()
-            SettingsLinkRow(icon: "questionmark.circle.fill", color: Color(hex: "#6A1B9A")!, label: "Support & Help",   url: AppConstants.supportURL)
+            SettingsLinkRow(icon: "questionmark.circle.fill", color: Color(hex: "#6A1B9A") ?? .clear, label: "Support & Help",   url: AppConstants.supportURL)
             SettingsDivider()
 
             Button {
@@ -450,7 +450,7 @@ struct SettingsView: View {
                 }
             } label: {
                 HStack(spacing: 14) {
-                    SettingsIconBox(icon: "star.fill", color: Color(hex: "#E67E22")!)
+                    SettingsIconBox(icon: "star.fill", color: Color(hex: "#E67E22") ?? .clear)
                     Text("Rate Hemvo")
                         .font(.system(size: 14, weight: .semibold)).foregroundColor(Color.bpText)
                     Spacer()
@@ -625,7 +625,7 @@ struct SettingsToggleRow: View {
     var body: some View {
         Button { isOn.toggle() } label: {
             HStack(spacing: 14) {
-                SettingsIconBox(icon: icon, color: isOn ? color : Color(hex: "#B0BAC8")!)
+                SettingsIconBox(icon: icon, color: isOn ? color : Color(hex: "#B0BAC8") ?? .clear)
                     .animation(.easeInOut(duration: 0.2), value: isOn)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(label)

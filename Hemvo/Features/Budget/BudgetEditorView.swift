@@ -60,7 +60,7 @@ struct BudgetEditorView: View {
                         Spacer()
                         HStack(spacing: 10) {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(Color(hex: "#4A9E6B")!)
+                                .foregroundColor(Color(hex: "#4A9E6B") ?? .clear)
                             Text("Budget saved!")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(Color.bpText)
@@ -189,7 +189,7 @@ struct BudgetEditorView: View {
                 BudgetStatChip(
                     label: isOverBudget ? "Over by" : "Free",
                     value: "$\(Int(abs(unallocated)))",
-                    color: isOverBudget ? .red : Color(hex: "#2E7D32")!
+                    color: isOverBudget ? .red : Color(hex: "#2E7D32") ?? .clear
                 )
             }
 
@@ -298,15 +298,15 @@ struct BudgetEditorView: View {
     // MARK: - Helpers
     private func categoryColor(_ name: String) -> Color {
         switch name {
-        case "Groceries":      return Color(hex: "#2E7D32")!
-        case "Utilities":      return Color(hex: "#1565C0")!
-        case "Entertainment":  return Color(hex: "#E65100")!
-        case "Transportation": return Color(hex: "#4E342E")!
-        case "Healthcare":     return Color(hex: "#B71C1C")!
-        case "Dining Out":     return Color(hex: "#F57F17")!
-        case "Mortgage / Rent":return Color(hex: "#4A148C")!
-        case "Insurance":      return Color(hex: "#006064")!
-        case "Credit Card":    return Color(hex: "#1A237E")!
+        case "Groceries":      return Color(hex: "#2E7D32") ?? .clear
+        case "Utilities":      return Color(hex: "#1565C0") ?? .clear
+        case "Entertainment":  return Color(hex: "#E65100") ?? .clear
+        case "Transportation": return Color(hex: "#4E342E") ?? .clear
+        case "Healthcare":     return Color(hex: "#B71C1C") ?? .clear
+        case "Dining Out":     return Color(hex: "#F57F17") ?? .clear
+        case "Mortgage / Rent":return Color(hex: "#4A148C") ?? .clear
+        case "Insurance":      return Color(hex: "#006064") ?? .clear
+        case "Credit Card":    return Color(hex: "#1A237E") ?? .clear
         default:               return Color.bpSlate
         }
     }

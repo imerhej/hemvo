@@ -28,13 +28,13 @@ struct GroceryListView: View {
     @FocusState private var itemNameFocused: Bool
     @FocusState private var itemQtyFocused: Bool
 
-    private let green      = Color(hex: "#4A9E6B")!
-    private let greenLight = Color(hex: "#EAF7EF")!
-    private let cream      = Color(hex: "#FAF7F2")!
-    private let surface    = Color(hex: "#FFFFFF")!
-    private let divider    = Color(hex: "#E6DDD0")!
-    private let textMain   = Color(hex: "#1A1208")!
-    private let textSub    = Color(hex: "#7A6A55")!
+    private let green      = Color(hex: "#4A9E6B") ?? .clear
+    private let greenLight = Color(hex: "#EAF7EF") ?? .clear
+    private let cream      = Color(hex: "#FAF7F2") ?? .clear
+    private let surface    = Color(hex: "#FFFFFF") ?? .clear
+    private let divider    = Color(hex: "#E6DDD0") ?? .clear
+    private let textMain   = Color(hex: "#1A1208") ?? .clear
+    private let textSub    = Color(hex: "#7A6A55") ?? .clear
 
     // All categories that have at least one item (checked or not)
     private let categoryOrder: [GroceryItem.GroceryCategory] = [
@@ -334,7 +334,7 @@ struct GroceryListView: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .background(newItemName.isEmpty ? Color(hex: "#C5C0B8")! : green)
+                        .background(newItemName.isEmpty ? Color(hex: "#C5C0B8") ?? .clear : green)
                         .cornerRadius(16)
                         .animation(.easeInOut(duration: 0.15), value: newItemName.isEmpty)
                     }
@@ -367,10 +367,10 @@ struct GroceryCategorySection: View {
     let onDelete:  (UUID) -> Void
     var canDelete: (UUID) -> Bool = { _ in true }
 
-    private let green      = Color(hex: "#4A9E6B")!
-    private let greenLight = Color(hex: "#EAF7EF")!
-    private let divider    = Color(hex: "#E6DDD0")!
-    private let textSub    = Color(hex: "#7A6A55")!
+    private let green      = Color(hex: "#4A9E6B") ?? .clear
+    private let greenLight = Color(hex: "#EAF7EF") ?? .clear
+    private let divider    = Color(hex: "#E6DDD0") ?? .clear
+    private let textSub    = Color(hex: "#7A6A55") ?? .clear
 
     var allItems: [GroceryItem] { unchecked + checked }
 
@@ -469,8 +469,8 @@ struct GroceryCheckRow: View {
     let onToggle:  () -> Void
     let onDelete:  () -> Void
 
-    private let green   = Color(hex: "#4A9E6B")!
-    private let divider = Color(hex: "#E6DDD0")!
+    private let green   = Color(hex: "#4A9E6B") ?? .clear
+    private let divider = Color(hex: "#E6DDD0") ?? .clear
 
     var body: some View {
         HStack(spacing: 12) {
@@ -478,7 +478,7 @@ struct GroceryCheckRow: View {
             Button { onToggle() } label: {
                 ZStack {
                     Circle()
-                        .stroke(item.isChecked ? green : Color(hex: "#D0C8BE")!, lineWidth: 1.5)
+                        .stroke(item.isChecked ? green : Color(hex: "#D0C8BE") ?? .clear, lineWidth: 1.5)
                         .frame(width: 24, height: 24)
                     if item.isChecked {
                         Circle().fill(green).frame(width: 24, height: 24)
@@ -492,8 +492,8 @@ struct GroceryCheckRow: View {
 
             Text(item.name)
                 .font(.system(size: 14, weight: item.isChecked ? .regular : .semibold))
-                .strikethrough(item.isChecked, color: Color(hex: "#A09080")!)
-                .foregroundColor(item.isChecked ? Color(hex: "#A09080")! : Color(hex: "#1A1208")!)
+                .strikethrough(item.isChecked, color: Color(hex: "#A09080") ?? .clear)
+                .foregroundColor(item.isChecked ? Color(hex: "#A09080") ?? .clear : Color(hex: "#1A1208") ?? .clear)
                 .animation(.easeInOut(duration: 0.15), value: item.isChecked)
 
             Spacer()
@@ -501,10 +501,10 @@ struct GroceryCheckRow: View {
             if !item.displayQuantity.isEmpty {
                 Text(item.displayQuantity)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(Color(hex: "#7A6A55")!)
+                    .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                     .opacity(item.isChecked ? 0.5 : 1)
                     .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(Color(hex: "#F2EDE5")!)
+                    .background(Color(hex: "#F2EDE5") ?? .clear)
                     .cornerRadius(6)
             }
         }
@@ -524,7 +524,7 @@ struct GroceryCheckRow: View {
                 Button { onToggle() } label: {
                     Label("Uncheck", systemImage: "arrow.uturn.backward.circle.fill")
                 }
-                .tint(Color(hex: "#4A9E6B")!)
+                .tint(Color(hex: "#4A9E6B") ?? .clear)
             }
         }
     }

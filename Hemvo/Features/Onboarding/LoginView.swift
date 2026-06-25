@@ -310,7 +310,7 @@ struct LoginView: View {
                                     Text("Username looks good")
                                         .font(.system(size: 12, weight: .semibold))
                                 }
-                                .foregroundColor(Color(hex: "#3D7A52")!)
+                                .foregroundColor(Color(hex: "#3D7A52") ?? .clear)
                                 .padding(.horizontal, 16).padding(.vertical, 8)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             } else {
@@ -367,14 +367,14 @@ struct LoginView: View {
                                 HStack(spacing: 8) {
                                     Image(systemName: "person.crop.circle.badge.checkmark")
                                         .font(.system(size: 14, weight: .bold))
-                                        .foregroundColor(Color(hex: "#2196F3")!)
+                                        .foregroundColor(Color(hex: "#2196F3") ?? .clear)
                                     Text("Account already exists")
                                         .font(.system(size: 13, weight: .bold))
-                                        .foregroundColor(Color(hex: "#1A1208")!)
+                                        .foregroundColor(Color(hex: "#1A1208") ?? .clear)
                                 }
                                 Text("\(existingEmail) is already registered.")
                                     .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(Color(hex: "#7A6A55")!)
+                                    .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                                 Button {
                                     withAnimation(.easeInOut(duration: 0.3)) {
                                         mode = .login
@@ -393,17 +393,17 @@ struct LoginView: View {
                                     }
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 14).padding(.vertical, 8)
-                                    .background(Color(hex: "#2196F3")!)
+                                    .background(Color(hex: "#2196F3") ?? .clear)
                                     .cornerRadius(10)
                                 }
                                 .buttonStyle(.plain)
                             }
                             .padding(12)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(hex: "#2196F3")!.opacity(0.07))
+                            .background(Color(hex: "#2196F3") ?? .clear.opacity(0.07))
                             .cornerRadius(12)
                             .overlay(RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color(hex: "#2196F3")!.opacity(0.25), lineWidth: 1))
+                                .stroke(Color(hex: "#2196F3") ?? .clear.opacity(0.25), lineWidth: 1))
                             .padding(.horizontal, 12).padding(.vertical, 4)
                             .transition(.opacity.combined(with: .scale(scale: 0.97)))
 
@@ -423,7 +423,7 @@ struct LoginView: View {
                                         .font(.system(size: 12, weight: .semibold))
                                         .multilineTextAlignment(.leading)
                                 }
-                                .foregroundColor(Color(hex: "#E67E22")!)
+                                .foregroundColor(Color(hex: "#E67E22") ?? .clear)
                                 .padding(.horizontal, 16).padding(.vertical, 8)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
@@ -449,7 +449,7 @@ struct LoginView: View {
                                     Text("Email looks good")
                                         .font(.system(size: 12, weight: .semibold))
                                 }
-                                .foregroundColor(Color(hex: "#3D7A52")!)
+                                .foregroundColor(Color(hex: "#3D7A52") ?? .clear)
                                 .padding(.horizontal, 16).padding(.vertical, 8)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .transition(.opacity.combined(with: .move(edge: .top)))

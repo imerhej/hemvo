@@ -7,14 +7,14 @@ internal import SwiftUI
 
 // MARK: - Budget Screen Palette
 extension Color {
-    static let bpBackground = Color(hex: "#F4F6FB")!
-    static let bpSurface    = Color(hex: "#FFFFFF")!
-    static let bpNavy       = Color(hex: "#1A237E")!
-    static let bpNavyLight  = Color(hex: "#E8EAF6")!
-    static let bpSlate      = Color(hex: "#3949AB")!
-    static let bpText       = Color(hex: "#0D1133")!
-    static let bpTextSub    = Color(hex: "#5C6380")!
-    static let bpDivider    = Color(hex: "#DDE1EE")!
+    static let bpBackground = Color(hex: "#F4F6FB") ?? .clear
+    static let bpSurface    = Color(hex: "#FFFFFF") ?? .clear
+    static let bpNavy       = Color(hex: "#1A237E") ?? .clear
+    static let bpNavyLight  = Color(hex: "#E8EAF6") ?? .clear
+    static let bpSlate      = Color(hex: "#3949AB") ?? .clear
+    static let bpText       = Color(hex: "#0D1133") ?? .clear
+    static let bpTextSub    = Color(hex: "#5C6380") ?? .clear
+    static let bpDivider    = Color(hex: "#DDE1EE") ?? .clear
 }
 
 // MARK: - FieldCard

@@ -21,14 +21,14 @@ struct SubscriptionStatusView: View {
     private var isExpired: Bool { !authVM.isSubscriptionActive }
 
     private var statusColor: Color {
-        if isTrial  { return Color(hex: "#E67E22")! }
-        if isActive { return Color(hex: "#2E7D32")! }
+        if isTrial  { return Color(hex: "#E67E22") ?? .clear }
+        if isActive { return Color(hex: "#2E7D32") ?? .clear }
         return .red
     }
     private var statusGradient: [Color] {
-        if isTrial  { return [Color(hex: "#E67E22")!, Color(hex: "#F39C12")!] }
-        if isActive { return [Color(hex: "#1B5E20")!, Color(hex: "#2E7D32")!] }
-        return [Color(hex: "#B71C1C")!, Color(hex: "#E53935")!]
+        if isTrial  { return [Color(hex: "#E67E22") ?? .clear, Color(hex: "#F39C12") ?? .clear] }
+        if isActive { return [Color(hex: "#1B5E20") ?? .clear, Color(hex: "#2E7D32") ?? .clear] }
+        return [Color(hex: "#B71C1C") ?? .clear, Color(hex: "#E53935") ?? .clear]
     }
     private var statusIcon: String {
         isTrial ? "clock.fill" : isActive ? "checkmark.seal.fill" : "xmark.seal.fill"
@@ -54,7 +54,7 @@ struct SubscriptionStatusView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "#F4F6FB")!.ignoresSafeArea()
+                Color(hex: "#F4F6FB") ?? .clear.ignoresSafeArea()
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 20) {
@@ -130,11 +130,11 @@ struct SubscriptionStatusView: View {
     // MARK: - Plan Details Card
     private var planDetailsCard: some View {
         VStack(spacing: 0) {
-            sectionHeader(icon: "star.circle.fill", title: "PLAN DETAILS", color: Color(hex: "#2E7D32")!)
+            sectionHeader(icon: "star.circle.fill", title: "PLAN DETAILS", color: Color(hex: "#2E7D32") ?? .clear)
             Color.bpDivider.frame(height: 1)
             planRow("Current Plan",  activePlan,                   Color.bpText)
             Color.bpDivider.frame(height: 1).padding(.leading, 16)
-            planRow("Status",        "Active",                      Color(hex: "#2E7D32")!)
+            planRow("Status",        "Active",                      Color(hex: "#2E7D32") ?? .clear)
             Color.bpDivider.frame(height: 1).padding(.leading, 16)
             planRow("Billing",       "Auto-renews via App Store",  Color.bpTextSub)
         }
@@ -157,16 +157,16 @@ struct SubscriptionStatusView: View {
     private var trialProgressCard: some View {
         VStack(spacing: 14) {
             HStack(spacing: 8) {
-                Image(systemName: "clock.fill").font(.system(size: 14, weight: .bold)).foregroundColor(Color(hex: "#E67E22")!)
+                Image(systemName: "clock.fill").font(.system(size: 14, weight: .bold)).foregroundColor(Color(hex: "#E67E22") ?? .clear)
                 Text("TRIAL PROGRESS").font(.system(size: 10, weight: .heavy)).kerning(1.5).foregroundColor(Color.bpTextSub)
                 Spacer()
-                Text("\(authVM.trialDaysRemaining) days left").font(.system(size: 12, weight: .heavy)).foregroundColor(Color(hex: "#E67E22")!)
+                Text("\(authVM.trialDaysRemaining) days left").font(.system(size: 12, weight: .heavy)).foregroundColor(Color(hex: "#E67E22") ?? .clear)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 6).fill(Color(hex: "#E67E22")!.opacity(0.15)).frame(height: 10)
+                    RoundedRectangle(cornerRadius: 6).fill(Color(hex: "#E67E22") ?? .clear.opacity(0.15)).frame(height: 10)
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(LinearGradient(colors: [Color(hex: "#E67E22")!, Color(hex: "#F39C12")!], startPoint: .leading, endPoint: .trailing))
+                        .fill(LinearGradient(colors: [Color(hex: "#E67E22") ?? .clear, Color(hex: "#F39C12") ?? .clear], startPoint: .leading, endPoint: .trailing))
                         .frame(width: geo.size.width * trialProgress, height: 10)
                         .animation(.spring(response: 0.5), value: trialProgress)
                 }
@@ -176,13 +176,13 @@ struct SubscriptionStatusView: View {
                 Text("Day \(AppConstants.trialDurationDays - authVM.trialDaysRemaining) of \(AppConstants.trialDurationDays)")
                     .font(.system(size: 12, weight: .medium)).foregroundColor(Color.bpTextSub)
                 Spacer()
-                Text("\(Int(trialProgress * 100))% used").font(.system(size: 12, weight: .heavy)).foregroundColor(Color(hex: "#E67E22")!)
+                Text("\(Int(trialProgress * 100))% used").font(.system(size: 12, weight: .heavy)).foregroundColor(Color(hex: "#E67E22") ?? .clear)
             }
         }
         .padding(16)
         .background(Color.bpSurface)
         .cornerRadius(18)
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(hex: "#E67E22")!.opacity(0.25), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(hex: "#E67E22") ?? .clear.opacity(0.25), lineWidth: 1))
         .shadow(color: Color.bpText.opacity(0.04), radius: 8, y: 3)
     }
 
@@ -193,12 +193,12 @@ struct SubscriptionStatusView: View {
             Color.bpDivider.frame(height: 1)
 
             let features: [(String, String, Color)] = [
-                ("fork.knife.circle.fill",    "Meal Planning & Grocery Lists",       Color(hex: "#E67E22")!),
-                ("dollarsign.circle.fill",     "Budget Tracking & Bill Reminders",    Color(hex: "#1565C0")!),
-                ("calendar.circle.fill",       "Family Calendar & Task Delegation",   Color(hex: "#6A1B9A")!),
-                ("wrench.and.screwdriver",     "Home Maintenance Tracker",            Color(hex: "#B71C1C")!),
-                ("person.2.circle.fill",       "Household Members & Invitations",     Color(hex: "#2E7D32")!),
-                ("bell.badge.circle.fill",     "Smart Notifications",                 Color(hex: "#E67E22")!),
+                ("fork.knife.circle.fill",    "Meal Planning & Grocery Lists",       Color(hex: "#E67E22") ?? .clear),
+                ("dollarsign.circle.fill",     "Budget Tracking & Bill Reminders",    Color(hex: "#1565C0") ?? .clear),
+                ("calendar.circle.fill",       "Family Calendar & Task Delegation",   Color(hex: "#6A1B9A") ?? .clear),
+                ("wrench.and.screwdriver",     "Home Maintenance Tracker",            Color(hex: "#B71C1C") ?? .clear),
+                ("person.2.circle.fill",       "Household Members & Invitations",     Color(hex: "#2E7D32") ?? .clear),
+                ("bell.badge.circle.fill",     "Smart Notifications",                 Color(hex: "#E67E22") ?? .clear),
             ]
 
             ForEach(features, id: \.0) { icon, label, color in
@@ -211,7 +211,7 @@ struct SubscriptionStatusView: View {
                     Spacer()
                     Image(systemName: isActive || isTrial ? "checkmark.circle.fill" : "lock.fill")
                         .font(.system(size: 14))
-                        .foregroundColor(isActive || isTrial ? Color(hex: "#2E7D32")! : Color.bpTextSub.opacity(0.35))
+                        .foregroundColor(isActive || isTrial ? Color(hex: "#2E7D32") ?? .clear : Color.bpTextSub.opacity(0.35))
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
 
@@ -245,13 +245,13 @@ struct SubscriptionStatusView: View {
                         .padding(.vertical, 17)
                         .background(
                             LinearGradient(
-                                colors: isExpired ? [Color(hex: "#B71C1C")!, Color(hex: "#E53935")!]
-                                                 : [Color(hex: "#E67E22")!, Color(hex: "#F39C12")!],
+                                colors: isExpired ? [Color(hex: "#B71C1C") ?? .clear, Color(hex: "#E53935") ?? .clear]
+                                                 : [Color(hex: "#E67E22") ?? .clear, Color(hex: "#F39C12") ?? .clear],
                                 startPoint: .leading, endPoint: .trailing
                             )
                         )
                         .cornerRadius(16)
-                        .shadow(color: (isExpired ? Color(hex: "#B71C1C")! : Color(hex: "#E67E22")!).opacity(0.4), radius: 12, y: 5)
+                        .shadow(color: (isExpired ? Color(hex: "#B71C1C") ?? .clear : Color(hex: "#E67E22") ?? .clear).opacity(0.4), radius: 12, y: 5)
                     }
                 }
 

@@ -9,10 +9,23 @@
 			<key>orderHint</key>
 			<integer>0</integer>
 		</dict>
-		<key>Hemvo.xcscheme_^#shared#^_</key>
+	</dict>
+	<key>SuppressBuildableAutocreation</key>
+	<dict>
+		<key>2B70BA1C2F676B7C008EA50F</key>
 		<dict>
-			<key>orderHint</key>
-			<integer>0</integer>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>2B70BA292F676B7E008EA50F</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>2B70BA332F676B7E008EA50F</key>
+		<dict>
+			<key>primary</key>
+			<true/>
 		</dict>
 	</dict>
 </dict>

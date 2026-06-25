@@ -7,14 +7,14 @@ internal import Combine
 
 // MARK: - Warm palette tokens
 private extension Color {
-    static let wBg       = Color(hex: "#FAF7F2")!   // cream background
-    static let wAmber    = Color(hex: "#C8922A")!   // primary accent
-    static let wAmberSoft = Color(hex: "#F5E4C3")!  // amber tint
-    static let wBrown    = Color(hex: "#1A1208")!   // primary text
-    static let wMuted    = Color(hex: "#7A6A55")!   // secondary text
-    static let wDivider  = Color(hex: "#E6DDD0")!   // borders
-    static let wSurface  = Color(hex: "#FFFFFF")!   // card surface
-    static let wGreen    = Color(hex: "#3D7A52")!   // positive / remaining
+    static let wBg       = Color(hex: "#FAF7F2") ?? .clear   // cream background
+    static let wAmber    = Color(hex: "#C8922A") ?? .clear   // primary accent
+    static let wAmberSoft = Color(hex: "#F5E4C3") ?? .clear  // amber tint
+    static let wBrown    = Color(hex: "#1A1208") ?? .clear   // primary text
+    static let wMuted    = Color(hex: "#7A6A55") ?? .clear   // secondary text
+    static let wDivider  = Color(hex: "#E6DDD0") ?? .clear   // borders
+    static let wSurface  = Color(hex: "#FFFFFF") ?? .clear   // card surface
+    static let wGreen    = Color(hex: "#3D7A52") ?? .clear   // positive / remaining
 }
 
 // MARK: - BudgetDashboardView
@@ -174,7 +174,7 @@ struct BudgetDashboardView: View {
         ZStack {
             RoundedRectangle(cornerRadius: 24)
                 .fill(LinearGradient(
-                    colors: [Color(hex: "#4A3728")!, Color(hex: "#6B5240")!],
+                    colors: [Color(hex: "#4A3728") ?? .clear, Color(hex: "#6B5240") ?? .clear],
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
             Circle().fill(Color.white.opacity(0.07)).frame(width: 180).offset(x: 110, y: -50)
@@ -213,7 +213,7 @@ struct BudgetDashboardView: View {
             }
             .padding(22)
         }
-        .shadow(color: Color(hex: "#4A3728")!.opacity(0.4), radius: 20, y: 8)
+        .shadow(color: Color(hex: "#4A3728") ?? .clear.opacity(0.4), radius: 20, y: 8)
     }
 
     // MARK: - Personal Stats Row
@@ -222,7 +222,7 @@ struct BudgetDashboardView: View {
             WarmStatTile(value: "$\(Int(vm.totalSpent))",
                          label: "Spent",
                          icon: "arrow.up.circle.fill",
-                         iconColor: Color(hex: "#C0392B")!)
+                         iconColor: Color(hex: "#C0392B") ?? .clear)
 
             WarmStatTile(value: "\(vm.monthlyExpenses.filter { !$0.isRecurring || $0.isPaid }.count)",
                          label: "Transactions",
@@ -232,7 +232,7 @@ struct BudgetDashboardView: View {
             WarmStatTile(value: "\(vm.upcomingBills.count)",
                          label: "Bills Due",
                          icon: "calendar.badge.exclamationmark",
-                         iconColor: Color(hex: "#E67E22")!)
+                         iconColor: Color(hex: "#E67E22") ?? .clear)
         }
     }
 
@@ -276,7 +276,7 @@ struct BudgetDashboardView: View {
         ZStack {
             RoundedRectangle(cornerRadius: 24)
                 .fill(LinearGradient(
-                    colors: [Color(hex: "#C8922A")!, Color(hex: "#E6A83A")!],
+                    colors: [Color(hex: "#C8922A") ?? .clear, Color(hex: "#E6A83A") ?? .clear],
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
             Circle().fill(Color.white.opacity(0.07)).frame(width: 180).offset(x: 110, y: -50)
@@ -302,7 +302,7 @@ struct BudgetDashboardView: View {
                              : "$\(Int(vm.remainingBudget))")
                             .font(.system(size: 22, weight: .bold))
                             .foregroundColor(vm.remainingBudget < 0
-                                             ? Color(hex: "#FF6B6B")! : .white)
+                                             ? Color(hex: "#FF6B6B") ?? .clear : .white)
                     }
                     if canWrite {
                         Image(systemName: "pencil.circle.fill")
@@ -317,7 +317,7 @@ struct BudgetDashboardView: View {
                             Capsule().fill(Color.white.opacity(0.22)).frame(height: 10)
                             Capsule()
                                 .fill(vm.spentPercent > 0.9
-                                      ? LinearGradient(colors: [Color(hex: "#FF6B6B")!, .orange],
+                                      ? LinearGradient(colors: [Color(hex: "#FF6B6B") ?? .clear, .orange],
                                                        startPoint: .leading, endPoint: .trailing)
                                       : LinearGradient(colors: [.white, .white.opacity(0.75)],
                                                        startPoint: .leading, endPoint: .trailing))
@@ -355,7 +355,7 @@ struct BudgetDashboardView: View {
             WarmStatTile(value: "$\(Int(vm.totalSpent))",
                          label: "Spent",
                          icon: "arrow.up.circle.fill",
-                         iconColor: Color(hex: "#C0392B")!)
+                         iconColor: Color(hex: "#C0392B") ?? .clear)
 
             WarmStatTile(value: "\(vm.monthlyExpenses.filter { !$0.isPaid }.count)",
                          label: "Transactions",
@@ -365,12 +365,12 @@ struct BudgetDashboardView: View {
             WarmStatTile(value: "\(vm.upcomingBills.count)",
                          label: "Bills Due",
                          icon: "calendar.badge.exclamationmark",
-                         iconColor: Color(hex: "#E67E22")!)
+                         iconColor: Color(hex: "#E67E22") ?? .clear)
 
             WarmStatTile(value: "\(vm.budgetCategories.filter { $0.isOverBudget }.count)",
                          label: "Over Limit",
                          icon: "exclamationmark.triangle.fill",
-                         iconColor: Color(hex: "#C0392B")!)
+                         iconColor: Color(hex: "#C0392B") ?? .clear)
         }
     }
 
@@ -573,26 +573,26 @@ struct WarmCategoryRow: View {
 
     private var catColor: Color {
         switch category.name {
-        case "Groceries":       return Color(hex: "#3D7A52")!
-        case "Utilities":       return Color(hex: "#1565C0")!
-        case "Entertainment":   return Color(hex: "#E67E22")!
-        case "Transportation":  return Color(hex: "#4E342E")!
-        case "Healthcare":      return Color(hex: "#C0392B")!
-        case "Dining Out":      return Color(hex: "#FF9800")!
-        case "Mortgage / Rent": return Color(hex: "#6A1B9A")!
-        case "Insurance":       return Color(hex: "#00838F")!
-        case "Credit Card":     return Color(hex: "#1A237E")!
-        default:                return Color(hex: "#7A6A55")!
+        case "Groceries":       return Color(hex: "#3D7A52") ?? .clear
+        case "Utilities":       return Color(hex: "#1565C0") ?? .clear
+        case "Entertainment":   return Color(hex: "#E67E22") ?? .clear
+        case "Transportation":  return Color(hex: "#4E342E") ?? .clear
+        case "Healthcare":      return Color(hex: "#C0392B") ?? .clear
+        case "Dining Out":      return Color(hex: "#FF9800") ?? .clear
+        case "Mortgage / Rent": return Color(hex: "#6A1B9A") ?? .clear
+        case "Insurance":       return Color(hex: "#00838F") ?? .clear
+        case "Credit Card":     return Color(hex: "#1A237E") ?? .clear
+        default:                return Color(hex: "#7A6A55") ?? .clear
         }
     }
 
     private var barColor: [Color] {
         if category.isOverBudget {
-            return [Color(hex: "#C0392B")!, Color(hex: "#FF6B6B")!]
+            return [Color(hex: "#C0392B") ?? .clear, Color(hex: "#FF6B6B") ?? .clear]
         } else if category.percentUsed >= 0.9 {
-            return [Color(hex: "#C0392B")!, Color(hex: "#E67E22")!]
+            return [Color(hex: "#C0392B") ?? .clear, Color(hex: "#E67E22") ?? .clear]
         } else if category.percentUsed >= 0.7 {
-            return [Color(hex: "#E67E22")!, Color(hex: "#F0C040")!]
+            return [Color(hex: "#E67E22") ?? .clear, Color(hex: "#F0C040") ?? .clear]
         } else {
             return [catColor, catColor.opacity(0.6)]
         }
@@ -628,7 +628,7 @@ struct WarmCategoryRow: View {
                         if category.spent > 0 {
                             Text("$\(Int(category.spent)) of $\(Int(category.limit))")
                                 .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(category.isOverBudget ? Color(hex: "#C0392B")! : Color.wMuted)
+                                .foregroundColor(category.isOverBudget ? Color(hex: "#C0392B") ?? .clear : Color.wMuted)
                         } else {
                             Text("No spending yet")
                                 .font(.system(size: 11, weight: .medium))
@@ -641,7 +641,7 @@ struct WarmCategoryRow: View {
                 VStack(alignment: .trailing, spacing: 4) {
                     Text("$\(Int(category.limit))")
                         .font(.system(size: 14, weight: .black))
-                        .foregroundColor(category.isOverBudget ? Color(hex: "#C0392B")! : Color.wBrown)
+                        .foregroundColor(category.isOverBudget ? Color(hex: "#C0392B") ?? .clear : Color.wBrown)
                     Text("limit").font(.system(size: 9, weight: .medium)).foregroundColor(Color.wMuted)
                 }
 
@@ -717,7 +717,7 @@ struct WarmBillRow: View {
             to:   cal.startOfDay(for: bill.date)).day ?? 0
     }
     private var urgencyColor: Color {
-        daysUntil < 0 ? Color(hex: "#C0392B")! : daysUntil <= 3 ? Color(hex: "#E67E22")! : Color.wAmber
+        daysUntil < 0 ? Color(hex: "#C0392B") ?? .clear : daysUntil <= 3 ? Color(hex: "#E67E22") ?? .clear : Color.wAmber
     }
     private var urgencyLabel: String {
         daysUntil < 0  ? "Overdue \(abs(daysUntil))d"  :
@@ -829,11 +829,11 @@ struct ExpenseRow: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9)
                         .fill(isPaid
-                              ? Color(hex: "#3D7A52")!.opacity(0.1)
+                              ? Color(hex: "#3D7A52") ?? .clear.opacity(0.1)
                               : expense.category.displayColor.opacity(0.12))
                         .frame(width: 38, height: 38)
                     Image(systemName: isPaid ? "checkmark.circle.fill" : expense.category.iconName)
-                        .foregroundColor(isPaid ? Color(hex: "#3D7A52")! : expense.category.displayColor)
+                        .foregroundColor(isPaid ? Color(hex: "#3D7A52") ?? .clear : expense.category.displayColor)
                         .font(.system(size: 14, weight: .semibold))
                 }
 
@@ -847,7 +847,7 @@ struct ExpenseRow: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(expense.formattedAmount)
                         .font(.system(size: 14, weight: .black))
-                        .foregroundColor(isPaid ? Color(hex: "#3D7A52")! : Color(hex: "#C0392B")!)
+                        .foregroundColor(isPaid ? Color(hex: "#3D7A52") ?? .clear : Color(hex: "#C0392B") ?? .clear)
                         .strikethrough(isPaid, color: Color.wMuted)
                     Text(expense.category.rawValue)
                         .font(.system(size: 10, weight: .medium))
@@ -885,17 +885,17 @@ struct ExpenseRow: View {
                     if let label = expense.formattedPaidDate {
                         Label(label, systemImage: "checkmark.circle.fill")
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color(hex: "#2E7D32")!)
+                            .foregroundColor(Color(hex: "#2E7D32") ?? .clear)
                             .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(Color(hex: "#2E7D32")!.opacity(0.12))
+                            .background(Color(hex: "#2E7D32") ?? .clear.opacity(0.12))
                             .clipShape(Capsule())
                     }
                     if let name = paidByFirstName {
                         Label("paid by \(name)", systemImage: "person.fill")
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color(hex: "#2E7D32")!)
+                            .foregroundColor(Color(hex: "#2E7D32") ?? .clear)
                             .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(Color(hex: "#2E7D32")!.opacity(0.08))
+                            .background(Color(hex: "#2E7D32") ?? .clear.opacity(0.08))
                             .clipShape(Capsule())
                     }
                 } else {

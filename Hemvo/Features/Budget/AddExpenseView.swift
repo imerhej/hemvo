@@ -80,7 +80,7 @@ struct AddExpenseView: View {
                             OptionRow(
                                 icon: "checkmark.circle.fill",
                                 label: "Already Paid",
-                                color: Color(hex: "#2E7D32")!,
+                                color: Color(hex: "#2E7D32") ?? .clear,
                                 isOn: $isPaid
                             )
                         }

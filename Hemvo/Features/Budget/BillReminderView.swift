@@ -92,7 +92,7 @@ struct BillReminderView: View {
                                 // ── Paid ─────────────────────
                                 let paid = allBills.filter { $0.isPaid }
                                 if !paid.isEmpty {
-                                    sectionLabel("PAID · \(paid.count)", color: Color(hex: "#2E7D32")!)
+                                    sectionLabel("PAID · \(paid.count)", color: Color(hex: "#2E7D32") ?? .clear)
                                         .padding(.horizontal, 20)
                                     ForEach(paid) { bill in
                                         BillCard(
@@ -181,7 +181,7 @@ struct BillReminderView: View {
             VStack(spacing: 4) {
                 Text("$\(String(format: "%.2f", totalDue))")
                     .font(.system(size: 22, weight: .black))
-                    .foregroundColor(unpaidCount > 0 ? Color.bpNavy : Color(hex: "#2E7D32")!)
+                    .foregroundColor(unpaidCount > 0 ? Color.bpNavy : Color(hex: "#2E7D32") ?? .clear)
                 Text("TOTAL DUE")
                     .font(.system(size: 8, weight: .heavy))
                     .kerning(1.2)
@@ -209,7 +209,7 @@ struct BillReminderView: View {
             VStack(spacing: 4) {
                 Text("\(paidCount)")
                     .font(.system(size: 22, weight: .black))
-                    .foregroundColor(Color(hex: "#2E7D32")!)
+                    .foregroundColor(Color(hex: "#2E7D32") ?? .clear)
                 Text("PAID")
                     .font(.system(size: 8, weight: .heavy))
                     .kerning(1.2)
@@ -328,7 +328,7 @@ struct BillCard: View {
     }
 
     var urgencyColor: Color {
-        if bill.isPaid        { return Color(hex: "#2E7D32")! }
+        if bill.isPaid        { return Color(hex: "#2E7D32") ?? .clear }
         if daysUntilDue < 0  { return .red }
         if daysUntilDue <= 3 { return .orange }
         return Color.bpNavy
@@ -383,16 +383,16 @@ struct BillCard: View {
                 if bill.isPaid, let label = paidByLabel {
                     Label(label, systemImage: "checkmark.circle.fill")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Color(hex: "#2E7D32")!)
+                        .foregroundColor(Color(hex: "#2E7D32") ?? .clear)
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color(hex: "#2E7D32")!.opacity(0.12))
+                        .background(Color(hex: "#2E7D32") ?? .clear.opacity(0.12))
                         .clipShape(Capsule())
                     if let name = paidByFirstName {
                         Label("paid by \(name)", systemImage: "person.fill")
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color(hex: "#2E7D32")!)
+                            .foregroundColor(Color(hex: "#2E7D32") ?? .clear)
                             .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(Color(hex: "#2E7D32")!.opacity(0.08))
+                            .background(Color(hex: "#2E7D32") ?? .clear.opacity(0.08))
                             .clipShape(Capsule())
                     }
                 } else {
@@ -432,19 +432,19 @@ struct BillCard: View {
                         Text(bill.isPaid ? "Paid" : "Mark Paid")
                             .font(.system(size: 13, weight: .bold))
                     }
-                    .foregroundColor(bill.isPaid ? Color(hex: "#2E7D32")! : .white)
+                    .foregroundColor(bill.isPaid ? Color(hex: "#2E7D32") ?? .clear : .white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 11)
                     .background(
                         bill.isPaid
-                            ? Color(hex: "#2E7D32")!.opacity(0.1)
-                            : Color(hex: "#2E7D32")!
+                            ? Color(hex: "#2E7D32") ?? .clear.opacity(0.1)
+                            : Color(hex: "#2E7D32") ?? .clear
                     )
                     .cornerRadius(12)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(
-                                bill.isPaid ? Color(hex: "#2E7D32")!.opacity(0.3) : Color.clear,
+                                bill.isPaid ? Color(hex: "#2E7D32") ?? .clear.opacity(0.3) : Color.clear,
                                 lineWidth: 1
                             )
                     )

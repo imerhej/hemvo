@@ -9,20 +9,20 @@ private func listIcon(from stored: String) -> (symbol: String, color: Color) {
     if stored.hasPrefix("sf:") {
         let parts  = stored.dropFirst(3).components(separatedBy: ":")
         let symbol = parts.first ?? "cart.fill"
-        let color  = parts.count > 1 ? (Color(hex: parts[1]) ?? Color(hex: "#C8922A")!) : Color(hex: "#C8922A")!
+        let color  = parts.count > 1 ? (Color(hex: parts[1]) ?? Color(hex: "#C8922A") ?? .clear) : Color(hex: "#C8922A") ?? .clear
         return (symbol, color)
     }
     // Legacy / fallback
-    return ("cart.fill", Color(hex: "#C8922A")!)
+    return ("cart.fill", Color(hex: "#C8922A") ?? .clear)
 }
 
 // MARK: - Palette
-private let slAmber   = Color(hex: "#C8922A")!
-private let slAmberBg = Color(hex: "#F5E4C3")!
-private let slBrown   = Color(hex: "#1A1208")!
-private let slMuted   = Color(hex: "#7A6A55")!
-private let slDivider = Color(hex: "#E6DDD0")!
-private let slCream   = Color(hex: "#FAF7F2")!
+private let slAmber   = Color(hex: "#C8922A") ?? .clear
+private let slAmberBg = Color(hex: "#F5E4C3") ?? .clear
+private let slBrown   = Color(hex: "#1A1208") ?? .clear
+private let slMuted   = Color(hex: "#7A6A55") ?? .clear
+private let slDivider = Color(hex: "#E6DDD0") ?? .clear
+private let slCream   = Color(hex: "#FAF7F2") ?? .clear
 
 // MARK: - ShoppingListsView
 struct ShoppingListsView: View {
@@ -164,7 +164,7 @@ struct ShoppingListCard: View {
                             Text("·").foregroundColor(slMuted)
                             Text("\(list.checkedItems) done")
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(list.isComplete ? Color(hex: "#3D7A52")! : slMuted)
+                                .foregroundColor(list.isComplete ? Color(hex: "#3D7A52") ?? .clear : slMuted)
                         }
                     }
                 }
@@ -173,9 +173,9 @@ struct ShoppingListCard: View {
                     if list.isComplete && list.totalItems > 0 {
                         Text("DONE")
                             .font(.system(size: 9, weight: .heavy)).kerning(1)
-                            .foregroundColor(Color(hex: "#3D7A52")!)
+                            .foregroundColor(Color(hex: "#3D7A52") ?? .clear)
                             .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Color(hex: "#3D7A52")!.opacity(0.1))
+                            .background(Color(hex: "#3D7A52") ?? .clear.opacity(0.1))
                             .cornerRadius(20)
                     }
                     Image(systemName: "chevron.right")
@@ -186,9 +186,9 @@ struct ShoppingListCard: View {
             if list.totalItems > 0 {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 3).fill(Color(hex: "#F5F0EB")!).frame(height: 5)
+                        RoundedRectangle(cornerRadius: 3).fill(Color(hex: "#F5F0EB") ?? .clear).frame(height: 5)
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(list.isComplete ? Color(hex: "#3D7A52")! : icon.color)
+                            .fill(list.isComplete ? Color(hex: "#3D7A52") ?? .clear : icon.color)
                             .frame(width: geo.size.width * list.progress, height: 5)
                             .animation(.spring(response: 0.4), value: list.progress)
                     }
@@ -420,7 +420,7 @@ struct ShoppingListDetailView: View {
             }
             .foregroundColor(isSelected ? .white : slMuted)
             .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(isSelected ? color : Color(hex: "#F5F0EB")!)
+            .background(isSelected ? color : Color(hex: "#F5F0EB") ?? .clear)
             .cornerRadius(20)
             .overlay(RoundedRectangle(cornerRadius: 20)
                 .stroke(isSelected ? color : slDivider, lineWidth: 1))
@@ -490,7 +490,7 @@ struct ShoppingItemRow: View {
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(item.isChecked ? slMuted.opacity(0.6) : slAmber)
                             .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(item.isChecked ? Color(hex: "#F5F0EB")! : slAmberBg)
+                            .background(item.isChecked ? Color(hex: "#F5F0EB") ?? .clear : slAmberBg)
                             .cornerRadius(20)
                     }
                     Text(item.category.rawValue)
@@ -524,7 +524,7 @@ struct ShoppingItemRow: View {
             }
         }
         .padding(14)
-        .background(item.isChecked ? Color(hex: "#F5F0EB")! : Color.white)
+        .background(item.isChecked ? Color(hex: "#F5F0EB") ?? .clear : Color.white)
         .cornerRadius(14)
         .overlay(RoundedRectangle(cornerRadius: 14)
             .stroke(item.isChecked ? slDivider : catColor.opacity(0.15), lineWidth: 1))
@@ -657,7 +657,7 @@ struct NewShoppingListSheet: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 17)
                             .background(name.trimmingCharacters(in: .whitespaces).isEmpty
-                                        ? Color(hex: "#C5C0B8")! : accent)
+                                        ? Color(hex: "#C5C0B8") ?? .clear : accent)
                             .cornerRadius(16)
                             .shadow(color: name.isEmpty ? .clear : accent.opacity(0.4), radius: 10, y: 4)
                             .animation(.easeInOut(duration: 0.15), value: name.isEmpty)
@@ -793,7 +793,7 @@ struct ShoppingItemFormSheet: View {
                                     .font(.system(size: 16, weight: .bold))
                             }
                             .foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 17)
-                            .background(isValid ? slAmber : Color(hex: "#C5C0B8")!)
+                            .background(isValid ? slAmber : Color(hex: "#C5C0B8") ?? .clear)
                             .cornerRadius(16)
                             .shadow(color: isValid ? slAmber.opacity(0.4) : .clear, radius: 10, y: 4)
                             .animation(.easeInOut(duration: 0.15), value: isValid)

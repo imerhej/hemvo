@@ -7,27 +7,27 @@ internal import SwiftUI
 internal import Combine
 
 // MARK: - Palette
-private let mpCream   = Color(hex: "#F5F0E8")!   // page background
-private let mpAmber   = Color(hex: "#C8922A")!   // amber text / accents
-private let mpBrown   = Color(hex: "#1A1208")!   // primary text
-private let mpMuted   = Color(hex: "#7A6A55")!   // secondary text
-private let mpDivider = Color(hex: "#E6DDD0")!   // borders
+private let mpCream   = Color(hex: "#F5F0E8") ?? .clear   // page background
+private let mpAmber   = Color(hex: "#C8922A") ?? .clear   // amber text / accents
+private let mpBrown   = Color(hex: "#1A1208") ?? .clear   // primary text
+private let mpMuted   = Color(hex: "#7A6A55") ?? .clear   // secondary text
+private let mpDivider = Color(hex: "#E6DDD0") ?? .clear   // borders
 
 // Meal type tint colours (matching screenshot) — internal so MealHistoryView can reuse them
 func mealBg(_ type: Meal.MealType) -> Color {
     switch type {
-    case .breakfast: return Color(hex: "#FEF3E2")!   // warm peach
-    case .lunch:     return Color(hex: "#E8F5E9")!   // mint green
-    case .dinner:    return Color(hex: "#E3F0FB")!   // soft blue
-    case .snack:     return Color(hex: "#F3E5F5")!   // lavender
+    case .breakfast: return Color(hex: "#FEF3E2") ?? .clear   // warm peach
+    case .lunch:     return Color(hex: "#E8F5E9") ?? .clear   // mint green
+    case .dinner:    return Color(hex: "#E3F0FB") ?? .clear   // soft blue
+    case .snack:     return Color(hex: "#F3E5F5") ?? .clear   // lavender
     }
 }
 func mealAccent(_ type: Meal.MealType) -> Color {
     switch type {
-    case .breakfast: return Color(hex: "#C8922A")!
-    case .lunch:     return Color(hex: "#3D7A52")!
-    case .dinner:    return Color(hex: "#2979C8")!
-    case .snack:     return Color(hex: "#8B44AC")!
+    case .breakfast: return Color(hex: "#C8922A") ?? .clear
+    case .lunch:     return Color(hex: "#3D7A52") ?? .clear
+    case .dinner:    return Color(hex: "#2979C8") ?? .clear
+    case .snack:     return Color(hex: "#8B44AC") ?? .clear
     }
 }
 
@@ -125,7 +125,7 @@ struct MealPlannerView: View {
                 Button { showHistory = true } label: {
                     ZStack {
                         Circle()
-                            .fill(Color(hex: "#F5E4C3")!)
+                            .fill(Color(hex: "#F5E4C3") ?? .clear)
                             .frame(width: 52, height: 52)
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.system(size: 18, weight: .semibold))
@@ -139,7 +139,7 @@ struct MealPlannerView: View {
                 } label: {
                     ZStack {
                         Circle()
-                            .fill(Color(hex: "#F5E4C3")!)
+                            .fill(Color(hex: "#F5E4C3") ?? .clear)
                             .frame(width: 52, height: 52)
                         Image(systemName: "cart.fill")
                             .font(.system(size: 20, weight: .semibold))
@@ -316,10 +316,10 @@ struct DayCell: View {
     let isSelected: Bool
     let action:     () -> Void
 
-    private let amber   = Color(hex: "#C8922A")!
-    private let brown   = Color(hex: "#1A1208")!
-    private let muted   = Color(hex: "#7A6A55")!
-    private let divider = Color(hex: "#E6DDD0")!
+    private let amber   = Color(hex: "#C8922A") ?? .clear
+    private let brown   = Color(hex: "#1A1208") ?? .clear
+    private let muted   = Color(hex: "#7A6A55") ?? .clear
+    private let divider = Color(hex: "#E6DDD0") ?? .clear
 
     var body: some View {
         Button(action: action) {
@@ -364,8 +364,8 @@ private struct MealTypeSection: View {
 
     private var accent: Color { mealAccent(mealType) }
     private var bg:     Color { mealBg(mealType) }
-    private let brown   = Color(hex: "#1A1208")!
-    private let muted   = Color(hex: "#7A6A55")!
+    private let brown   = Color(hex: "#1A1208") ?? .clear
+    private let muted   = Color(hex: "#7A6A55") ?? .clear
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -479,8 +479,8 @@ struct ScreenshotMealCard: View {
 
     private var accent: Color { mealAccent(mealType) }
     private var bg:     Color { mealBg(mealType) }
-    private let brown   = Color(hex: "#1A1208")!
-    private let muted   = Color(hex: "#7A6A55")!
+    private let brown   = Color(hex: "#1A1208") ?? .clear
+    private let muted   = Color(hex: "#7A6A55") ?? .clear
 
     var body: some View {
         Button {

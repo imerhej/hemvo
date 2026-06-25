@@ -44,12 +44,12 @@ struct AddMaintenanceTaskSheet: View {
         }
     }
 
-    private let amber   = Color(hex: "#C8922A")!
-    private let amberBg = Color(hex: "#F5E4C3")!
-    private let brown   = Color(hex: "#1A1208")!
-    private let muted   = Color(hex: "#7A6A55")!
-    private let divider = Color(hex: "#E6DDD0")!
-    private let cream   = Color(hex: "#F5F0E8")!
+    private let amber   = Color(hex: "#C8922A") ?? .clear
+    private let amberBg = Color(hex: "#F5E4C3") ?? .clear
+    private let brown   = Color(hex: "#1A1208") ?? .clear
+    private let muted   = Color(hex: "#7A6A55") ?? .clear
+    private let divider = Color(hex: "#E6DDD0") ?? .clear
+    private let cream   = Color(hex: "#F5F0E8") ?? .clear
 
     var body: some View {
         NavigationStack {
@@ -71,7 +71,7 @@ struct AddMaintenanceTaskSheet: View {
                                         VStack(spacing: 6) {
                                             ZStack {
                                                 RoundedRectangle(cornerRadius: 14)
-                                                    .fill(isSel ? amber : Color(hex: "#EFEFEF")!)
+                                                    .fill(isSel ? amber : Color(hex: "#EFEFEF") ?? .clear)
                                                     .frame(width: 60, height: 60)
                                                 Image(systemName: a.iconName)
                                                     .font(.system(size: 22, weight: .semibold))
@@ -242,7 +242,7 @@ struct AddMaintenanceTaskSheet: View {
                                         HStack(spacing: 12) {
                                             ZStack {
                                                 Circle()
-                                                    .fill(unassignedSel ? amber : Color(hex: "#EFEFEF")!)
+                                                    .fill(unassignedSel ? amber : Color(hex: "#EFEFEF") ?? .clear)
                                                     .frame(width: 36, height: 36)
                                                 Image(systemName: "person.slash.fill")
                                                     .font(.system(size: 14, weight: .semibold))
@@ -282,7 +282,7 @@ struct AddMaintenanceTaskSheet: View {
                                             HStack(spacing: 12) {
                                                 ZStack {
                                                     Circle()
-                                                        .fill(isSel ? amber : (Color(hex: member.avatarHex) ?? Color(hex: "#EFEFEF")!))
+                                                        .fill(isSel ? amber : (Color(hex: member.avatarHex) ?? Color(hex: "#EFEFEF") ?? .clear))
                                                         .frame(width: 36, height: 36)
                                                     Text(member.username.prefix(1).uppercased())
                                                         .font(.system(size: 14, weight: .bold))
@@ -299,7 +299,7 @@ struct AddMaintenanceTaskSheet: View {
                                                 Spacer()
                                                 ZStack {
                                                     RoundedRectangle(cornerRadius: 6)
-                                                        .fill(isSel ? amber : Color(hex: "#EFEFEF")!)
+                                                        .fill(isSel ? amber : Color(hex: "#EFEFEF") ?? .clear)
                                                         .frame(width: 22, height: 22)
                                                     if isSel {
                                                         Image(systemName: "checkmark")
@@ -383,7 +383,7 @@ struct AddMaintenanceTaskSheet: View {
                             }
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity).padding(.vertical, 17)
-                            .background(isValid ? amber : Color(hex: "#C5C0B8")!)
+                            .background(isValid ? amber : Color(hex: "#C5C0B8") ?? .clear)
                             .cornerRadius(16)
                             .shadow(color: isValid ? amber.opacity(0.4) : .clear, radius: 10, y: 4)
                             .animation(.easeInOut(duration: 0.15), value: isValid)

@@ -370,18 +370,18 @@ struct FamilyCalendarView: View {
         let monthIndex = cal.component(.month, from: monthDate)
         // Palette: each month gets a distinct accent
         let monthColors: [Color] = [
-            Color(hex: "#E53935")!, // Jan - red
-            Color(hex: "#E91E63")!, // Feb - pink
-            Color(hex: "#9C27B0")!, // Mar - purple
-            Color(hex: "#3F51B5")!, // Apr - indigo
-            Color(hex: "#2196F3")!, // May - blue
-            Color(hex: "#00BCD4")!, // Jun - cyan
-            Color(hex: "#009688")!, // Jul - teal
-            Color(hex: "#4CAF50")!, // Aug - green
-            Color(hex: "#8BC34A")!, // Sep - light green
-            Color(hex: "#FF9800")!, // Oct - orange
-            Color(hex: "#FF5722")!, // Nov - deep orange
-            Color(hex: "#795548")!, // Dec - brown
+            Color(hex: "#E53935") ?? .clear, // Jan - red
+            Color(hex: "#E91E63") ?? .clear, // Feb - pink
+            Color(hex: "#9C27B0") ?? .clear, // Mar - purple
+            Color(hex: "#3F51B5") ?? .clear, // Apr - indigo
+            Color(hex: "#2196F3") ?? .clear, // May - blue
+            Color(hex: "#00BCD4") ?? .clear, // Jun - cyan
+            Color(hex: "#009688") ?? .clear, // Jul - teal
+            Color(hex: "#4CAF50") ?? .clear, // Aug - green
+            Color(hex: "#8BC34A") ?? .clear, // Sep - light green
+            Color(hex: "#FF9800") ?? .clear, // Oct - orange
+            Color(hex: "#FF5722") ?? .clear, // Nov - deep orange
+            Color(hex: "#795548") ?? .clear, // Dec - brown
         ]
         let accent = monthColors[monthIndex - 1]
         let isCurrentMonth = cal.isDate(monthDate, equalTo: Date(), toGranularity: .month)
@@ -2622,9 +2622,9 @@ struct CalendarTaskRow: View {
 
     var priorityColor: Color {
         switch task.priority {
-        case .high:   return Color(hex: "#C0392B")!
-        case .medium: return Color(hex: "#E67E22")!
-        case .low:    return Color(hex: "#3D7A52")!
+        case .high:   return Color(hex: "#C0392B") ?? .clear
+        case .medium: return Color(hex: "#E67E22") ?? .clear
+        case .low:    return Color(hex: "#3D7A52") ?? .clear
         }
     }
 
@@ -2632,10 +2632,10 @@ struct CalendarTaskRow: View {
         HStack(spacing: 12) {
             Button { onToggle() } label: {
                 ZStack {
-                    Circle().stroke(task.isComplete ? Color(hex: "#3D7A52")! : Color(.systemGray4), lineWidth: 2)
+                    Circle().stroke(task.isComplete ? Color(hex: "#3D7A52") ?? .clear : Color(.systemGray4), lineWidth: 2)
                         .frame(width: 26, height: 26)
                     if task.isComplete {
-                        Circle().fill(Color(hex: "#3D7A52")!).frame(width: 26, height: 26)
+                        Circle().fill(Color(hex: "#3D7A52") ?? .clear).frame(width: 26, height: 26)
                         Image(systemName: "checkmark").font(.system(size: 10, weight: .black)).foregroundColor(.white)
                     }
                 }

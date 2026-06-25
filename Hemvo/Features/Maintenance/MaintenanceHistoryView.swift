@@ -16,13 +16,13 @@ struct MaintenanceHistoryView: View {
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
 
-    private let amber   = Color(hex: "#C8922A")!
-    private let amberBg = Color(hex: "#F5E4C3")!
-    private let brown   = Color(hex: "#1A1208")!
-    private let muted   = Color(hex: "#7A6A55")!
-    private let divider = Color(hex: "#E6DDD0")!
-    private let cream   = Color(hex: "#FAF7F2")!
-    private let green   = Color(hex: "#3D7A52")!
+    private let amber   = Color(hex: "#C8922A") ?? .clear
+    private let amberBg = Color(hex: "#F5E4C3") ?? .clear
+    private let brown   = Color(hex: "#1A1208") ?? .clear
+    private let muted   = Color(hex: "#7A6A55") ?? .clear
+    private let divider = Color(hex: "#E6DDD0") ?? .clear
+    private let cream   = Color(hex: "#FAF7F2") ?? .clear
+    private let green   = Color(hex: "#3D7A52") ?? .clear
 
     private var filtered: [CompletedTask] {
         var list = vm.history
@@ -84,7 +84,7 @@ struct MaintenanceHistoryView: View {
     private var historyHeader: some View {
         ZStack {
             LinearGradient(
-                colors: [Color(hex: "#2C4A2E")!, Color(hex: "#3D7A52")!],
+                colors: [Color(hex: "#2C4A2E") ?? .clear, Color(hex: "#3D7A52") ?? .clear],
                 startPoint: .topLeading, endPoint: .bottomTrailing)
             .ignoresSafeArea(edges: .top)
 
@@ -198,7 +198,7 @@ struct MaintenanceHistoryView: View {
             }
             .foregroundColor(isSelected ? .white : muted)
             .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(isSelected ? green : Color(hex: "#F5F0EB")!)
+            .background(isSelected ? green : Color(hex: "#F5F0EB") ?? .clear)
             .cornerRadius(20)
             .overlay(RoundedRectangle(cornerRadius: 20).stroke(isSelected ? green : divider, lineWidth: 1))
         }
@@ -210,7 +210,7 @@ struct MaintenanceHistoryView: View {
         VStack(spacing: 20) {
             Spacer()
             ZStack {
-                Circle().fill(Color(hex: "#E8F5E9")!).frame(width: 100, height: 100)
+                Circle().fill(Color(hex: "#E8F5E9") ?? .clear).frame(width: 100, height: 100)
                 Image(systemName: "clock.arrow.circlepath")
                     .font(.system(size: 40)).foregroundColor(green)
             }
@@ -235,13 +235,13 @@ struct HistoryTaskCard: View {
     let canDelete: Bool
     let onDelete:  () -> Void
 
-    private let brown   = Color(hex: "#1A1208")!
-    private let muted   = Color(hex: "#7A6A55")!
-    private let amber   = Color(hex: "#C8922A")!
-    private let amberBg = Color(hex: "#F5E4C3")!
-    private let divider = Color(hex: "#E6DDD0")!
-    private let green   = Color(hex: "#3D7A52")!
-    private let greenBg = Color(hex: "#E8F5E9")!
+    private let brown   = Color(hex: "#1A1208") ?? .clear
+    private let muted   = Color(hex: "#7A6A55") ?? .clear
+    private let amber   = Color(hex: "#C8922A") ?? .clear
+    private let amberBg = Color(hex: "#F5E4C3") ?? .clear
+    private let divider = Color(hex: "#E6DDD0") ?? .clear
+    private let green   = Color(hex: "#3D7A52") ?? .clear
+    private let greenBg = Color(hex: "#E8F5E9") ?? .clear
 
     var body: some View {
         VStack(spacing: 0) {
@@ -262,7 +262,7 @@ struct HistoryTaskCard: View {
                         Text(task.area.rawValue)
                             .font(.system(size: 10, weight: .heavy)).kerning(0.3).foregroundColor(muted)
                             .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Color(hex: "#F5F0EB")!).cornerRadius(20)
+                            .background(Color(hex: "#F5F0EB") ?? .clear).cornerRadius(20)
                         Text(task.frequency.rawValue)
                             .font(.system(size: 10, weight: .heavy)).kerning(0.3).foregroundColor(amber)
                             .padding(.horizontal, 8).padding(.vertical, 3)
@@ -330,7 +330,7 @@ struct HistoryTaskCard: View {
         .background(Color.white)
         .cornerRadius(18)
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(green.opacity(0.15), lineWidth: 1))
-        .shadow(color: Color(hex: "#1A1208")!.opacity(0.04), radius: 6, y: 2)
+        .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.04), radius: 6, y: 2)
     }
 }
 

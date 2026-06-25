@@ -13,11 +13,11 @@ struct MealHistoryView: View {
     @State private var selectedIDs: Set<UUID> = []
     @State private var showDeleteConfirm = false
 
-    private let cream   = Color(hex: "#F5F0E8")!
-    private let amber   = Color(hex: "#C8922A")!
-    private let brown   = Color(hex: "#1A1208")!
-    private let muted   = Color(hex: "#7A6A55")!
-    private let divider = Color(hex: "#E6DDD0")!
+    private let cream   = Color(hex: "#F5F0E8") ?? .clear
+    private let amber   = Color(hex: "#C8922A") ?? .clear
+    private let brown   = Color(hex: "#1A1208") ?? .clear
+    private let muted   = Color(hex: "#7A6A55") ?? .clear
+    private let divider = Color(hex: "#E6DDD0") ?? .clear
 
     // Group past meals by month (most recent month first)
     private var groupedByMonth: [(key: String, meals: [Meal])] {
@@ -147,7 +147,7 @@ struct MealHistoryView: View {
                 } label: {
                     ZStack {
                         Circle()
-                            .fill(Color(hex: "#F5E4C3")!)
+                            .fill(Color(hex: "#F5E4C3") ?? .clear)
                             .frame(width: 44, height: 44)
                         Text("Done")
                             .font(.system(size: 13, weight: .bold))
@@ -160,7 +160,7 @@ struct MealHistoryView: View {
                 } label: {
                     ZStack {
                         Circle()
-                            .fill(Color(hex: "#F5E4C3")!)
+                            .fill(Color(hex: "#F5E4C3") ?? .clear)
                             .frame(width: 44, height: 44)
                         Image(systemName: "pencil")
                             .font(.system(size: 14, weight: .bold))
@@ -172,7 +172,7 @@ struct MealHistoryView: View {
                 Button { dismiss() } label: {
                     ZStack {
                         Circle()
-                            .fill(Color(hex: "#F5E4C3")!)
+                            .fill(Color(hex: "#F5E4C3") ?? .clear)
                             .frame(width: 44, height: 44)
                         Image(systemName: "xmark")
                             .font(.system(size: 14, weight: .bold))

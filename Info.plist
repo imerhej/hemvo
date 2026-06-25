@@ -42,8 +42,6 @@
 	<!-- Permissions -->
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Hemvo reads and writes your calendar to show household events alongside your personal schedule.</string>
-	<key>NSCalendarsUsageDescription</key>
-	<string>Hemvo reads and writes your calendar to show household events alongside your personal schedule.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Hemvo uses Face ID to sign you in securely.</string>
 

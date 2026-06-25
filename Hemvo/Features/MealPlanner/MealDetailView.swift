@@ -31,25 +31,25 @@ struct MealDetailView: View {
     // Match MealRecipeCard colors
     private func typeColor(for meal: Meal) -> Color {
         switch meal.mealType {
-        case .breakfast: return Color(hex: "#C8922A")!
-        case .lunch:     return Color(hex: "#4A9E6B")!
-        case .dinner:    return Color(hex: "#3B7DD8")!
-        case .snack:     return Color(hex: "#9A5CC4")!
+        case .breakfast: return Color(hex: "#C8922A") ?? .clear
+        case .lunch:     return Color(hex: "#4A9E6B") ?? .clear
+        case .dinner:    return Color(hex: "#3B7DD8") ?? .clear
+        case .snack:     return Color(hex: "#9A5CC4") ?? .clear
         }
     }
     private func typeBg(for meal: Meal) -> Color {
         switch meal.mealType {
-        case .breakfast: return Color(hex: "#FEF5E7")!
-        case .lunch:     return Color(hex: "#EAF7EF")!
-        case .dinner:    return Color(hex: "#EBF2FD")!
-        case .snack:     return Color(hex: "#F5EEF9")!
+        case .breakfast: return Color(hex: "#FEF5E7") ?? .clear
+        case .lunch:     return Color(hex: "#EAF7EF") ?? .clear
+        case .dinner:    return Color(hex: "#EBF2FD") ?? .clear
+        case .snack:     return Color(hex: "#F5EEF9") ?? .clear
         }
     }
 
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "#FAF7F2")!.ignoresSafeArea()
+                Color(hex: "#FAF7F2") ?? .clear.ignoresSafeArea()
 
                 if let meal {
                     ScrollView(showsIndicators: false) {
@@ -115,10 +115,10 @@ struct MealDetailView: View {
                 Text(meal.day.label.uppercased())
                     .font(.system(size: 9, weight: .heavy))
                     .kerning(1)
-                    .foregroundColor(Color(hex: "#7A6A55")!)
+                    .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Color(hex: "#F2EDE5")!)
+                    .background(Color(hex: "#F2EDE5") ?? .clear)
                     .cornerRadius(20)
 
                 Spacer()
@@ -146,7 +146,7 @@ struct MealDetailView: View {
                 // Meal name
                 Text(meal.name)
                     .font(.system(size: 26, weight: .black))
-                    .foregroundColor(Color(hex: "#1A1208")!)
+                    .foregroundColor(Color(hex: "#1A1208") ?? .clear)
                     .fixedSize(horizontal: false, vertical: true)
 
                 // Stats row
@@ -166,9 +166,9 @@ struct MealDetailView: View {
         .cornerRadius(16)
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .stroke(Color(hex: "#E6DDD0")!, lineWidth: 1)
+                .stroke(Color(hex: "#E6DDD0") ?? .clear, lineWidth: 1)
         )
-        .shadow(color: Color(hex: "#1A1208")!.opacity(0.05), radius: 8, y: 3)
+        .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.05), radius: 8, y: 3)
     }
 
     // MARK: - Ingredients Card
@@ -182,11 +182,11 @@ struct MealDetailView: View {
                 Text("INGREDIENTS")
                     .font(.system(size: 10, weight: .heavy))
                     .kerning(1.5)
-                    .foregroundColor(Color(hex: "#7A6A55")!)
+                    .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                 Spacer()
                 Text("\(meal.ingredients.count) items")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(Color(hex: "#7A6A55")!.opacity(0.7))
+                    .foregroundColor(Color(hex: "#7A6A55") ?? .clear.opacity(0.7))
             }
 
             if meal.ingredients.isEmpty {
@@ -195,7 +195,7 @@ struct MealDetailView: View {
                         .foregroundColor(typeColor(for: meal).opacity(0.5))
                     Text("No ingredients added.")
                         .font(.system(size: 13))
-                        .foregroundColor(Color(hex: "#7A6A55")!)
+                        .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                 }
                 .padding(.vertical, 6)
             } else {
@@ -207,15 +207,15 @@ struct MealDetailView: View {
                                 .frame(width: 6, height: 6)
                             Text(ing.name)
                                 .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Color(hex: "#1A1208")!)
+                                .foregroundColor(Color(hex: "#1A1208") ?? .clear)
                             Spacer()
                             if !ing.displayQuantity.isEmpty {
                                 Text(ing.displayQuantity)
                                     .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(Color(hex: "#7A6A55")!)
+                                    .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 3)
-                                    .background(Color(hex: "#F2EDE5")!)
+                                    .background(Color(hex: "#F2EDE5") ?? .clear)
                                     .cornerRadius(6)
                             }
                         }
@@ -223,16 +223,16 @@ struct MealDetailView: View {
                         .padding(.horizontal, 14)
 
                         if ing.id != meal.ingredients.last?.id {
-                            Color(hex: "#E6DDD0")!.frame(height: 1)
+                            Color(hex: "#E6DDD0") ?? .clear.frame(height: 1)
                                 .padding(.leading, 32)
                         }
                     }
                 }
-                .background(Color(hex: "#FAFAF8")!)
+                .background(Color(hex: "#FAFAF8") ?? .clear)
                 .cornerRadius(12)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(hex: "#E6DDD0")!, lineWidth: 1)
+                        .stroke(Color(hex: "#E6DDD0") ?? .clear, lineWidth: 1)
                 )
             }
         }
@@ -241,9 +241,9 @@ struct MealDetailView: View {
         .cornerRadius(16)
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .stroke(Color(hex: "#E6DDD0")!, lineWidth: 1)
+                .stroke(Color(hex: "#E6DDD0") ?? .clear, lineWidth: 1)
         )
-        .shadow(color: Color(hex: "#1A1208")!.opacity(0.04), radius: 6, y: 2)
+        .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.04), radius: 6, y: 2)
     }
 
     // MARK: - Notes Card
@@ -256,11 +256,11 @@ struct MealDetailView: View {
                 Text("NOTES")
                     .font(.system(size: 10, weight: .heavy))
                     .kerning(1.5)
-                    .foregroundColor(Color(hex: "#7A6A55")!)
+                    .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
             }
             Text(meal.notes)
                 .font(.system(size: 14, weight: .regular))
-                .foregroundColor(Color(hex: "#4A3F30")!)
+                .foregroundColor(Color(hex: "#4A3F30") ?? .clear)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -284,14 +284,14 @@ struct MealDetailView: View {
                     Text("Past meal — read only")
                         .font(.system(size: 13, weight: .semibold))
                 }
-                .foregroundColor(Color(hex: "#7A6A55")!)
+                .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(Color(hex: "#F2EDE5")!)
+                .background(Color(hex: "#F2EDE5") ?? .clear)
                 .cornerRadius(14)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
-                        .stroke(Color(hex: "#E6DDD0")!, lineWidth: 1)
+                        .stroke(Color(hex: "#E6DDD0") ?? .clear, lineWidth: 1)
                 )
             } else {
                 // Edit — owners and adults only

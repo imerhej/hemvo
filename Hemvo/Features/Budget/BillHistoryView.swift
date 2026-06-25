@@ -95,7 +95,7 @@ struct BillHistoryView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "#FAF7F2")!.ignoresSafeArea()
+                Color(hex: "#FAF7F2") ?? .clear.ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     // ── Custom header ─────────────────────────
@@ -165,18 +165,18 @@ struct BillHistoryView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("EXPENSE HISTORY")
                         .font(.system(size: 10, weight: .heavy)).kerning(3)
-                        .foregroundColor(Color(hex: "#C8922A")!)
+                        .foregroundColor(Color(hex: "#C8922A") ?? .clear)
                     Text("History")
                         .font(.system(size: 26, weight: .black))
-                        .foregroundColor(Color(hex: "#1A1208")!)
+                        .foregroundColor(Color(hex: "#1A1208") ?? .clear)
                 }
                 Spacer()
                 Button { dismiss() } label: {
                     Text("Done")
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(Color(hex: "#C8922A")!)
+                        .foregroundColor(Color(hex: "#C8922A") ?? .clear)
                         .padding(.horizontal, 16).padding(.vertical, 8)
-                        .background(Color(hex: "#F5E4C3")!)
+                        .background(Color(hex: "#F5E4C3") ?? .clear)
                         .cornerRadius(20)
                 }
             }
@@ -186,7 +186,7 @@ struct BillHistoryView: View {
         }
         .frame(height: 120)
         .overlay(alignment: .bottom) {
-            Color(hex: "#E6DDD0")!.frame(height: 1)
+            Color(hex: "#E6DDD0") ?? .clear.frame(height: 1)
         }
     }
 
@@ -198,12 +198,12 @@ struct BillHistoryView: View {
                 Button { withAnimation(.easeInOut(duration: 0.2)) { filter = f } } label: {
                     Text(f.rawValue)
                         .font(.system(size: 12, weight: isSelected ? .heavy : .medium))
-                        .foregroundColor(isSelected ? .white : Color(hex: "#7A6A55")!)
+                        .foregroundColor(isSelected ? .white : Color(hex: "#7A6A55") ?? .clear)
                         .padding(.horizontal, 14).padding(.vertical, 8)
                         .background(
-                            Capsule().fill(isSelected ? Color(hex: "#C8922A")! : Color(hex: "#F5E4C3")!)
+                            Capsule().fill(isSelected ? Color(hex: "#C8922A") ?? .clear : Color(hex: "#F5E4C3") ?? .clear)
                         )
-                        .shadow(color: isSelected ? Color(hex: "#C8922A")!.opacity(0.3) : .clear,
+                        .shadow(color: isSelected ? Color(hex: "#C8922A") ?? .clear.opacity(0.3) : .clear,
                                 radius: 6, y: 2)
                 }
                 .buttonStyle(.plain)
@@ -224,10 +224,10 @@ struct BillHistoryView: View {
                 } label: {
                     Text("All")
                         .font(.system(size: 12, weight: allSelected ? .heavy : .medium))
-                        .foregroundColor(allSelected ? .white : Color(hex: "#7A6A55")!)
+                        .foregroundColor(allSelected ? .white : Color(hex: "#7A6A55") ?? .clear)
                         .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(Capsule().fill(allSelected ? Color(hex: "#C8922A")! : Color(hex: "#F5E4C3")!))
-                        .shadow(color: allSelected ? Color(hex: "#C8922A")!.opacity(0.3) : .clear, radius: 6, y: 2)
+                        .background(Capsule().fill(allSelected ? Color(hex: "#C8922A") ?? .clear : Color(hex: "#F5E4C3") ?? .clear))
+                        .shadow(color: allSelected ? Color(hex: "#C8922A") ?? .clear.opacity(0.3) : .clear, radius: 6, y: 2)
                 }
                 .buttonStyle(.plain)
 
@@ -268,15 +268,15 @@ struct BillHistoryView: View {
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(Color(hex: "#C8922A")!)
+                    .foregroundColor(Color(hex: "#C8922A") ?? .clear)
                     .frame(width: 32, height: 32)
-                    .background(Color(hex: "#F5E4C3")!)
+                    .background(Color(hex: "#F5E4C3") ?? .clear)
                     .clipShape(Circle())
             }
             Spacer()
             Text(selectedMonth.monthYearDisplay)
                 .font(.system(size: 15, weight: .bold))
-                .foregroundColor(Color(hex: "#1A1208")!)
+                .foregroundColor(Color(hex: "#1A1208") ?? .clear)
             Spacer()
             Button {
                 withAnimation {
@@ -285,9 +285,9 @@ struct BillHistoryView: View {
             } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(Color(hex: "#C8922A")!)
+                    .foregroundColor(Color(hex: "#C8922A") ?? .clear)
                     .frame(width: 32, height: 32)
-                    .background(Color(hex: "#F5E4C3")!)
+                    .background(Color(hex: "#F5E4C3") ?? .clear)
                     .clipShape(Circle())
             }
         }
@@ -299,12 +299,12 @@ struct BillHistoryView: View {
             summaryChip(
                 icon:  "checkmark.circle.fill",
                 label: "\(paidBills.count) bills paid",
-                color: Color(hex: "#3D7A52")!
+                color: Color(hex: "#3D7A52") ?? .clear
             )
             summaryChip(
                 icon:  "dollarsign.circle.fill",
                 label: "$\(String(format: "%.2f", totalPaid)) total",
-                color: Color(hex: "#C8922A")!
+                color: Color(hex: "#C8922A") ?? .clear
             )
             Spacer()
         }
@@ -313,7 +313,7 @@ struct BillHistoryView: View {
     private func summaryChip(icon: String, label: String, color: Color) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon).font(.system(size: 12, weight: .bold)).foregroundColor(color)
-            Text(label).font(.system(size: 12, weight: .bold)).foregroundColor(Color(hex: "#1A1208")!)
+            Text(label).font(.system(size: 12, weight: .bold)).foregroundColor(Color(hex: "#1A1208") ?? .clear)
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
         .background(color.opacity(0.1))
@@ -334,14 +334,14 @@ struct BillHistoryView: View {
                     onDelete:  { billToDelete = bill; showDeleteAlert = true }
                 )
                 if idx < bills.count - 1 {
-                    Color(hex: "#E6DDD0")!.frame(height: 1).padding(.leading, 56)
+                    Color(hex: "#E6DDD0") ?? .clear.frame(height: 1).padding(.leading, 56)
                 }
             }
         }
         .background(Color.white)
         .cornerRadius(18)
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(hex: "#E6DDD0")!, lineWidth: 1))
-        .shadow(color: Color(hex: "#1A1208")!.opacity(0.05), radius: 8, y: 3)
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(hex: "#E6DDD0") ?? .clear, lineWidth: 1))
+        .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.05), radius: 8, y: 3)
     }
 
     // MARK: - Month Group (all time view)
@@ -351,14 +351,14 @@ struct BillHistoryView: View {
             HStack(spacing: 6) {
                 Image(systemName: "calendar")
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(Color(hex: "#7A6A55")!)
+                    .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                 Text(month.uppercased())
                     .font(.system(size: 10, weight: .heavy)).kerning(1.4)
-                    .foregroundColor(Color(hex: "#7A6A55")!)
+                    .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                 Spacer()
                 Text("$\(String(format: "%.2f", bills.reduce(0) { $0 + $1.amount }))")
                     .font(.system(size: 11, weight: .heavy))
-                    .foregroundColor(Color(hex: "#C8922A")!)
+                    .foregroundColor(Color(hex: "#C8922A") ?? .clear)
             }
             .padding(.leading, 2)
 
@@ -371,18 +371,18 @@ struct BillHistoryView: View {
         VStack(spacing: 20) {
             Spacer()
             ZStack {
-                Circle().fill(Color(hex: "#F5E4C3")!).frame(width: 90, height: 90)
+                Circle().fill(Color(hex: "#F5E4C3") ?? .clear).frame(width: 90, height: 90)
                 Image(systemName: "clock.badge.checkmark.fill")
                     .font(.system(size: 36))
-                    .foregroundColor(Color(hex: "#C8922A")!)
+                    .foregroundColor(Color(hex: "#C8922A") ?? .clear)
             }
             VStack(spacing: 8) {
                 Text("No Expenses")
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(Color(hex: "#1A1208")!)
+                    .foregroundColor(Color(hex: "#1A1208") ?? .clear)
                 Text("Your one-time expenses and paid bills will appear here.")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Color(hex: "#7A6A55")!)
+                    .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                     .multilineTextAlignment(.center)
             }
             Spacer()
@@ -423,30 +423,30 @@ struct HistoryBillRow: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9)
                         .fill(bill.isPaid
-                              ? Color(hex: "#3D7A52")!.opacity(0.1)
+                              ? Color(hex: "#3D7A52") ?? .clear.opacity(0.1)
                               : bill.category.displayColor.opacity(0.12))
                         .frame(width: 38, height: 38)
                     Image(systemName: bill.isPaid ? "checkmark.circle.fill" : bill.category.iconName)
                         .font(.system(size: bill.isPaid ? 18 : 14, weight: .semibold))
-                        .foregroundColor(bill.isPaid ? Color(hex: "#3D7A52")! : bill.category.displayColor)
+                        .foregroundColor(bill.isPaid ? Color(hex: "#3D7A52") ?? .clear : bill.category.displayColor)
                 }
 
                 // Title
                 Text(bill.title)
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(bill.isPaid ? Color(hex: "#7A6A55")! : Color(hex: "#1A1208")!)
-                    .strikethrough(bill.isPaid, color: Color(hex: "#7A6A55")!.opacity(0.5))
+                    .foregroundColor(bill.isPaid ? Color(hex: "#7A6A55") ?? .clear : Color(hex: "#1A1208") ?? .clear)
+                    .strikethrough(bill.isPaid, color: Color(hex: "#7A6A55") ?? .clear.opacity(0.5))
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 // Amount + category label
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(bill.formattedAmount)
                         .font(.system(size: 14, weight: .black))
-                        .foregroundColor(bill.isPaid ? Color(hex: "#7A6A55")! : Color(hex: "#C0392B")!)
-                        .strikethrough(bill.isPaid, color: Color(hex: "#7A6A55")!.opacity(0.4))
+                        .foregroundColor(bill.isPaid ? Color(hex: "#7A6A55") ?? .clear : Color(hex: "#C0392B") ?? .clear)
+                        .strikethrough(bill.isPaid, color: Color(hex: "#7A6A55") ?? .clear.opacity(0.4))
                     Text(bill.category.rawValue)
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Color(hex: "#7A6A55")!)
+                        .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                 }
 
                 // ── Action buttons ───────────────────────────────
@@ -455,9 +455,9 @@ struct HistoryBillRow: View {
                         Button { onEdit() } label: {
                             Image(systemName: "pencil")
                                 .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Color(hex: "#C8922A")!)
+                                .foregroundColor(Color(hex: "#C8922A") ?? .clear)
                                 .frame(width: 28, height: 28)
-                                .background(Color(hex: "#F5E4C3")!)
+                                .background(Color(hex: "#F5E4C3") ?? .clear)
                                 .clipShape(Circle())
                         }
                         .buttonStyle(.plain)
@@ -482,25 +482,25 @@ struct HistoryBillRow: View {
                 if let label = paidByLabel {
                     Label(label, systemImage: "checkmark.circle.fill")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Color(hex: "#3D7A52")!)
+                        .foregroundColor(Color(hex: "#3D7A52") ?? .clear)
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color(hex: "#3D7A52")!.opacity(0.12))
+                        .background(Color(hex: "#3D7A52") ?? .clear.opacity(0.12))
                         .clipShape(Capsule())
                 }
                 if let name = paidByFirstName {
                     Label("paid by \(name)", systemImage: "person.fill")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(hex: "#3D7A52")!)
+                        .foregroundColor(Color(hex: "#3D7A52") ?? .clear)
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color(hex: "#3D7A52")!.opacity(0.08))
+                        .background(Color(hex: "#3D7A52") ?? .clear.opacity(0.08))
                         .clipShape(Capsule())
                 }
                 if let name = createdByName {
                     Label("by \(name)", systemImage: "person.circle.fill")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(hex: "#7A6A55")!)
+                        .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color(hex: "#7A6A55")!.opacity(0.08))
+                        .background(Color(hex: "#7A6A55") ?? .clear.opacity(0.08))
                         .clipShape(Capsule())
                 }
                 Spacer()

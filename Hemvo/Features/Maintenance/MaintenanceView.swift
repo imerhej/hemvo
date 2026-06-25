@@ -7,12 +7,12 @@ internal import SwiftUI
 internal import Combine
 
 // MARK: - Palette
-private let mvAmber   = Color(hex: "#C8922A")!
-private let mvAmberBg = Color(hex: "#F5E4C3")!
-private let mvBrown   = Color(hex: "#1A1208")!
-private let mvMuted   = Color(hex: "#7A6A55")!
-private let mvDivider = Color(hex: "#E6DDD0")!
-private let mvCream   = Color(hex: "#F5F0E8")!
+private let mvAmber   = Color(hex: "#C8922A") ?? .clear
+private let mvAmberBg = Color(hex: "#F5E4C3") ?? .clear
+private let mvBrown   = Color(hex: "#1A1208") ?? .clear
+private let mvMuted   = Color(hex: "#7A6A55") ?? .clear
+private let mvDivider = Color(hex: "#E6DDD0") ?? .clear
+private let mvCream   = Color(hex: "#F5F0E8") ?? .clear
 
 struct MaintenanceView: View {
 
@@ -117,7 +117,7 @@ struct MaintenanceView: View {
     private var header: some View {
         ZStack(alignment: .bottomLeading) {
             LinearGradient(
-                colors: [Color(hex: "#A0681A")!, mvAmber, Color(hex: "#D4A030")!],
+                colors: [Color(hex: "#A0681A") ?? .clear, mvAmber, Color(hex: "#D4A030") ?? .clear],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             )
             .ignoresSafeArea(edges: .top)
@@ -159,7 +159,7 @@ struct MaintenanceView: View {
 
                 // Stats row
                 HStack(spacing: 0) {
-                    statCell(value: vm.overdueItems.count,  label: "Overdue",    color: Color(hex: "#FF6B6B")!)
+                    statCell(value: vm.overdueItems.count,  label: "Overdue",    color: Color(hex: "#FF6B6B") ?? .clear)
                     statDivider
                     statCell(value: vm.dueSoonItems.count,  label: "Due Soon",   color: .white)
                     statDivider
@@ -283,15 +283,15 @@ struct MaintenanceTaskCard: View {
     let item: MaintenanceItem
 
     private var statusColor: Color {
-        if item.isOverdue  { return Color(hex: "#C0392B")! }
-        if item.isDueSoon  { return Color(hex: "#E67E22")! }
-        return Color(hex: "#3D7A52")!
+        if item.isOverdue  { return Color(hex: "#C0392B") ?? .clear }
+        if item.isDueSoon  { return Color(hex: "#E67E22") ?? .clear }
+        return Color(hex: "#3D7A52") ?? .clear
     }
 
     private var statusBg: Color {
-        if item.isOverdue  { return Color(hex: "#C0392B")!.opacity(0.1) }
-        if item.isDueSoon  { return Color(hex: "#E67E22")!.opacity(0.1) }
-        return Color(hex: "#3D7A52")!.opacity(0.1)
+        if item.isOverdue  { return Color(hex: "#C0392B") ?? .clear.opacity(0.1) }
+        if item.isDueSoon  { return Color(hex: "#E67E22") ?? .clear.opacity(0.1) }
+        return Color(hex: "#3D7A52") ?? .clear.opacity(0.1)
     }
 
     var body: some View {
@@ -341,7 +341,7 @@ struct MaintenanceTaskCard: View {
                 Label(item.nextDue.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()),
                       systemImage: "calendar")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(item.isOverdue ? Color(hex: "#C0392B")! : mvMuted)
+                    .foregroundColor(item.isOverdue ? Color(hex: "#C0392B") ?? .clear : mvMuted)
             }
         }
         .padding(16)
@@ -377,15 +377,15 @@ struct MaintenanceTaskDetailSheet: View {
     }
 
     private var statusColor: Color {
-        if task.isOverdue  { return Color(hex: "#C0392B")! }
-        if task.isDueSoon  { return Color(hex: "#E67E22")! }
-        return Color(hex: "#3D7A52")!
+        if task.isOverdue  { return Color(hex: "#C0392B") ?? .clear }
+        if task.isDueSoon  { return Color(hex: "#E67E22") ?? .clear }
+        return Color(hex: "#3D7A52") ?? .clear
     }
 
     private var statusBg: Color {
-        if task.isOverdue  { return Color(hex: "#C0392B")!.opacity(0.1) }
-        if task.isDueSoon  { return Color(hex: "#E67E22")!.opacity(0.1) }
-        return Color(hex: "#3D7A52")!.opacity(0.1)
+        if task.isOverdue  { return Color(hex: "#C0392B") ?? .clear.opacity(0.1) }
+        if task.isDueSoon  { return Color(hex: "#E67E22") ?? .clear.opacity(0.1) }
+        return Color(hex: "#3D7A52") ?? .clear.opacity(0.1)
     }
 
     private let dateFormatter: DateFormatter = {
@@ -469,9 +469,9 @@ struct MaintenanceTaskDetailSheet: View {
                                     }
                                     .foregroundColor(.white)
                                     .frame(maxWidth: .infinity).padding(.vertical, 17)
-                                    .background(Color(hex: "#3D7A52")!)
+                                    .background(Color(hex: "#3D7A52") ?? .clear)
                                     .cornerRadius(16)
-                                    .shadow(color: Color(hex: "#3D7A52")!.opacity(0.35), radius: 8, y: 4)
+                                    .shadow(color: Color(hex: "#3D7A52") ?? .clear.opacity(0.35), radius: 8, y: 4)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -504,9 +504,9 @@ struct MaintenanceTaskDetailSheet: View {
                                             Image(systemName: "trash.circle.fill").font(.system(size: 16))
                                             Text("Delete").font(.system(size: 15, weight: .bold))
                                         }
-                                        .foregroundColor(Color(hex: "#C0392B")!)
+                                        .foregroundColor(Color(hex: "#C0392B") ?? .clear)
                                         .frame(maxWidth: .infinity).padding(.vertical, 15)
-                                        .background(Color(hex: "#C0392B")!.opacity(0.08))
+                                        .background(Color(hex: "#C0392B") ?? .clear.opacity(0.08))
                                         .cornerRadius(16)
                                     }
                                     .buttonStyle(.plain)
