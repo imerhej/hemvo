@@ -47,7 +47,7 @@ private let pinnedSession: URLSession = {
 
 // MARK: - Supabase client
 let supabase = SupabaseClient(
-    supabaseURL: URL(string: AppSecrets.supabaseURL)!,
+    supabaseURL: URL(string: AppSecrets.supabaseURL) ?? { preconditionFailure("AppSecrets.supabaseURL is not a valid URL") }(),
     supabaseKey: AppSecrets.supabaseAnonKey,
     options: SupabaseClientOptions(
         auth: SupabaseClientOptions.AuthOptions(
