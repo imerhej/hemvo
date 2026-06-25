@@ -42,6 +42,12 @@ serve(async (req: Request) => {
   if (!newPassword || newPassword.length < 8) {
     return jsonError(400, "Password must be at least 8 characters");
   }
+  if (!/[A-Z]/.test(newPassword)) {
+    return jsonError(400, "Password must contain at least one uppercase letter");
+  }
+  if (!/[0-9]/.test(newPassword)) {
+    return jsonError(400, "Password must contain at least one number");
+  }
 
   // Resolve the user ID from the recovery token
   const userClient = createClient(SUPABASE_URL, SERVICE_KEY, {
