@@ -17,6 +17,10 @@ const SERVICE_KEY    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const REDIRECT_TO    = "hemvo://reset-password";
 const APP_NAME       = "Hemvo";
 
+// Max 5 reset emails per email address per hour.
+const RATE_LIMIT_MAX     = 5;
+const RATE_LIMIT_MINUTES = 60;
+
 function htmlEscape(str: string): string {
   return str
     .replace(/&/g, "&amp;")
@@ -33,6 +37,20 @@ function jsonError(status: number, message: string): Response {
   });
 }
 
+async function isAllowed(admin: ReturnType<typeof createClient>, key: string, action: string): Promise<boolean> {
+  const { data, error } = await admin.rpc("check_and_increment_rate_limit", {
+    p_key: key,
+    p_action: action,
+    p_max_count: RATE_LIMIT_MAX,
+    p_window_minutes: RATE_LIMIT_MINUTES,
+  });
+  if (error) {
+    console.warn(`rate limit check failed: ${error.message}`);
+    return true; // fail open — don't block legitimate requests on DB errors
+  }
+  return data === true;
+}
+
 serve(async (req: Request) => {
   if (req.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405 });
@@ -46,13 +64,21 @@ serve(async (req: Request) => {
   }
   if (!email) return jsonError(400, "Missing email");
 
-  // Generate the recovery link server-side using the service role.
-  // On error (e.g. email not found) we still return { sent: true } to
-  // prevent user enumeration — the caller never learns if the email exists.
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
+  if (!await isAllowed(admin, email.toLowerCase(), "password-reset")) {
+    // Return the same shape as success to avoid leaking whether the email exists.
+    return new Response(JSON.stringify({ sent: true }), {
+      status: 429,
+      headers: { "Content-Type": "application/json", "Retry-After": "3600" },
+    });
+  }
+
+  // Generate the recovery link server-side using the service role.
+  // On error (e.g. email not found) we still return { sent: true } to
+  // prevent user enumeration — the caller never learns if the email exists.
   const { data, error: genError } = await admin.auth.admin.generateLink({
     type: "recovery",
     email,
@@ -110,16 +136,12 @@ serve(async (req: Request) => {
     body: JSON.stringify({ from: FROM_ADDRESS, to: [email], subject, html }),
   });
 
-  if (res.ok) {
-    return new Response(JSON.stringify({ sent: true }), {
-      headers: { "Content-Type": "application/json" },
-    });
+  if (!res.ok) {
+    const errBody = await res.text();
+    console.error(`Resend ${res.status}: ${errBody}`);
   }
 
-  const errBody = await res.text();
-  console.error(`Resend ${res.status}: ${errBody}`);
-  return new Response(
-    JSON.stringify({ error: "Email delivery failed", resendStatus: res.status, resendError: errBody }),
-    { status: 502, headers: { "Content-Type": "application/json" } }
-  );
+  return new Response(JSON.stringify({ sent: true }), {
+    headers: { "Content-Type": "application/json" },
+  });
 });

@@ -544,11 +544,6 @@ struct MealSlotCard: View {
         )
     }
 }
-struct WeeklySummaryCard: View {
-    @ObservedObject var mealVM: MealPlanViewModel
-    var body: some View { EmptyView() }
-}
-
 #Preview {
     MealPlannerView()
         .environmentObject(AuthViewModel())

@@ -39,7 +39,7 @@ struct ResetPasswordView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "#FAF7F2") ?? .clear.ignoresSafeArea()
+            (Color(hex: "#FAF7F2") ?? .clear).ignoresSafeArea()
 
             VStack(spacing: 0) {
 

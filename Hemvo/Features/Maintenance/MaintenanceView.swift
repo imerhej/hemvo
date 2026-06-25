@@ -289,9 +289,9 @@ struct MaintenanceTaskCard: View {
     }
 
     private var statusBg: Color {
-        if item.isOverdue  { return Color(hex: "#C0392B") ?? .clear.opacity(0.1) }
-        if item.isDueSoon  { return Color(hex: "#E67E22") ?? .clear.opacity(0.1) }
-        return Color(hex: "#3D7A52") ?? .clear.opacity(0.1)
+        if item.isOverdue  { return (Color(hex: "#C0392B") ?? .clear).opacity(0.1) }
+        if item.isDueSoon  { return (Color(hex: "#E67E22") ?? .clear).opacity(0.1) }
+        return (Color(hex: "#3D7A52") ?? .clear).opacity(0.1)
     }
 
     var body: some View {
@@ -383,9 +383,9 @@ struct MaintenanceTaskDetailSheet: View {
     }
 
     private var statusBg: Color {
-        if task.isOverdue  { return Color(hex: "#C0392B") ?? .clear.opacity(0.1) }
-        if task.isDueSoon  { return Color(hex: "#E67E22") ?? .clear.opacity(0.1) }
-        return Color(hex: "#3D7A52") ?? .clear.opacity(0.1)
+        if task.isOverdue  { return (Color(hex: "#C0392B") ?? .clear).opacity(0.1) }
+        if task.isDueSoon  { return (Color(hex: "#E67E22") ?? .clear).opacity(0.1) }
+        return (Color(hex: "#3D7A52") ?? .clear).opacity(0.1)
     }
 
     private let dateFormatter: DateFormatter = {
@@ -471,7 +471,6 @@ struct MaintenanceTaskDetailSheet: View {
                                     .frame(maxWidth: .infinity).padding(.vertical, 17)
                                     .background(Color(hex: "#3D7A52") ?? .clear)
                                     .cornerRadius(16)
-                                    .shadow(color: Color(hex: "#3D7A52") ?? .clear.opacity(0.35), radius: 8, y: 4)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -491,7 +490,6 @@ struct MaintenanceTaskDetailSheet: View {
                                         .frame(maxWidth: .infinity).padding(.vertical, 15)
                                         .background(mvAmber)
                                         .cornerRadius(16)
-                                        .shadow(color: mvAmber.opacity(0.3), radius: 6, y: 3)
                                     }
                                     .buttonStyle(.plain)
 
@@ -506,7 +504,7 @@ struct MaintenanceTaskDetailSheet: View {
                                         }
                                         .foregroundColor(Color(hex: "#C0392B") ?? .clear)
                                         .frame(maxWidth: .infinity).padding(.vertical, 15)
-                                        .background(Color(hex: "#C0392B") ?? .clear.opacity(0.08))
+                                        .background((Color(hex: "#C0392B") ?? .clear).opacity(0.08))
                                         .cornerRadius(16)
                                     }
                                     .buttonStyle(.plain)

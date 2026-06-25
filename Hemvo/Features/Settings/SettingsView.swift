@@ -112,7 +112,7 @@ struct SettingsView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "#F4F6FB") ?? .clear.ignoresSafeArea()
+            (Color(hex: "#F4F6FB") ?? .clear).ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
@@ -221,7 +221,6 @@ struct SettingsView: View {
                             .font(.system(size: 24, weight: .black))
                             .foregroundColor(.white)
                     }
-                    .shadow(color: Color.black.opacity(0.15), radius: 8, y: 3)
 
                     // Name + email — from Supabase profile
                     VStack(alignment: .leading, spacing: 5) {
@@ -229,7 +228,6 @@ struct SettingsView: View {
                             .font(.system(size: 18, weight: .black))
                             .foregroundColor(.white)
                             .lineLimit(1)
-                            .shadow(color: Color.black.opacity(0.15), radius: 2, y: 1)
                         Text(displayEmail)
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.white.opacity(0.8))
@@ -275,7 +273,6 @@ struct SettingsView: View {
                     .padding(.vertical, 9)
                     .background(Color.white.opacity(0.92))
                     .cornerRadius(12)
-                    .shadow(color: Color.black.opacity(0.12), radius: 4, y: 2)
                     .padding(.top, 16)
                     .onTapGesture { isActive ? (showSubscription = true) : (showPaywall = true) }
                 }
@@ -432,7 +429,7 @@ struct SettingsView: View {
                     .font(.system(size: 9, weight: .heavy)).kerning(0.3)
                     .foregroundColor(Color(hex: "#2E7D32") ?? .clear)
                     .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(Color(hex: "#2E7D32") ?? .clear.opacity(0.1)).cornerRadius(20)
+                    .background((Color(hex: "#2E7D32") ?? .clear).opacity(0.1)).cornerRadius(20)
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
 
@@ -566,7 +563,6 @@ struct SettingsGroup<Content: View>: View {
                 .background(Color.bpSurface)
                 .cornerRadius(18)
                 .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.bpDivider, lineWidth: 1))
-                .shadow(color: Color.bpText.opacity(0.04), radius: 8, y: 3)
         }
     }
 }

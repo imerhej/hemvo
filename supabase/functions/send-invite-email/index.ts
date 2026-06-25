@@ -18,11 +18,29 @@ const SUPABASE_URL   = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const APP_NAME       = "Hemvo";
 
+// Max 20 invite emails per user per hour.
+const RATE_LIMIT_MAX     = 20;
+const RATE_LIMIT_MINUTES = 60;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin":  "https://hemvo.app",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
 };
+
+async function isAllowed(admin: ReturnType<typeof createClient>, key: string, action: string): Promise<boolean> {
+  const { data, error } = await admin.rpc("check_and_increment_rate_limit", {
+    p_key: key,
+    p_action: action,
+    p_max_count: RATE_LIMIT_MAX,
+    p_window_minutes: RATE_LIMIT_MINUTES,
+  });
+  if (error) {
+    console.warn(`rate limit check failed: ${error.message}`);
+    return true;
+  }
+  return data === true;
+}
 
 function htmlEscape(str: string): string {
   return str
@@ -61,6 +79,13 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+  }
+
+  if (!await isAllowed(admin, user.id, "send-invite")) {
+    return new Response(JSON.stringify({ error: "Too many invite emails. Please try again later." }), {
+      status: 429,
+      headers: { "Content-Type": "application/json", "Retry-After": "3600", ...corsHeaders },
     });
   }
 

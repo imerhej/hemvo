@@ -95,7 +95,7 @@ struct BillHistoryView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "#FAF7F2") ?? .clear.ignoresSafeArea()
+                (Color(hex: "#FAF7F2") ?? .clear).ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     // ── Custom header ─────────────────────────
@@ -186,7 +186,7 @@ struct BillHistoryView: View {
         }
         .frame(height: 120)
         .overlay(alignment: .bottom) {
-            Color(hex: "#E6DDD0") ?? .clear.frame(height: 1)
+            (Color(hex: "#E6DDD0") ?? .clear).frame(height: 1)
         }
     }
 
@@ -203,8 +203,6 @@ struct BillHistoryView: View {
                         .background(
                             Capsule().fill(isSelected ? Color(hex: "#C8922A") ?? .clear : Color(hex: "#F5E4C3") ?? .clear)
                         )
-                        .shadow(color: isSelected ? Color(hex: "#C8922A") ?? .clear.opacity(0.3) : .clear,
-                                radius: 6, y: 2)
                 }
                 .buttonStyle(.plain)
                 .animation(.easeInOut(duration: 0.15), value: isSelected)
@@ -227,7 +225,6 @@ struct BillHistoryView: View {
                         .foregroundColor(allSelected ? .white : Color(hex: "#7A6A55") ?? .clear)
                         .padding(.horizontal, 14).padding(.vertical, 8)
                         .background(Capsule().fill(allSelected ? Color(hex: "#C8922A") ?? .clear : Color(hex: "#F5E4C3") ?? .clear))
-                        .shadow(color: allSelected ? Color(hex: "#C8922A") ?? .clear.opacity(0.3) : .clear, radius: 6, y: 2)
                 }
                 .buttonStyle(.plain)
 
@@ -248,7 +245,6 @@ struct BillHistoryView: View {
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(Capsule().fill(isSelected ? cat.displayColor : cat.displayColor.opacity(0.12)))
                         .overlay(Capsule().stroke(cat.displayColor.opacity(isSelected ? 0 : 0.25), lineWidth: 1))
-                        .shadow(color: isSelected ? cat.displayColor.opacity(0.3) : .clear, radius: 6, y: 2)
                     }
                     .buttonStyle(.plain)
                     .animation(.easeInOut(duration: 0.15), value: isSelected)
@@ -334,14 +330,13 @@ struct BillHistoryView: View {
                     onDelete:  { billToDelete = bill; showDeleteAlert = true }
                 )
                 if idx < bills.count - 1 {
-                    Color(hex: "#E6DDD0") ?? .clear.frame(height: 1).padding(.leading, 56)
+                    (Color(hex: "#E6DDD0") ?? .clear).frame(height: 1).padding(.leading, 56)
                 }
             }
         }
         .background(Color.white)
         .cornerRadius(18)
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(hex: "#E6DDD0") ?? .clear, lineWidth: 1))
-        .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.05), radius: 8, y: 3)
     }
 
     // MARK: - Month Group (all time view)
@@ -423,7 +418,7 @@ struct HistoryBillRow: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9)
                         .fill(bill.isPaid
-                              ? Color(hex: "#3D7A52") ?? .clear.opacity(0.1)
+                              ? (Color(hex: "#3D7A52") ?? .clear).opacity(0.1)
                               : bill.category.displayColor.opacity(0.12))
                         .frame(width: 38, height: 38)
                     Image(systemName: bill.isPaid ? "checkmark.circle.fill" : bill.category.iconName)
@@ -484,7 +479,7 @@ struct HistoryBillRow: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(Color(hex: "#3D7A52") ?? .clear)
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color(hex: "#3D7A52") ?? .clear.opacity(0.12))
+                        .background((Color(hex: "#3D7A52") ?? .clear).opacity(0.12))
                         .clipShape(Capsule())
                 }
                 if let name = paidByFirstName {
@@ -492,7 +487,7 @@ struct HistoryBillRow: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(Color(hex: "#3D7A52") ?? .clear)
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color(hex: "#3D7A52") ?? .clear.opacity(0.08))
+                        .background((Color(hex: "#3D7A52") ?? .clear).opacity(0.08))
                         .clipShape(Capsule())
                 }
                 if let name = createdByName {
@@ -500,7 +495,7 @@ struct HistoryBillRow: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color(hex: "#7A6A55") ?? .clear.opacity(0.08))
+                        .background((Color(hex: "#7A6A55") ?? .clear).opacity(0.08))
                         .clipShape(Capsule())
                 }
                 Spacer()

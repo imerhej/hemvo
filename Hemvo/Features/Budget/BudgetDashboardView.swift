@@ -213,7 +213,6 @@ struct BudgetDashboardView: View {
             }
             .padding(22)
         }
-        .shadow(color: Color(hex: "#4A3728") ?? .clear.opacity(0.4), radius: 20, y: 8)
     }
 
     // MARK: - Personal Stats Row
@@ -344,7 +343,6 @@ struct BudgetDashboardView: View {
             }
             .padding(22)
         }
-        .shadow(color: Color.wAmber.opacity(0.4), radius: 20, y: 8)
         }
         .buttonStyle(.plain)
     }
@@ -505,8 +503,7 @@ struct BudgetDashboardView: View {
                 Text("Add Expense").font(.system(size: 13, weight: .bold)).foregroundColor(.white)
             }
             .padding(.horizontal, 16).padding(.vertical, 9)
-            .background(Capsule().fill(Color.wAmber)
-                .shadow(color: Color.wAmber.opacity(0.35), radius: 6, y: 2))
+            .background(Capsule().fill(Color.wAmber))
         }
     }
 
@@ -533,7 +530,6 @@ private extension View {
             .background(Color.wSurface)
             .cornerRadius(20)
             .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.wDivider, lineWidth: 1))
-            .shadow(color: Color.wBrown.opacity(0.06), radius: 10, y: 4)
     }
 }
 
@@ -558,7 +554,6 @@ struct WarmStatTile: View {
         .background(Color.wSurface)
         .cornerRadius(14)
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.wDivider, lineWidth: 1))
-        .shadow(color: Color.wBrown.opacity(0.04), radius: 6, y: 2)
     }
 }
 
@@ -829,7 +824,7 @@ struct ExpenseRow: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9)
                         .fill(isPaid
-                              ? Color(hex: "#3D7A52") ?? .clear.opacity(0.1)
+                              ? (Color(hex: "#3D7A52") ?? .clear).opacity(0.1)
                               : expense.category.displayColor.opacity(0.12))
                         .frame(width: 38, height: 38)
                     Image(systemName: isPaid ? "checkmark.circle.fill" : expense.category.iconName)
@@ -887,7 +882,7 @@ struct ExpenseRow: View {
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(Color(hex: "#2E7D32") ?? .clear)
                             .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(Color(hex: "#2E7D32") ?? .clear.opacity(0.12))
+                            .background((Color(hex: "#2E7D32") ?? .clear).opacity(0.12))
                             .clipShape(Capsule())
                     }
                     if let name = paidByFirstName {
@@ -895,7 +890,7 @@ struct ExpenseRow: View {
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(Color(hex: "#2E7D32") ?? .clear)
                             .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(Color(hex: "#2E7D32") ?? .clear.opacity(0.08))
+                            .background((Color(hex: "#2E7D32") ?? .clear).opacity(0.08))
                             .clipShape(Capsule())
                     }
                 } else {
@@ -946,7 +941,6 @@ struct BudgetOverviewCard: View {
         .padding()
         .background(Color(.systemBackground))
         .cornerRadius(16)
-        .shadow(color: .black.opacity(0.05), radius: 6, x: 0, y: 2)
     }
 }
 

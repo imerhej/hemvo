@@ -208,13 +208,24 @@ CREATE POLICY "meals_delete"
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- grocery_items
+-- Schema: id, household_id, name, quantity, unit, category, is_checked, created_by, created_at
 -- ─────────────────────────────────────────────────────────────────────────────
 ALTER TABLE grocery_items ENABLE ROW LEVEL SECURITY;
 
+-- Household members see all items in their household (migration 20260626150000).
 CREATE POLICY "grocery_items_select"
   ON grocery_items FOR SELECT
   TO authenticated
-  USING (created_by = auth.uid());
+  USING (
+    created_by = auth.uid()
+    OR (
+      household_id IS NOT NULL
+      AND household_id IN (
+        SELECT household_id FROM profiles
+        WHERE id = auth.uid() AND household_id IS NOT NULL
+      )
+    )
+  );
 
 CREATE POLICY "grocery_items_insert"
   ON grocery_items FOR INSERT
@@ -233,38 +244,100 @@ CREATE POLICY "grocery_items_delete"
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- shopping_items
+-- Schema: id, list_id, name, quantity, unit, category, is_checked, note, created_at
+-- No household_id or created_by — access is derived from the parent shopping_list.
 -- ─────────────────────────────────────────────────────────────────────────────
 ALTER TABLE shopping_items ENABLE ROW LEVEL SECURITY;
 
+-- Visible when the parent shopping_list is visible to the caller (migration 20260626150000).
 CREATE POLICY "shopping_items_select"
   ON shopping_items FOR SELECT
   TO authenticated
-  USING (created_by = auth.uid());
+  USING (
+    list_id IN (
+      SELECT id FROM shopping_lists
+      WHERE created_by = auth.uid()
+        OR (
+          household_id IS NOT NULL
+          AND household_id IN (
+            SELECT household_id FROM profiles
+            WHERE id = auth.uid() AND household_id IS NOT NULL
+          )
+        )
+    )
+  );
 
 CREATE POLICY "shopping_items_insert"
   ON shopping_items FOR INSERT
   TO authenticated
-  WITH CHECK (created_by = auth.uid());
+  WITH CHECK (
+    list_id IN (
+      SELECT id FROM shopping_lists
+      WHERE created_by = auth.uid()
+        OR (
+          household_id IS NOT NULL
+          AND household_id IN (
+            SELECT household_id FROM profiles
+            WHERE id = auth.uid() AND household_id IS NOT NULL
+          )
+        )
+    )
+  );
 
 CREATE POLICY "shopping_items_update"
   ON shopping_items FOR UPDATE
   TO authenticated
-  USING (created_by = auth.uid());
+  USING (
+    list_id IN (
+      SELECT id FROM shopping_lists
+      WHERE created_by = auth.uid()
+        OR (
+          household_id IS NOT NULL
+          AND household_id IN (
+            SELECT household_id FROM profiles
+            WHERE id = auth.uid() AND household_id IS NOT NULL
+          )
+        )
+    )
+  );
 
 CREATE POLICY "shopping_items_delete"
   ON shopping_items FOR DELETE
   TO authenticated
-  USING (created_by = auth.uid());
+  USING (
+    list_id IN (
+      SELECT id FROM shopping_lists
+      WHERE created_by = auth.uid()
+        OR (
+          household_id IS NOT NULL
+          AND household_id IN (
+            SELECT household_id FROM profiles
+            WHERE id = auth.uid() AND household_id IS NOT NULL
+          )
+        )
+    )
+  );
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- shopping_lists
+-- Schema: id, household_id, name, emoji, created_by, created_at
 -- ─────────────────────────────────────────────────────────────────────────────
 ALTER TABLE shopping_lists ENABLE ROW LEVEL SECURITY;
 
+-- Household members see all lists in their household (migration 20260626150000).
 CREATE POLICY "shopping_lists_select"
   ON shopping_lists FOR SELECT
   TO authenticated
-  USING (created_by = auth.uid());
+  USING (
+    created_by = auth.uid()
+    OR (
+      household_id IS NOT NULL
+      AND household_id IN (
+        SELECT household_id FROM profiles
+        WHERE id = auth.uid() AND household_id IS NOT NULL
+      )
+    )
+  );
 
 CREATE POLICY "shopping_lists_insert"
   ON shopping_lists FOR INSERT

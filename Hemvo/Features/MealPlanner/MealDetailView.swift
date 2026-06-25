@@ -49,7 +49,7 @@ struct MealDetailView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "#FAF7F2") ?? .clear.ignoresSafeArea()
+                (Color(hex: "#FAF7F2") ?? .clear).ignoresSafeArea()
 
                 if let meal {
                     ScrollView(showsIndicators: false) {
@@ -168,7 +168,7 @@ struct MealDetailView: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color(hex: "#E6DDD0") ?? .clear, lineWidth: 1)
         )
-        .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.05), radius: 8, y: 3)
+        .shadow(color: (Color(hex: "#1A1208") ?? .clear).opacity(0.05), radius: 8, y: 3)
     }
 
     // MARK: - Ingredients Card
@@ -186,7 +186,7 @@ struct MealDetailView: View {
                 Spacer()
                 Text("\(meal.ingredients.count) items")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(Color(hex: "#7A6A55") ?? .clear.opacity(0.7))
+                    .foregroundColor((Color(hex: "#7A6A55") ?? .clear).opacity(0.7))
             }
 
             if meal.ingredients.isEmpty {
@@ -201,29 +201,10 @@ struct MealDetailView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(meal.ingredients) { ing in
-                        HStack(spacing: 12) {
-                            Circle()
-                                .fill(typeColor(for: meal).opacity(0.3))
-                                .frame(width: 6, height: 6)
-                            Text(ing.name)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Color(hex: "#1A1208") ?? .clear)
-                            Spacer()
-                            if !ing.displayQuantity.isEmpty {
-                                Text(ing.displayQuantity)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(Color(hex: "#F2EDE5") ?? .clear)
-                                    .cornerRadius(6)
-                            }
-                        }
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 14)
-
+                        ingredientRow(ing: ing, meal: meal)
                         if ing.id != meal.ingredients.last?.id {
-                            Color(hex: "#E6DDD0") ?? .clear.frame(height: 1)
+                            (Color(hex: "#E6DDD0") ?? .clear)
+                                .frame(height: 1)
                                 .padding(.leading, 32)
                         }
                     }
@@ -243,7 +224,31 @@ struct MealDetailView: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color(hex: "#E6DDD0") ?? .clear, lineWidth: 1)
         )
-        .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.04), radius: 6, y: 2)
+        .shadow(color: (Color(hex: "#1A1208") ?? .clear).opacity(0.04), radius: 6, y: 2)
+    }
+
+    @ViewBuilder
+    private func ingredientRow(ing: GroceryItem, meal: Meal) -> some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(typeColor(for: meal).opacity(0.3))
+                .frame(width: 6, height: 6)
+            Text(ing.name)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(Color(hex: "#1A1208") ?? .clear)
+            Spacer()
+            if !ing.displayQuantity.isEmpty {
+                Text(ing.displayQuantity)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(hex: "#F2EDE5") ?? .clear)
+                    .cornerRadius(6)
+            }
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
     }
 
     // MARK: - Notes Card

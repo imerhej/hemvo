@@ -197,7 +197,6 @@ struct ProfileView: View {
         }
         .background(Color.white)
         .overlay(alignment: .bottom) { divider.frame(height: 1) }
-        .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.04), radius: 4, y: 2)
     }
 
     @ViewBuilder
@@ -310,7 +309,6 @@ struct WarmPersonalSection: View {
                     )
                     .animation(.easeInOut(duration: 0.15), value: focused != nil)
             )
-            .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.04), radius: 6, y: 2)
             .shake(trigger: shake)
 
             // Account info card
@@ -326,7 +324,6 @@ struct WarmPersonalSection: View {
             .background(Color.white)
             .cornerRadius(18)
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(divider, lineWidth: 1))
-            .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.04), radius: 6, y: 2)
 
             // Save button
             Button { save() } label: {
@@ -345,7 +342,6 @@ struct WarmPersonalSection: View {
                 .padding(.vertical, 17)
                 .background(isDirty ? amber : Color(.systemGray4))
                 .cornerRadius(16)
-                .shadow(color: isDirty ? amber.opacity(0.4) : .clear, radius: 10, y: 4)
                 .animation(.easeInOut(duration: 0.15), value: isDirty)
             }
             .disabled(!isDirty || isSaving)
@@ -359,16 +355,12 @@ struct WarmPersonalSection: View {
                 .padding(.horizontal, 20).padding(.vertical, 14)
                 .background(Color.white)
                 .cornerRadius(30)
-                .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.1), radius: 12, y: 4)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .onAppear {
             name     = authVM.profile?.fullName ?? ""
             username = authVM.profile?.username ?? ""
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                focused = .name
-            }
         }
     }
 
@@ -532,7 +524,7 @@ struct SecuritySection: View {
                     submitLabelType: .next,
                     onSubmitAction: { focusedField = .new }
                 )
-                Color(hex: "#DDE1EE") ?? .clear.frame(height: 1).padding(.leading, 52)
+                (Color(hex: "#DDE1EE") ?? .clear).frame(height: 1).padding(.leading, 52)
                 SecurityPasswordRow(
                     label: "New Password", icon: "lock.open.fill",
                     text: $newPassword, focused: $focusedField, tag: .new,
@@ -541,7 +533,7 @@ struct SecuritySection: View {
                     submitLabelType: .next,
                     onSubmitAction: { focusedField = .confirm }
                 )
-                Color(hex: "#DDE1EE") ?? .clear.frame(height: 1).padding(.leading, 52)
+                (Color(hex: "#DDE1EE") ?? .clear).frame(height: 1).padding(.leading, 52)
                 SecurityPasswordRow(
                     label: "Confirm New Password", icon: "checkmark.shield.fill",
                     text: $confirmPassword, focused: $focusedField, tag: .confirm,
@@ -610,11 +602,6 @@ struct SecuritySection: View {
                 .cornerRadius(30)
                 .shadow(color: Color.bpText.opacity(0.1), radius: 12, y: 4)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                focusedField = .current
             }
         }
         .onDisappear { saveTask?.cancel() }

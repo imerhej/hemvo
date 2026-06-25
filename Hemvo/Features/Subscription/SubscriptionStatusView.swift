@@ -54,7 +54,7 @@ struct SubscriptionStatusView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "#F4F6FB") ?? .clear.ignoresSafeArea()
+                (Color(hex: "#F4F6FB") ?? .clear).ignoresSafeArea()
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 20) {

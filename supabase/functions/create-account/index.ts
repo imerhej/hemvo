@@ -17,6 +17,10 @@ const SERVICE_KEY    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const REDIRECT_TO    = "hemvo://";
 const APP_NAME       = "Hemvo";
 
+// Max 5 signup attempts per email address per hour.
+const RATE_LIMIT_MAX     = 5;
+const RATE_LIMIT_MINUTES = 60;
+
 function htmlEscape(str: string): string {
   return str
     .replace(/&/g, "&amp;")
@@ -31,6 +35,20 @@ function jsonError(status: number, message: string): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+async function isAllowed(admin: ReturnType<typeof createClient>, key: string, action: string): Promise<boolean> {
+  const { data, error } = await admin.rpc("check_and_increment_rate_limit", {
+    p_key: key,
+    p_action: action,
+    p_max_count: RATE_LIMIT_MAX,
+    p_window_minutes: RATE_LIMIT_MINUTES,
+  });
+  if (error) {
+    console.warn(`rate limit check failed: ${error.message}`);
+    return true;
+  }
+  return data === true;
 }
 
 serve(async (req: Request) => {
@@ -54,6 +72,10 @@ serve(async (req: Request) => {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+
+  if (!await isAllowed(admin, email.toLowerCase(), "create-account")) {
+    return jsonError(429, "Too many signup attempts. Please try again later.");
+  }
 
   // Create the user via admin API — does NOT call Supabase's SMTP,
   // so the user row is never rolled back due to email delivery failure.

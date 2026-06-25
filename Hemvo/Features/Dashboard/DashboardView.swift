@@ -229,7 +229,7 @@ struct DashboardView: View {
                         }
                         .buttonStyle(.plain)
                         if event.id != scheduleVM.upcomingEvents.prefix(4).last?.id {
-                            Color(hex: "#E6DDD0") ?? .clear.frame(height: 1).padding(.vertical, 2)
+                            (Color(hex: "#E6DDD0") ?? .clear).frame(height: 1).padding(.vertical, 2)
                         }
                     }
                 }
@@ -258,7 +258,7 @@ struct DashboardView: View {
                         Button { showGrocery = true } label: { WarmGroceryRow(item: item) }
                             .buttonStyle(.plain)
                         if item.id != groceryVM.uncheckedItems.prefix(3).last?.id {
-                            Color(hex: "#E6DDD0") ?? .clear.frame(height: 1).padding(.vertical, 2)
+                            (Color(hex: "#E6DDD0") ?? .clear).frame(height: 1).padding(.vertical, 2)
                         }
                     }
                     if groceryVM.uncheckedItems.count > 3 {
@@ -295,7 +295,7 @@ struct DashboardView: View {
                         Button { onSwitchToMaintenance?() } label: { WarmMaintenanceRow(item: item) }
                             .buttonStyle(.plain)
                         if item.id != alerts.prefix(3).last?.id {
-                            Color(hex: "#E6DDD0") ?? .clear.frame(height: 1).padding(.vertical, 2)
+                            (Color(hex: "#E6DDD0") ?? .clear).frame(height: 1).padding(.vertical, 2)
                         }
                     }
                 }
@@ -410,7 +410,6 @@ struct WarmStatCard: View {
             .background(Color.white)
             .cornerRadius(18)
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(hex: "#E6DDD0") ?? .clear, lineWidth: 1))
-            .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.05), radius: 6, y: 2)
         }
         .buttonStyle(.plain)
     }
@@ -457,7 +456,6 @@ struct WarmCard<Content: View>: View {
         .background(Color.white)
         .cornerRadius(20)
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color(hex: "#E6DDD0") ?? .clear, lineWidth: 1))
-        .shadow(color: Color(hex: "#1A1208") ?? .clear.opacity(0.04), radius: 8, y: 3)
     }
 }
 
@@ -573,7 +571,7 @@ struct CalendarDetailView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "#FAF7F2") ?? .clear.ignoresSafeArea()
+            (Color(hex: "#FAF7F2") ?? .clear).ignoresSafeArea()
             VStack(spacing: 0) {
                 CalendarStrip(selectedDate: $selectedDate, vm: scheduleVM)
                     .background(Color.white)

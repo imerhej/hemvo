@@ -2603,16 +2603,104 @@ struct EventDetailSheet: View {
 struct CalendarStrip: View {
     @Binding var selectedDate: Date
     @ObservedObject var vm: ScheduleViewModel
-    var body: some View { EmptyView() }
+
+    private var days: [Date] {
+        let cal   = Calendar.current
+        let start = cal.date(byAdding: .day, value: -2, to: Date()) ?? Date()
+        return (0..<14).compactMap { cal.date(byAdding: .day, value: $0, to: start) }
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(days, id: \.self) { day in
+                    let isSelected = day.isSameDay(as: selectedDate)
+                    let isToday    = day.isToday
+                    let hasEvent   = !vm.events(on: day).isEmpty
+                    Button { selectedDate = day } label: {
+                        VStack(spacing: 4) {
+                            Text(day.formatted(.dateTime.weekday(.abbreviated)))
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(isSelected ? (Color(hex: "#C8922A") ?? .clear) : .secondary)
+                            ZStack {
+                                Circle()
+                                    .fill(isSelected
+                                          ? (Color(hex: "#C8922A") ?? .clear)
+                                          : (isToday ? (Color(hex: "#C8922A")?.opacity(0.15) ?? .clear) : Color.clear))
+                                    .frame(width: 34, height: 34)
+                                Text(day.formatted(.dateTime.day()))
+                                    .font(.system(size: 15, weight: isToday || isSelected ? .bold : .regular))
+                                    .foregroundColor(isSelected ? .white : (isToday ? (Color(hex: "#C8922A") ?? .clear) : .primary))
+                            }
+                            Circle()
+                                .fill(hasEvent ? (Color(hex: "#E53935") ?? .clear) : Color.clear)
+                                .frame(width: 5, height: 5)
+                        }
+                        .padding(.horizontal, 4)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        }
+    }
 }
+
 struct EventDetailRow: View {
-    let event: CalendarEvent; let member: HouseholdMember?; let onDelete: () -> Void
-    var body: some View { EmptyView() }
+    let event: CalendarEvent
+    let member: HouseholdMember?
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Color(hex: event.colorHex) ?? .clear)
+                .frame(width: 4)
+                .padding(.vertical, 4)
+                .padding(.leading, 14)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(event.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(event.formattedTime)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Image(systemName: event.category.iconName)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    if let m = member {
+                        HStack(spacing: 3) {
+                            Image(systemName: "person.fill").font(.system(size: 8))
+                            Text(m.name).font(.system(size: 10, weight: .medium))
+                        }.foregroundColor(.secondary)
+                    }
+                }
+            }
+            Spacer()
+            Button { onDelete() } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.red.opacity(0.6))
+                    .frame(width: 28, height: 28)
+                    .background(Color.red.opacity(0.07))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 14)
+        }
+        .padding(.vertical, 10)
+    }
 }
+
 struct TaskDetailRow: View {
     let task: HouseTask; let member: HouseholdMember?
     let onToggle: () -> Void; let onDelete: () -> Void
-    var body: some View { EmptyView() }
+    var body: some View {
+        CalendarTaskRow(task: task, member: member, onToggle: onToggle, onDelete: onDelete)
+    }
 }
 
 // MARK: - CalendarTaskRow (used by DashboardView)
@@ -2672,14 +2760,6 @@ struct CalendarTaskRow: View {
         }
         .padding(.vertical, 10)
     }
-}
-
-// MARK: - CalendarDayCell (unused, kept for compatibility)
-struct CalendarDayCell: View {
-    let day: Date?; let isSelected: Bool; let isToday: Bool
-    let isCurrentMonth: Bool; let hasEvents: Bool
-    let eventColors: [Color]; let onTap: () -> Void
-    var body: some View { EmptyView() }
 }
 
 // MARK: - FlowLayout
