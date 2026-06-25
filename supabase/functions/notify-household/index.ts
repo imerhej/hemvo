@@ -141,11 +141,10 @@ serve(async (req: Request) => {
   let household_id: string | undefined,
       user_ids: string[] | undefined,
       exclude_user_ids: string[] | undefined,
-      creator_id: string | undefined,
       title: string,
       body: string;
   try {
-    ({ household_id, user_ids, exclude_user_ids, creator_id, title, body } = await req.json());
+    ({ household_id, user_ids, exclude_user_ids, title, body } = await req.json());
   } catch {
     return new Response(JSON.stringify({ error: "invalid JSON" }), {
       status: 400,
@@ -224,11 +223,12 @@ serve(async (req: Request) => {
 
   let targetUserIds: string[];
 
+  // Always derive the creator from the verified JWT — never trust the request body.
+  const creator_id = callerProfile.id;
+
   if (user_ids && user_ids.length > 0) {
     // Targeting specific users (e.g. invitees) — filter out the creator.
-    targetUserIds = creator_id
-      ? user_ids.filter(id => id !== creator_id)
-      : user_ids;
+    targetUserIds = user_ids.filter(id => id !== creator_id);
   } else {
     // Broadcast to the whole household: resolve member IDs via profiles table.
     // This is more reliable than filtering device_tokens by household_id because
@@ -236,15 +236,14 @@ serve(async (req: Request) => {
     let profileQuery = supabase
       .from("profiles")
       .select("id")
-      .eq("household_id", household_id!);
-
-    if (creator_id) {
-      profileQuery = profileQuery.neq("id", creator_id);
-    }
+      .eq("household_id", household_id!)
+      .neq("id", creator_id);
 
     // Exclude specific users (e.g. invitees who already got a personal push).
     if (exclude_user_ids && exclude_user_ids.length > 0) {
-      profileQuery = profileQuery.not("id", "in", `(${exclude_user_ids.join(",")})`);
+      for (const excludedId of exclude_user_ids) {
+        profileQuery = profileQuery.neq("id", excludedId);
+      }
     }
 
     const { data: members, error: profileErr } = await profileQuery;
