@@ -109,10 +109,20 @@ CREATE POLICY "events_update"
     )
   );
 
+-- Owner/Adult: full delete authority over household events.
+-- Teen or solo: may only delete events they created.
+-- Migration 20260628120000 moved role enforcement from client-side to DB.
 CREATE POLICY "events_delete"
   ON events FOR DELETE
   TO authenticated
-  USING (created_by = auth.uid());
+  USING (
+    household_id IN (
+      SELECT household_id FROM profiles
+      WHERE id = auth.uid()
+        AND role IN ('Owner', 'Adult')
+    )
+    OR created_by = auth.uid()
+  );
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- house_tasks
@@ -165,10 +175,20 @@ CREATE POLICY "house_tasks_update"
     )
   );
 
+-- Owner/Adult: full delete authority over household tasks.
+-- Teen or solo: may only delete tasks they created.
+-- Migration 20260628120000 moved role enforcement from client-side to DB.
 CREATE POLICY "house_tasks_delete"
   ON house_tasks FOR DELETE
   TO authenticated
-  USING (created_by = auth.uid());
+  USING (
+    household_id IN (
+      SELECT household_id FROM profiles
+      WHERE id = auth.uid()
+        AND role IN ('Owner', 'Adult')
+    )
+    OR created_by = auth.uid()
+  );
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- expenses

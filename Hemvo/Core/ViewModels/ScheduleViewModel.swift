@@ -111,11 +111,19 @@ final class ScheduleViewModel: ObservableObject {
     }
 
     func canDelete(_ event: CalendarEvent) -> Bool {
-        isOwnedByCurrentUser(event) && hasWriteAccess
+        let role = HouseholdService.shared.household?.members
+            .first(where: { $0.id == cachedUserID?.uuidString })?.role
+        guard let role else { return isOwnedByCurrentUser(event) }
+        guard role.canWrite else { return false }
+        return true
     }
 
     func canEdit(_ event: CalendarEvent) -> Bool {
-        isOwnedByCurrentUser(event) && hasWriteAccess
+        let role = HouseholdService.shared.household?.members
+            .first(where: { $0.id == cachedUserID?.uuidString })?.role
+        guard let role else { return isOwnedByCurrentUser(event) }
+        guard role.canWrite else { return false }
+        return true
     }
 
     func canDelete(_ task: HouseTask) -> Bool {

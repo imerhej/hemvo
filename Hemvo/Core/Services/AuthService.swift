@@ -256,18 +256,24 @@ final class AuthService {
 
     /// Looks up the email address for a given username via a SECURITY DEFINER
     /// RPC so the profiles table itself does not need anon SELECT access.
-    /// Throws `AuthError.usernameNotFound` if no match.
+    /// Throws `AuthError.usernameNotFound` if no match, `AuthError.rateLimitExceeded`
+    /// if the per-username lookup limit (5 per 10 min) is exceeded.
     private func emailForUsername(_ username: String) async throws -> String {
         struct Result: Decodable { let email: String? }
-        let result: Result = try await supabase
-            .rpc("get_email_for_username",
-                 params: ["p_username": username.lowercased().trimmingCharacters(in: .whitespaces)])
-            .execute()
-            .value
-        guard let email = result.email else {
-            throw AuthError.usernameNotFound
+        do {
+            // get_email_for_username uses RETURNS TABLE so PostgREST returns an array.
+            let results: [Result] = try await supabase
+                .rpc("get_email_for_username",
+                     params: ["p_username": username.lowercased().trimmingCharacters(in: .whitespaces)])
+                .execute()
+                .value
+            guard let email = results.first?.email else {
+                throw AuthError.usernameNotFound
+            }
+            return email
+        } catch let e as PostgrestError where e.message == "rate_limit_exceeded" {
+            throw AuthError.rateLimitExceeded
         }
-        return email
     }
 }
 
@@ -334,13 +340,15 @@ enum AuthError: LocalizedError {
     case profileNotFound
     case usernameTaken
     case usernameNotFound
+    case rateLimitExceeded
 
     var errorDescription: String? {
         switch self {
-        case .notLoggedIn:      return "You are not logged in."
-        case .profileNotFound:  return "Your profile could not be found."
-        case .usernameTaken:    return "That username is already taken. Please choose another."
-        case .usernameNotFound: return "No account found with that username. Check your spelling or sign in with your email."
+        case .notLoggedIn:       return "You are not logged in."
+        case .profileNotFound:   return "Your profile could not be found."
+        case .usernameTaken:     return "That username is already taken. Please choose another."
+        case .usernameNotFound:  return "No account found with that username. Check your spelling or sign in with your email."
+        case .rateLimitExceeded: return "Too many login attempts. Please wait a moment and try again."
         }
     }
 }
