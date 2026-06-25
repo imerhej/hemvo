@@ -76,7 +76,7 @@ final class KeychainHelper {
             kSecAttrAccount:         key,
             kSecValueData:           data,
             kSecAttrAccessible:      accessibility,
-            kSecAttrSynchronizable:  iCloudSync ? kCFBooleanTrue! : kCFBooleanFalse!
+            kSecAttrSynchronizable:  iCloudSync ? (true as AnyObject) : (false as AnyObject)
         ]
         let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
         if addStatus == errSecSuccess { return true }
@@ -90,7 +90,7 @@ final class KeychainHelper {
             kSecAttrAccount:         key,
             kSecValueData:           data,
             kSecAttrAccessible:      kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            kSecAttrSynchronizable:  kCFBooleanFalse!
+            kSecAttrSynchronizable:  (false as AnyObject)
         ]
         return SecItemAdd(fallbackQuery as CFDictionary, nil) == errSecSuccess
     }

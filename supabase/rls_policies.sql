@@ -14,11 +14,18 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
--- Any authenticated user can read profiles (needed for member lists / username lookup).
+-- Authenticated users may read their own row and their household members' rows.
+-- Anon callers cannot read profiles directly; username login uses get_email_for_username() RPC.
+-- NOTE: tightened from the original USING (true) by migration 20260625150000.
 CREATE POLICY "profiles_select"
   ON profiles FOR SELECT
   TO authenticated
-  USING (true);
+  USING (
+    id = auth.uid()
+    OR household_id IS NOT NULL AND household_id = (
+      SELECT household_id FROM profiles WHERE id = auth.uid() LIMIT 1
+    )
+  );
 
 -- Users can only update their own profile row.
 CREATE POLICY "profiles_update"
