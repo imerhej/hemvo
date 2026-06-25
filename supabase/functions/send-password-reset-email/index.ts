@@ -60,7 +60,7 @@ serve(async (req: Request) => {
   });
 
   if (genError || !data?.properties?.action_link) {
-    console.warn(`Recovery link not generated for ${email}: ${genError?.message ?? "no link"}`);
+    console.warn(`Recovery link not generated for *@${email.split("@")[1] ?? "?"}: ${genError?.message ?? "no link"}`);
     return new Response(JSON.stringify({ sent: true }), {
       headers: { "Content-Type": "application/json" },
     });

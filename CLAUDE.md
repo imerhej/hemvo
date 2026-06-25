@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **Rename note:** The app was previously called **Homebase**, then **Homvi**, and has been renamed to **Hemvo**. The source folder is `Hemvo/`, the project file is `Homvi.xcodeproj`, and the bundle ID is `com.issamnmerhej.Hemvo`. Legacy UserDefaults keys still use the `hb_` prefix (e.g. `hb_meals`, `hb_events`) — these are intentional carry-overs and should be migrated to `hemvo_` at a later point.
+> **Rename note:** The app was previously called **Homebase**, then **Homvi**, and has been renamed to **Hemvo**. The source folder is `Hemvo/`, the project file is `Hemvo.xcodeproj`, and the bundle ID is `com.issamnmerhej.Hemvo`. UserDefaults keys have been migrated from the legacy `hb_` prefix to `hemvo_` (handled by `UserDefaultsMigration.swift` on first launch after the migration release).
 
 ## Build & Run
 
@@ -10,13 +10,13 @@ This is an Xcode project — all building and testing is done through Xcode or `
 
 ```bash
 # Build from CLI (simulator)
-xcodebuild -project "Homvi.xcodeproj" -scheme "Hemvo" -destination "platform=iOS Simulator,name=iPhone 16" build
+xcodebuild -project "Hemvo.xcodeproj" -scheme "Hemvo" -destination "platform=iOS Simulator,name=iPhone 16" build
 
 # Run all tests
-xcodebuild -project "Homvi.xcodeproj" -scheme "Hemvo" -destination "platform=iOS Simulator,name=iPhone 16" test
+xcodebuild -project "Hemvo.xcodeproj" -scheme "Hemvo" -destination "platform=iOS Simulator,name=iPhone 16" test
 
 # Run a single test file (example)
-xcodebuild -project "Homvi.xcodeproj" -scheme "Hemvo" -destination "platform=iOS Simulator,name=iPhone 16" test -only-testing:HemvoTests/AuthViewModelTests
+xcodebuild -project "Hemvo.xcodeproj" -scheme "Hemvo" -destination "platform=iOS Simulator,name=iPhone 16" test -only-testing:HemvoTests/AuthViewModelTests
 ```
 
 - **Bundle ID:** `com.issamnmerhej.Hemvo`
