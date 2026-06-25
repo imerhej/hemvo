@@ -5,7 +5,7 @@ internal import Foundation
 /// **Usage inside a ViewModel:**
 /// ```swift
 /// private var mealsKey: String {
-///     SharedDataKey.make("hb_meals", householdService: householdService, userID: currentUserID)
+///     SharedDataKey.make("hemvo_meals", householdService: householdService, userID: currentUserID)
 /// }
 /// ```
 ///
@@ -20,7 +20,7 @@ enum SharedDataKey {
 
     /// Returns a namespaced key.
     /// - Parameters:
-    ///   - base: The base key string, e.g. `"hb_meals"`.
+    ///   - base: The base key string, e.g. `"hemvo_meals"`.
     ///   - householdService: The shared HouseholdService singleton.
     ///   - userID: The current user's ID (fallback when no household exists).
     static func make(
@@ -37,12 +37,12 @@ enum SharedDataKey {
 /// Centralised list of all base key strings used across the app.
 /// Update these here rather than in each ViewModel individually.
 extension SharedDataKey {
-    static let meals        = "hb_meals"
-    static let groceryItems = "hb_groceryItems"
-    static let expenses     = "hb_expenses"
-    static let budget       = "hb_budget"
-    static let calendarEvents = "hb_calendarEvents"
-    static let houseTasks   = "hb_houseTasks"
-    static let maintenance  = "hb_maintenance"
-    static let householdMembers = "hb_householdMembers"
+    static let meals        = "hemvo_meals"
+    static let groceryItems = "hemvo_groceryItems"
+    static let expenses     = "hemvo_expenses"
+    static let budget       = "hemvo_budget"
+    static let calendarEvents = "hemvo_calendarEvents"
+    static let houseTasks   = "hemvo_houseTasks"
+    static let maintenance  = "hemvo_maintenance"
+    static let householdMembers = "hemvo_householdMembers"
 }

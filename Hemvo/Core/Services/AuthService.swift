@@ -217,12 +217,9 @@ final class AuthService {
     /// Writes the owner's current subscription state to their Supabase profile row so
     /// members on other devices can read it without needing StoreKit access.
     func updateSubscriptionStatus(isActive: Bool) async {
-        guard let uid = await currentUserID() else { return }
         let status = isActive ? "active" : "expired"
         _ = try? await supabase
-            .from("profiles")
-            .update(["subscription_status": status])
-            .eq("id", value: uid.uuidString)
+            .rpc("update_subscription_status", params: ["p_status": status])
             .execute()
     }
 

@@ -35,14 +35,14 @@ final class PushNotificationService {
     /// Called from AppDelegate.didRegisterForRemoteNotificationsWithDeviceToken.
     func registerToken(_ tokenData: Data) {
         let token = tokenData.map { String(format: "%02x", $0) }.joined()
-        UserDefaults.standard.set(token, forKey: "hb_apns_token")
+        KeychainHelper.shared.saveString(token, key: "hemvo_apns_token", iCloudSync: false)
         Task { await saveTokenToSupabase(token) }
     }
 
     /// Refreshes the stored token after login/household-join in case the user
     /// ID or household ID changed since the token was first saved.
     func refreshToken() {
-        guard let token = UserDefaults.standard.string(forKey: "hb_apns_token") else { return }
+        guard let token = KeychainHelper.shared.loadString(key: "hemvo_apns_token", iCloudSync: false) else { return }
         Task { await saveTokenToSupabase(token) }
     }
 

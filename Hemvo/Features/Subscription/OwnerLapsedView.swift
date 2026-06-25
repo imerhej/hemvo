@@ -9,7 +9,7 @@ struct OwnerLapsedView: View {
     @EnvironmentObject var authVM:           AuthViewModel
     @EnvironmentObject var householdService: HouseholdService
 
-    @AppStorage("hb_avatarColor") private var avatarColor: String = "#4CAF74"
+    @AppStorage("hemvo_avatarColor") private var avatarColor: String = "#4CAF74"
 
     private var accentColor: Color { Color(hex: avatarColor) ?? .homeBaseGreen }
 

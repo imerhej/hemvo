@@ -189,10 +189,10 @@ final class MaintenanceViewModel: ObservableObject {
     func seedDefaultsIfNeeded() { }
 
     // MARK: - Persistence
-    private let activeKey            = "hb_maintenanceItems"
-    private let historyKey           = "hb_maintenanceHistory"
-    private let deletedItemIDsKey    = "hb_deletedMaintenanceIDs"
-    private let pendingUploadIDsKey  = "hb_pendingUploadMaintenanceIDs"
+    private let activeKey            = "hemvo_maintenanceItems"
+    private let historyKey           = "hemvo_maintenanceHistory"
+    private let deletedItemIDsKey    = "hemvo_deletedMaintenanceIDs"
+    private let pendingUploadIDsKey  = "hemvo_pendingUploadMaintenanceIDs"
 
     init() {
         loadDeletedIDs()

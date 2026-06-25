@@ -6,8 +6,8 @@ internal import OSLog
 // MARK: - UserDefaults Keys
 
 private enum HouseholdStorageKeys {
-    static let household = "hb_household_v2"
-    static let invites   = "hb_householdInvites_v2"
+    static let household = "hemvo_household_v2"
+    static let invites   = "hemvo_householdInvites_v2"
 }
 
 // MARK: - HouseholdError
@@ -47,7 +47,7 @@ final class HouseholdService: ObservableObject {
     // MARK: Published State
 
     @Published private(set) var household: Household?
-    @Published private(set) var pendingInvites: [HouseholdInviteRecord] = []
+    @Published private(set) var pendingInvites: [HouseholdInvite] = []
 
     // MARK: Derived Helpers
 
@@ -138,7 +138,7 @@ final class HouseholdService: ObservableObject {
     private func loadInvites() {
         guard
             let data = UserDefaults.standard.data(forKey: HouseholdStorageKeys.invites),
-            let decoded = try? JSONDecoder().decode([HouseholdInviteRecord].self, from: data)
+            let decoded = try? JSONDecoder().decode([HouseholdInvite].self, from: data)
         else { return }
         pendingInvites = decoded
     }
@@ -225,7 +225,7 @@ final class HouseholdService: ObservableObject {
                       role: HouseholdRole,
                       permissions: MemberPermissions? = nil,
                       inviterName: String,
-                      currentUserID: String) async throws -> HouseholdInviteRecord {
+                      currentUserID: String) async throws -> HouseholdInvite {
         guard let h = household else { throw HouseholdError.notFound }
         guard let requester = h.members.first(where: { $0.id == currentUserID }),
               requester.role.canInvite
@@ -237,7 +237,7 @@ final class HouseholdService: ObservableObject {
         // Append locally first so the invite appears in the UI immediately,
         // before the network round-trip completes.
         let localID = UUID().uuidString
-        let invite = HouseholdInviteRecord(
+        let invite = HouseholdInvite(
             id:            localID,
             supabaseID:    nil,
             householdID:   h.id,
@@ -821,7 +821,7 @@ final class HouseholdService: ObservableObject {
             pendingInvites = rows
                 .filter { $0.acceptedAt == nil && $0.expiresAt > now }
                 .map { row in
-                    HouseholdInviteRecord(
+                    HouseholdInvite(
                         id:            row.id.uuidString,
                         supabaseID:    row.id.uuidString,
                         householdID:   row.householdId.uuidString,

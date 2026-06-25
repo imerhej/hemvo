@@ -57,8 +57,19 @@ serve(async (req: Request) => {
   // the app calls this function after a failed signUp.
   const { data: existingUser } = await admin.auth.admin.getUserByEmail(email);
   if (!existingUser?.user) {
-    console.error(`send-confirmation-email: no auth.users row found for ${email}`);
+    console.error(`send-confirmation-email: no auth.users row found for [redacted]`);
     return jsonError(404, "User not found — account must be created via signUp first");
+  }
+
+  // Rate limit: at most one confirmation email per 60 seconds per address.
+  // Uses the confirmation_sent_at timestamp already maintained by Supabase Auth —
+  // no extra table required.
+  const lastSent = existingUser.user.confirmation_sent_at;
+  if (lastSent) {
+    const secondsAgo = (Date.now() - new Date(lastSent).getTime()) / 1000;
+    if (secondsAgo < 60) {
+      return jsonError(429, "Too many requests — please wait before requesting another confirmation email");
+    }
   }
 
   // Use magiclink instead of signup — magiclink requires no password, works for
@@ -72,7 +83,7 @@ serve(async (req: Request) => {
 
   if (genError || !data?.properties?.action_link) {
     console.error(
-      `Confirmation link not generated for ${email}: ${genError?.message ?? "no link"}`
+      `Confirmation link not generated: ${genError?.message ?? "no link"}`
     );
     return jsonError(502, "Could not generate confirmation link");
   }

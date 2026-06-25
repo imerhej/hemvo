@@ -55,7 +55,7 @@ final class UserPreferences: ObservableObject {
     @Published var avatarColor: String {
         didSet {
             guard !isSyncing else { return }
-            ud.set(avatarColor, forKey: "hb_avatarColor")
+            ud.set(avatarColor, forKey: "hemvo_avatarColor")
             // avatarColor is persisted to Supabase by AuthService.updateProfile(),
             // not here — no scheduleSupabaseSave() call needed.
         }
@@ -69,13 +69,13 @@ final class UserPreferences: ObservableObject {
             "notif_meals":       true,
             "notif_schedule":    true,
             "notif_maintenance": true,
-            "hb_avatarColor":    "#4CAF74",
+            "hemvo_avatarColor":    "#4CAF74",
         ])
         notifBills       = ud.bool(forKey: "notif_bills")
         notifMeals       = ud.bool(forKey: "notif_meals")
         notifSchedule    = ud.bool(forKey: "notif_schedule")
         notifMaintenance = ud.bool(forKey: "notif_maintenance")
-        avatarColor      = ud.string(forKey: "hb_avatarColor") ?? "#4CAF74"
+        avatarColor      = ud.string(forKey: "hemvo_avatarColor") ?? "#4CAF74"
     }
 
     // MARK: - Seed from Supabase profile
@@ -96,14 +96,14 @@ final class UserPreferences: ObservableObject {
         if let v = meals        { notifMeals = v;       ud.set(v, forKey: "notif_meals") }
         if let v = schedule     { notifSchedule = v;    ud.set(v, forKey: "notif_schedule") }
         if let v = maintenance  { notifMaintenance = v; ud.set(v, forKey: "notif_maintenance") }
-        if let v = profile.avatarColor { avatarColor = v; ud.set(v, forKey: "hb_avatarColor") }
+        if let v = profile.avatarColor { avatarColor = v; ud.set(v, forKey: "hemvo_avatarColor") }
     }
 
     // MARK: - Account deletion cleanup
 
     func clearAll() {
         saveTask?.cancel()
-        let keys = ["notif_bills", "notif_meals", "notif_schedule", "notif_maintenance", "hb_avatarColor"]
+        let keys = ["notif_bills", "notif_meals", "notif_schedule", "notif_maintenance", "hemvo_avatarColor"]
         keys.forEach { ud.removeObject(forKey: $0) }
     }
 
@@ -134,7 +134,7 @@ final class UserPreferences: ObservableObject {
                     .eq("id", value: uid.uuidString)
                     .execute()
             } catch {
-                print("[UserPreferences] Failed to save notification prefs:", error.localizedDescription)
+                Logger.prefs.error("Failed to save notification prefs: \(error.localizedDescription)")
             }
         }
     }

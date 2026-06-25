@@ -89,6 +89,7 @@ struct HemvoApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
+        UserDefaultsMigration.runIfNeeded()
         UIScrollView.appearance().keyboardDismissMode = .interactive
     }
 
@@ -108,16 +109,16 @@ struct HemvoApp: App {
                 .environment(\.managedObjectContext,
                              persistence.container.viewContext)
                 .onOpenURL { url in
-                    // Show the reset form immediately so the user isn't left
-                    // on the sign-in page while session(from:) runs async.
-                    // session(from:) then establishes the recovery session in
-                    // the background — well before the user finishes typing.
-                    if url.host == "reset-password" {
-                        authVM.showResetPassword = true
-                    }
+                    // Only handle hemvo://reset-password URLs. Establishing the
+                    // Supabase recovery session first means a malicious app
+                    // spoofing the URL scheme cannot trigger the reset UI with a
+                    // forged token — the form only appears once the server
+                    // accepts the recovery token.
+                    guard url.scheme == "hemvo", url.host == "reset-password" else { return }
                     Task {
                         do {
                             try await supabase.auth.session(from: url)
+                            await MainActor.run { authVM.showResetPassword = true }
                         } catch {
                             Logger.deepLink.error("session(from:) failed: \(error.localizedDescription)")
                         }
@@ -195,28 +196,28 @@ struct HemvoApp: App {
     // This avoids instantiating heavy ViewModels at the app level.
 
     private func loadMeals() -> [Meal] {
-        guard let data  = UserDefaults.standard.data(forKey: "hb_meals"),
+        guard let data  = UserDefaults.standard.data(forKey: "hemvo_meals"),
               let items = try? JSONDecoder().decode([Meal].self, from: data)
         else { return [] }
         return items
     }
 
     private func loadEvents() -> [CalendarEvent] {
-        guard let data  = UserDefaults.standard.data(forKey: "hb_events"),
+        guard let data  = UserDefaults.standard.data(forKey: "hemvo_events"),
               let items = try? JSONDecoder().decode([CalendarEvent].self, from: data)
         else { return [] }
         return items.filter { $0.date >= Date() }
     }
 
     private func loadMaintenanceItems() -> [MaintenanceItem] {
-        guard let data  = UserDefaults.standard.data(forKey: "hb_maintenanceItems"),
+        guard let data  = UserDefaults.standard.data(forKey: "hemvo_maintenanceItems"),
               let items = try? JSONDecoder().decode([MaintenanceItem].self, from: data)
         else { return [] }
         return items
     }
 
     private func loadExpenses() -> [Expense] {
-        guard let data  = UserDefaults.standard.data(forKey: "hb_expenses"),
+        guard let data  = UserDefaults.standard.data(forKey: "hemvo_expenses"),
               let items = try? JSONDecoder().decode([Expense].self, from: data)
         else { return [] }
         return items

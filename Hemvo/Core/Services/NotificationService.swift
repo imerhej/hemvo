@@ -35,14 +35,14 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
 
     // ── Identifier prefixes (used to cancel by category) ────────────────────
     private enum Prefix {
-        static let billDue      = "hb_bill_due_"
-        static let billEarly    = "hb_bill_early_"
-        static let mealTomorrow = "hb_meal_tmrw_"
-        static let eventDue     = "hb_event_due_"
-        static let eventEarly   = "hb_event_early_"
-        static let maintDue     = "hb_maint_due_"
-        static let maintEarly   = "hb_maint_early_"
-        static let trial        = "hb_trial_expiry"
+        static let billDue      = "hemvo_bill_due_"
+        static let billEarly    = "hemvo_bill_early_"
+        static let mealTomorrow = "hemvo_meal_tmrw_"
+        static let eventDue     = "hemvo_event_due_"
+        static let eventEarly   = "hemvo_event_early_"
+        static let maintDue     = "hemvo_maint_due_"
+        static let maintEarly   = "hemvo_maint_early_"
+        static let trial        = "hemvo_trial_expiry"
     }
 
     // MARK: - Permission
@@ -429,7 +429,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(
-            identifier: "hb_password_changed_\(Date().timeIntervalSince1970)",
+            identifier: "hemvo_password_changed_\(Date().timeIntervalSince1970)",
             content:    content,
             trigger:    trigger
         )

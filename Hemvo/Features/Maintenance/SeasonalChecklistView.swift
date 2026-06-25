@@ -19,7 +19,7 @@ struct SeasonalItem: Codable, Identifiable {
 final class SeasonalViewModel: ObservableObject {
 
     @Published var items: [SeasonalItem] = []
-    private let key = "hb_seasonalItemsV3"
+    private let key = "hemvo_seasonalItemsV3"
 
     init() { load() }
 
@@ -78,7 +78,7 @@ struct SeasonalChecklistView: View {
     @State private var completedIDs: Set<UUID>       = []
     @State private var showResetAlert: Bool          = false
 
-    private let storageKey = "hb_seasonalCompleted"
+    private let storageKey = "hemvo_seasonalCompleted"
 
     var tasks: [SeasonalTask] { currentSeason.tasks }
 

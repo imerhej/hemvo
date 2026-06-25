@@ -584,17 +584,18 @@ final class AuthViewModel: ObservableObject {
 
         // 2. Clear local UserDefaults cache (non-sensitive data only)
         let keysToRemove: [String] = [
-            "hb_meals", "hb_expenses", "hb_events", "hb_tasks",
-            "hb_members", "hb_maintenanceItems", "hb_maintenanceHistory",
-            "hb_paymentCards", "hb_avatarColor",
+            "hemvo_meals", "hemvo_expenses", "hemvo_events", "hemvo_tasks",
+            "hemvo_members", "hemvo_maintenanceItems", "hemvo_maintenanceHistory",
+            "hemvo_paymentCards", "hemvo_avatarColor",
             "notif_bills", "notif_meals", "notif_schedule", "notif_maintenance",
-            "hb_groceryItems", "hb_shoppingLists", "hb_budget",
-            "hb_seasonalCompleted", "hb_seasonalItemsV3",
-            "hb_household_v2", "hb_householdInvites_v2",
-            "hb_apns_token",
+            "hemvo_groceryItems", "hemvo_shoppingLists", "hemvo_budget",
+            "hemvo_seasonalCompleted", "hemvo_seasonalItemsV3",
+            "hemvo_household_v2", "hemvo_householdInvites_v2",
         ]
         let ud = UserDefaults.standard
         keysToRemove.forEach { ud.removeObject(forKey: $0) }
+        // APNs token is now in Keychain; clear it so the next login re-registers the device.
+        KeychainHelper.shared.delete(key: "hemvo_apns_token", iCloudSync: false)
 
         // Clear iCloud KV store preference keys so they don't bleed into a new account
         UserPreferences.shared.clearAll()

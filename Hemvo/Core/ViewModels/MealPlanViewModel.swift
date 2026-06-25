@@ -184,9 +184,9 @@ final class MealPlanViewModel: ObservableObject {
     }
 
     // MARK: - Persistence
-    private let storageKey           = "hb_meals"
-    private let deletedMealIDsKey    = "hb_deletedMealIDs"
-    private let pendingUploadIDsKey  = "hb_pendingUploadIDs"
+    private let storageKey           = "hemvo_meals"
+    private let deletedMealIDsKey    = "hemvo_deletedMealIDs"
+    private let pendingUploadIDsKey  = "hemvo_pendingUploadIDs"
 
     init() {
         loadDeletedIDs()

@@ -16,7 +16,7 @@ struct DashboardView: View {
     @StateObject private var scheduleVM    = ScheduleViewModel()
     @StateObject private var maintenanceVM = MaintenanceViewModel()
 
-    @AppStorage("hb_avatarColor") private var avatarColor: String = "#C8922A"
+    @AppStorage("hemvo_avatarColor") private var avatarColor: String = "#C8922A"
 
     /// Tab-switching callbacks injected by ContentView
     var onSwitchToMeals:       (() -> Void)?     = nil

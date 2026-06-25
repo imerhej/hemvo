@@ -74,7 +74,7 @@ serve(async (req: Request) => {
       const { data: existing } = await admin.auth.admin.getUserByEmail(email);
       if (existing?.user && !existing.user.email_confirmed_at) {
         // Unconfirmed — fall through and resend the confirmation link below.
-        console.log(`create-account: resending confirmation for unconfirmed user ${email}`);
+        console.log("create-account: resending confirmation for unconfirmed user [redacted]");
       } else {
         // Confirmed — this is a genuine "already registered" error.
         return jsonError(409, "An account with this email already exists. Please sign in instead.");

@@ -102,14 +102,9 @@ enum HouseholdRole: String, Codable, CaseIterable {
     var canWrite: Bool { self == .owner || self == .adult }
 }
 
-// MARK: - HouseholdInviteRecord
-//
-// Named `HouseholdInviteRecord` (not `HouseholdInvite`) to avoid a
-// redeclaration conflict with the existing HouseholdInviteService.swift.
-// Once you delete that old file, you can rename this to `HouseholdInvite`
-// and update the two references in HouseholdService.swift.
+// MARK: - HouseholdInvite
 
-struct HouseholdInviteRecord: Codable, Identifiable {
+struct HouseholdInvite: Codable, Identifiable {
     var id: String
     /// UUID of the row in the `household_invites` Supabase table (used for revocation).
     var supabaseID: String?

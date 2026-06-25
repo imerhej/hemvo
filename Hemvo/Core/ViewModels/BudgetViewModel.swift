@@ -310,9 +310,9 @@ final class BudgetViewModel: ObservableObject {
     }
 
     // MARK: - Persistence (UserDefaults cache)
-    private let expenseKey          = "hb_expenses"
-    private let budgetKey           = "hb_budget"
-    private let deletedExpenseIDsKey = "hb_deletedExpenseIDs"
+    private let expenseKey          = "hemvo_expenses"
+    private let budgetKey           = "hemvo_budget"
+    private let deletedExpenseIDsKey = "hemvo_deletedExpenseIDs"
 
     init() {
         loadDeletedIDs()

@@ -102,6 +102,42 @@ serve(async (req: Request) => {
     return new Response("Method Not Allowed", { status: 405 });
   }
 
+  // ── Auth check: verify the caller's identity and household membership ────
+
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Use the caller's JWT to look up their own profile (respects RLS so they
+  // can only read their own row, which is exactly what we need here).
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+  const callerClient = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    anonKey,
+    { global: { headers: { Authorization: authHeader } } }
+  );
+
+  const { data: callerProfile, error: callerErr } = await callerClient
+    .from("profiles")
+    .select("id, household_id")
+    .single();
+
+  if (callerErr || !callerProfile) {
+    console.error("notify-household: failed to resolve caller profile:", callerErr?.message);
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const callerHouseholdId: string | null = callerProfile.household_id;
+
+  // ── Parse request body ───────────────────────────────────────────────────
+
   let household_id: string | undefined,
       user_ids: string[] | undefined,
       exclude_user_ids: string[] | undefined,
@@ -123,6 +159,62 @@ serve(async (req: Request) => {
       headers: { "Content-Type": "application/json" },
     });
   }
+
+  // ── Membership check ─────────────────────────────────────────────────────
+
+  if (!callerHouseholdId) {
+    return new Response(JSON.stringify({ error: "Forbidden: caller has no household" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (household_id && household_id !== callerHouseholdId) {
+    console.error(
+      `notify-household: caller ${callerProfile.id} in household ${callerHouseholdId} ` +
+      `attempted to notify household ${household_id}`
+    );
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // For the user_ids path, verify all targets belong to the caller's household.
+  if (user_ids && user_ids.length > 0) {
+    // Use service role to read targets (their profiles may have RLS that hides them
+    // from the caller client, but we've already validated the caller's household).
+    const serviceClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    const { data: targetProfiles, error: targetErr } = await serviceClient
+      .from("profiles")
+      .select("id")
+      .in("id", user_ids)
+      .eq("household_id", callerHouseholdId);
+
+    if (targetErr) {
+      console.error("notify-household: failed to validate target profiles:", targetErr.message);
+      return new Response(JSON.stringify({ error: "Internal error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (!targetProfiles || targetProfiles.length !== user_ids.length) {
+      console.error(
+        `notify-household: caller ${callerProfile.id} attempted to notify ` +
+        `users outside their household (${callerHouseholdId})`
+      );
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  // ── Resolve target user IDs ───────────────────────────────────────────────
 
   // Use the service-role key so RLS doesn't block cross-user reads.
   const supabase = createClient(

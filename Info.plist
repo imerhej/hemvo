@@ -40,6 +40,10 @@
 	<string>public.app-category.lifestyle</string>
 
 	<!-- Permissions -->
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Hemvo reads and writes your calendar to show household events alongside your personal schedule.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Hemvo reads and writes your calendar to show household events alongside your personal schedule.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Hemvo uses Face ID to sign you in securely.</string>
 
@@ -53,9 +57,12 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 
-	<!-- Blank launch screen -->
+	<!-- Branded launch screen — HemvoGreen background matches the app's primary brand color -->
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>HemvoGreen</string>
+	</dict>
 
 	<!-- Supported orientations -->
 	<key>UISupportedInterfaceOrientations~ipad</key>

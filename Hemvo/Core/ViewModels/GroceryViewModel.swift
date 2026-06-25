@@ -261,10 +261,10 @@ final class GroceryViewModel: ObservableObject {
     }
 
     // MARK: - Persistence
-    private let storageKey           = "hb_groceryItems"
-    private let deletedIDsKey        = "hb_groceryDeletedIDs"
-    private let deletedMealNamesKey  = "hb_groceryDeletedMealNames"
-    private let pendingUploadIDsKey  = "hb_groceryPendingUploadIDs"
+    private let storageKey           = "hemvo_groceryItems"
+    private let deletedIDsKey        = "hemvo_groceryDeletedIDs"
+    private let deletedMealNamesKey  = "hemvo_groceryDeletedMealNames"
+    private let pendingUploadIDsKey  = "hemvo_groceryPendingUploadIDs"
 
     init() {
         loadDeletedIDs()

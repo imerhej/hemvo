@@ -16,7 +16,7 @@ struct PaywallView: View {
     @EnvironmentObject var storeKit: StoreKitService
     @Environment(\.dismiss) var dismiss
 
-    @AppStorage("hb_avatarColor") private var avatarColor: String = "#4CAF74"
+    @AppStorage("hemvo_avatarColor") private var avatarColor: String = "#4CAF74"
 
     @State private var selectedPlan  = StoreIDs.annual
     @State private var isPurchasing  = false

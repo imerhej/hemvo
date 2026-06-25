@@ -21,9 +21,9 @@ final class ShoppingListViewModel: ObservableObject {
     private var deletedListIDs: Set<UUID> = []
     private var deletedItemIDs: Set<UUID> = []
 
-    private let key              = "hb_shoppingLists"
-    private let deletedListIDsKey = "hb_deletedShoppingListIDs"
-    private let deletedItemIDsKey = "hb_deletedShoppingItemIDs"
+    private let key              = "hemvo_shoppingLists"
+    private let deletedListIDsKey = "hemvo_deletedShoppingListIDs"
+    private let deletedItemIDsKey = "hemvo_deletedShoppingItemIDs"
 
     init() {
         loadDeletedIDs()
