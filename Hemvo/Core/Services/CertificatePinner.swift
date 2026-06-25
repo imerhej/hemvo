@@ -50,10 +50,12 @@ final class CertificatePinner: NSObject, URLSessionDelegate {
 
     // MARK: - Pinned hashes
     // SHA-256 of the SubjectPublicKeyInfo DER bytes, base64-encoded.
-    // Hashes captured 2026-05-04 against tyfdsrxkswwwfmdkjknk.supabase.co.
-    // Certificate valid until 2026-07-29; update 30 days before expiry.
+    // Hashes verified 2026-06-25 against tyfdsrxkswwwfmdkjknk.supabase.co.
+    // Certificate expires 2026-07-29 — run scripts/update-pins.sh after Google
+    // renews the cert (~June 29) and ship an update BEFORE the old cert expires.
+    // Keep both old and new hashes in the set until the update fully rolls out.
     private static let pinnedHashes: Set<String> = [
-        "p51goejPCgGH+Oog/MU2k6PObcEfTrrr73jUcuWJ7w0=",  // *.supabase.co leaf (Google Trust Services WE1, expires Jul 2026)
+        "p51goejPCgGH+Oog/MU2k6PObcEfTrrr73jUcuWJ7w0=",  // *.supabase.co leaf (expires 2026-07-29)
         "kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4="   // Google Trust Services WE1 intermediate CA
     ]
 

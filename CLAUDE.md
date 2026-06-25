@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **Rename note:** The app was previously called **Homebase**, then **Homvi**, and has been renamed to **Hemvo**. The source folder is `Hemvo/`, the project file is `Homvi.xcodeproj`, and the bundle ID is `com.issammerhej.Hemvo`. Legacy UserDefaults keys still use the `hb_` prefix (e.g. `hb_meals`, `hb_events`) — these are intentional carry-overs and should be migrated to `hemvo_` at a later point.
+> **Rename note:** The app was previously called **Homebase**, then **Homvi**, and has been renamed to **Hemvo**. The source folder is `Hemvo/`, the project file is `Homvi.xcodeproj`, and the bundle ID is `com.issamnmerhej.Hemvo`. Legacy UserDefaults keys still use the `hb_` prefix (e.g. `hb_meals`, `hb_events`) — these are intentional carry-overs and should be migrated to `hemvo_` at a later point.
 
 ## Build & Run
 
@@ -19,7 +19,7 @@ xcodebuild -project "Homvi.xcodeproj" -scheme "Hemvo" -destination "platform=iOS
 xcodebuild -project "Homvi.xcodeproj" -scheme "Hemvo" -destination "platform=iOS Simulator,name=iPhone 16" test -only-testing:HemvoTests/AuthViewModelTests
 ```
 
-- **Bundle ID:** `com.issammerhej.Hemvo`
+- **Bundle ID:** `com.issamnmerhej.Hemvo`
 - **Deployment target:** iOS 26.2
 - **Swift version:** 5.0
 - **Test targets:** `HemvoTests`, `HemvoUITests`
