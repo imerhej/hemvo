@@ -223,7 +223,7 @@ final class AuthService {
             .single()
             .execute()
             .value
-        else { return selfID != ownerID }
+        else { return selfID?.uuidString != ownerID }
         let s = row.subscriptionStatus
         return s == "active" || s == "trial"
     }

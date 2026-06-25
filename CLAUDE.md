@@ -20,7 +20,7 @@ xcodebuild -project "Hemvo.xcodeproj" -scheme "Hemvo" -destination "platform=iOS
 ```
 
 - **Bundle ID:** `com.issamnmerhej.Hemvo`
-- **Deployment target:** iOS 26.2
+- **Deployment target:** iOS 18.6
 - **Swift version:** 5.0
 - **Test targets:** `HemvoTests`, `HemvoUITests`
 - Tests use **Swift Testing** (not XCTest) — use `@Test` and `#expect` macros
