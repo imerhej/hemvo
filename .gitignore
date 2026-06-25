@@ -4,6 +4,9 @@
 # to stop tracking the filled-in file. This line then prevents re-committing it.
 Hemvo/AppSecrets.swift
 
+# Claude Code local settings contain API keys / allowed-command history
+.claude/settings.local.json
+
 # ── Xcode ─────────────────────────────────────────────────────────────────────
 *.xcuserstate
 xcuserdata/
