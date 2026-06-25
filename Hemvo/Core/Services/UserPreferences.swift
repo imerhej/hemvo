@@ -110,22 +110,16 @@ final class UserPreferences: ObservableObject {
     // MARK: - Supabase write (debounced, off main actor)
 
     private func scheduleSupabaseSave() {
-        // Capture uid synchronously from the cached session — safe on any actor,
-        // avoids the async supabase.auth.session call inside the detached task.
-        guard let uid = supabase.auth.currentSession?.user.id else { return }
-
-        let bills = notifBills; let meals = notifMeals
-        let schedule = notifSchedule; let maintenance = notifMaintenance
-
         saveTask?.cancel()
-        saveTask = Task.detached { [bills, meals, schedule, maintenance, uid] in
+        saveTask = Task {
             try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 s debounce
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled,
+                  let uid = supabase.auth.currentSession?.user.id else { return }
             let payload: [String: Bool] = [
-                "notif_bills":       bills,
-                "notif_meals":       meals,
-                "notif_schedule":    schedule,
-                "notif_maintenance": maintenance,
+                "notif_bills":       self.notifBills,
+                "notif_meals":       self.notifMeals,
+                "notif_schedule":    self.notifSchedule,
+                "notif_maintenance": self.notifMaintenance,
             ]
             do {
                 try await supabase
