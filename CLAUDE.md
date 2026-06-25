@@ -66,7 +66,7 @@ Managed by `AuthViewModel` + `AuthService`. All paths ultimately resolve to a Su
 
 | Path | Mechanism |
 |------|-----------|
-| Email/password | `AuthService` → Supabase Auth; `login()` accepts email **or** username (resolves username→email via `profiles` table) |
+| Email/password | `AuthService` → Supabase Auth; `login()` accepts email **or** username (resolves username→email via `get_email_for_username()` SECURITY DEFINER RPC — avoids direct SELECT on `profiles`) |
 | Sign up | `AuthService.createAccount()` → `create-account` Edge Function (uses admin API to avoid GoTrue SMTP issues) |
 | Biometrics | `LocalAuthentication` (Face ID / Touch ID), enabled after first login |
 | Password reset | `send-password-reset-email` Edge Function → deep link `hemvo://reset-password?token=XXX` → `ResetPasswordView` |
@@ -93,9 +93,9 @@ New users get a 7-day free trial (`AppConstants.trialDurationDays`). After trial
 | `PushNotificationService` | `Core/Services/` | Registers APNs tokens to `device_tokens` (upsert keyed on `user_id+device_id` IDFV to prevent duplicate delivery on token rotation); calls `notify-household` Edge Function |
 | `NotificationService` | `Core/Services/` | Local push notifications (bills, maintenance, meals, trial expiry); meal notifications are non-repeating (scheduled once per exact calendar date) |
 | `HouseholdInviteService` | `Core/Services/` | Invite codes, 7-day expiry, email dispatch |
-| `EmailService` | `Core/Services/` | Transactional email via Resend API (API key inside the service) |
+| `EmailService` | `Core/Services/` | Transactional email via Resend API (API key stored as Supabase secret `RESEND_API_KEY` server-side — not in the app) |
 | `PasswordResetService` | `Core/Services/` | Legacy token generation/validation — superseded by Supabase Edge Function flow |
-| `CertificatePinner` | `Core/Services/` | SPKI-hash TLS pinning for all Supabase traffic; update hashes before cert expiry (Jul 2026) |
+| `CertificatePinner` | `Core/Services/` | SPKI-hash TLS pinning for all Supabase traffic; current hashes expire **2026-07-29** — run `scripts/update-pins.sh` by 2026-07-08 and add new hashes (keep old for overlap); GitHub Actions workflow monitors expiry |
 | `KeychainHelper` | `Core/Services/` | Keychain read/write/delete; used by `KeychainAuthStorage` for Supabase session tokens |
 
 ### Supabase Edge Functions
@@ -116,11 +116,11 @@ Deployed under `supabase/functions/`. All are invoked via `supabase.functions.in
 ### External Integrations
 
 - **Supabase** — auth, PostgreSQL database, Realtime subscriptions, Edge Functions, and APNs push pipeline. Credentials (`supabaseURL`, `supabaseAnonKey`) in `AppSecrets.swift` — do not commit.
-- **Resend API** — transactional email (confirmation, password reset, invites). API key is in `EmailService.swift` — move to Supabase secrets / a secrets manager before production.
+- **Resend API** — transactional email (confirmation, password reset, invites). API key is stored as Supabase secret `RESEND_API_KEY` — never reaches the iOS client.
 - **Apple Push Notification service (APNs)** — push delivery. Required Supabase secrets: `APNS_KEY_ID` (key VBY93G9JH7), `APNS_TEAM_ID`, `APNS_PRIVATE_KEY`. Debug builds use sandbox; release/TestFlight use production.
 - **App Store Connect** — StoreKit product IDs must exist in ASC before purchases work in production.
 - **CloudKit** — container `iCloud.com.hemvo.app`; entitlements differ between Debug (`Hemvo.entitlements`) and Release (`HemvoRelease.entitlements`). Sync is currently disabled.
-- **GitHub Actions** — `.github/workflows/supabase-keep-alive.yml` pings Supabase on a schedule to prevent the free-tier project from pausing.
+- **GitHub Actions** — `.github/workflows/supabase-keep-alive.yml` pings Supabase on a schedule to prevent the free-tier project from pausing. `.github/workflows/check-cert-pins.yml` monitors certificate pin expiry and opens an issue when rotation is needed.
 
 ## Key Conventions
 
@@ -133,4 +133,8 @@ Deployed under `supabase/functions/`. All are invoked via `supabase.functions.in
 - `HouseholdService.shared` is `@MainActor` — always read it from the main actor (use `await MainActor.run { ... }` from background contexts).
 - `AuthService` methods that call `supabase.auth.session` are `nonisolated` — calling them from the main actor can cause deadlocks on token refresh.
 - SwiftUI previews use `PersistenceService.preview` (in-memory CoreData) and inject mock environment objects.
-- Certificate pins in `CertificatePinner.swift` expire **July 2026** — update with `scripts/update-pins.sh` at least 30 days before expiry.
+- Certificate pins in `CertificatePinner.swift` expire **2026-07-29** — run `scripts/update-pins.sh` by 2026-07-08, add new SPKI hashes (keep old ones for overlap), ship an app update, then remove old hashes in a follow-up release after 2026-07-29.
+- `PrivacyInfo.xcprivacy` declares UserDefaults (`CA92.1`) and DeviceID (`C617.1`) API usage — required for App Store submission.
+- `HemvoApp.swift` includes jailbreak detection; returns `false` in simulator to allow development.
+- `Hemvo/Features/Onboarding/EmailValidator.swift` validates disposable email domains (hardcoded blocklist) and MX records via Cloudflare DNS; uses `URLSession.shared` (intentionally unpinned — no credentials sent).
+- `profiles` RLS restricts SELECT to own row or household members only (tightened in migration `20260625150000`); `get_email_for_username()` is a SECURITY DEFINER RPC to allow username login without broader profile access.
