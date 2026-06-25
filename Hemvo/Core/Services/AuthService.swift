@@ -128,38 +128,17 @@ final class AuthService {
     }
 
     // MARK: - Delete Account
-    // Deletes all rows owned by the current user across every table that holds a
-    // foreign-key reference to auth.users, then calls the `delete_my_account` RPC
-    // (SECURITY DEFINER) which removes the profile and the auth.users row.
-    // The client-side cleanup is a safety net: ideally the RPC itself should CASCADE
-    // these deletes, but until the DB function is updated this prevents FK violations.
+    // The delete_my_account RPC (SECURITY DEFINER) deletes the auth.users row.
+    // Migration 20260626120000 added ON DELETE CASCADE on every FK referencing
+    // auth.users(id), so the DB atomically removes all user-owned rows:
+    //   households (owner_id CASCADE) → events, house_tasks, notification_schedule
+    //   expenses, meals, grocery_items, shopping_lists, shopping_items, device_tokens
+    //   profiles (id CASCADE, household_id SET NULL for remaining members)
+    // If this user owns a household we delete it first via their own JWT so the
+    // RLS policy (owner_id = auth.uid()) is satisfied before the auth row is gone.
     func deleteAccount() async throws {
         guard let uid = await currentUserID() else { throw AuthError.notLoggedIn }
 
-        let tables: [(table: String, column: String)] = [
-            ("expenses",       "created_by"),
-            ("events",         "created_by"),
-            ("meals",          "created_by"),
-            ("house_tasks",    "created_by"),
-            ("grocery_items",  "created_by"),
-            ("shopping_items", "created_by"),
-            ("shopping_lists", "created_by"),
-            ("device_tokens",  "user_id"),
-        ]
-
-        for entry in tables {
-            _ = try? await supabase
-                .from(entry.table)
-                .delete()
-                .eq(entry.column, value: uid)
-                .execute()
-        }
-
-        // If this user owns a household, delete it before the auth.users row is
-        // removed. The RLS policy (owner_id = auth.uid()) allows this with the
-        // user's own JWT. Deleting the household cascades to events, house_tasks,
-        // notification_schedule, and sets profiles.household_id = NULL for any
-        // remaining members — so no FK violation reaches delete_my_account.
         if let hh = HouseholdService.shared.household,
            hh.ownerUserID == uid.uuidString {
             _ = try? await supabase

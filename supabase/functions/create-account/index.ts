@@ -46,6 +46,8 @@ serve(async (req: Request) => {
   }
   if (!email || !password) return jsonError(400, "Missing email or password");
   if (password.length < 8) return jsonError(400, "Password must be at least 8 characters");
+  if (!/[A-Z]/.test(password)) return jsonError(400, "Password must contain at least one uppercase letter");
+  if (!/[0-9]/.test(password)) return jsonError(400, "Password must contain at least one number");
   if (fullName && fullName.length > 100) return jsonError(400, "Name is too long");
   if (username && username.length > 30) return jsonError(400, "Username is too long");
 

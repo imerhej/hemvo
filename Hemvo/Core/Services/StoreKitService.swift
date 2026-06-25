@@ -2,13 +2,9 @@
 //  Hemvo
 //  Handles in-app purchases and subscription verification using StoreKit 2.
 
-internal import SwiftUI
 internal import StoreKit
-internal import CoreData
-internal import CloudKit
 internal import Foundation
 internal import Combine
-internal import UserNotifications
 internal import OSLog
 
 // MARK: - StoreKitService
