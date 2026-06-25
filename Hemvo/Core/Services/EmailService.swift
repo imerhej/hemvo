@@ -56,7 +56,7 @@ final class EmailService {
             switch fnError {
             case let .httpError(code, data):
                 let body = String(data: data, encoding: .utf8) ?? "<unreadable>"
-                Logger.email.error("HTTP \(code) error: \(body)")
+                Logger.email.error("HTTP \(code) error: \(body, privacy: .private)")
             case .relayError:
                 Logger.email.error("relay error (network/timeout reaching Edge Function)")
             }

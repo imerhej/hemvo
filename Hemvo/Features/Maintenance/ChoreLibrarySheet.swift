@@ -77,12 +77,12 @@ struct ChoreLibrarySheet: View {
     @State private var difficultyFilter: MaintenanceItem.Difficulty? = nil
     @State private var searchText: String = ""
 
-    private let amber   = Color(hex: "#C8922A")!
-    private let amberBg = Color(hex: "#F5E4C3")!
-    private let brown   = Color(hex: "#1A1208")!
-    private let muted   = Color(hex: "#7A6A55")!
-    private let divider = Color(hex: "#E6DDD0")!
-    private let cream   = Color(hex: "#F5F0E8")!
+    private let amber   = Color(hex: "#C8922A") ?? .orange
+    private let amberBg = Color(hex: "#F5E4C3") ?? .orange.opacity(0.2)
+    private let brown   = Color(hex: "#1A1208") ?? .black
+    private let muted   = Color(hex: "#7A6A55") ?? .gray
+    private let divider = Color(hex: "#E6DDD0") ?? Color(.systemGray5)
+    private let cream   = Color(hex: "#F5F0E8") ?? .white
 
     private var filteredTemplates: [ChoreTemplate] {
         let pool = ChoreLibrary.filtered(maxDifficulty: maxDifficulty)
@@ -141,7 +141,7 @@ struct ChoreLibrarySheet: View {
                 difficultyFilter = nil
             }
             ForEach(availableFilters) { diff in
-                let diffColor = Color(hex: diff.colorHex)!
+                let diffColor = Color(hex: diff.colorHex) ?? .primary
                 filterPill(label: diff.rawValue, color: diffColor, selected: difficultyFilter == diff) {
                     difficultyFilter = difficultyFilter == diff ? nil : diff
                 }
@@ -220,11 +220,11 @@ struct ChoreLibrarySheet: View {
         HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color(hex: template.difficulty.colorHex)!.opacity(0.12))
+                    .fill((Color(hex: template.difficulty.colorHex) ?? .primary).opacity(0.12))
                     .frame(width: 40, height: 40)
                 Image(systemName: template.difficulty.icon)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Color(hex: template.difficulty.colorHex)!)
+                    .foregroundColor(Color(hex: template.difficulty.colorHex) ?? .primary)
             }
 
             VStack(alignment: .leading, spacing: 3) {
@@ -261,10 +261,10 @@ struct ChoreLibrarySheet: View {
     private func difficultyBadge(_ difficulty: MaintenanceItem.Difficulty) -> some View {
         Text(difficulty.rawValue)
             .font(.system(size: 11, weight: .bold))
-            .foregroundColor(Color(hex: difficulty.colorHex)!)
+            .foregroundColor(Color(hex: difficulty.colorHex) ?? .primary)
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
-            .background(Color(hex: difficulty.colorHex)!.opacity(0.12))
+            .background((Color(hex: difficulty.colorHex) ?? .primary).opacity(0.12))
             .clipShape(Capsule())
     }
 

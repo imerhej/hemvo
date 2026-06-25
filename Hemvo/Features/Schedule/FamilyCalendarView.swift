@@ -1175,9 +1175,9 @@ struct FamilyCalendarView: View {
     }
 
     private func calendarWeeks(for month: Date) -> [[Date?]] {
-        let first   = cal.date(from: cal.dateComponents([.year, .month], from: month))!
+        guard let first = cal.date(from: cal.dateComponents([.year, .month], from: month)) else { return [] }
         let weekday = (cal.component(.weekday, from: first) - cal.firstWeekday + 7) % 7
-        let count   = cal.range(of: .day, in: .month, for: first)!.count
+        let count   = cal.range(of: .day, in: .month, for: first)?.count ?? 30
         var days: [Date?] = Array(repeating: nil, count: weekday)
         for i in 0..<count { days.append(cal.date(byAdding: .day, value: i, to: first)) }
         while days.count % 7 != 0 { days.append(nil) }

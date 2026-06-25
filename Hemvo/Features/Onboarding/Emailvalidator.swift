@@ -12,7 +12,6 @@
 internal import Foundation
 internal import Combine
 internal import SwiftUI
-internal import Supabase
 
 // MARK: - ValidationResult
 
@@ -65,22 +64,11 @@ final class EmailValidator: ObservableObject {
             return
         }
 
-        // 4. Duplicate check via Supabase (sign-up only) + MX lookup
+        // 4. MX record lookup (async)
         result = .checking
         mxTask = Task {
             try? await Task.sleep(nanoseconds: 600_000_000)
             guard !Task.isCancelled else { return }
-
-            // Duplicate check — attempt a password reset; if Supabase returns
-            // no error the email exists. We catch and treat errors as "not found".
-            if isSignUp {
-                let exists = await emailExistsInSupabase(email)
-                guard !Task.isCancelled else { return }
-                if exists {
-                    result = .alreadyRegistered(email)
-                    return
-                }
-            }
 
             // MX record lookup
             let hasMX = await lookupMX(domain: domain)
@@ -109,28 +97,6 @@ final class EmailValidator: ObservableObject {
     }
 
     func reset() { mxTask?.cancel(); result = .valid }
-
-    // MARK: - Supabase duplicate check
-    // We attempt to sign up with a deliberately bad password.
-    // Supabase returns "User already registered" if the email exists.
-    private func emailExistsInSupabase(_ email: String) async -> Bool {
-        do {
-            // Use OTP sign-in check — doesn't create an account, just probes
-            try await supabase.auth.signInWithOTP(email: email, shouldCreateUser: false)
-            // If it succeeds without error, the account exists
-            return true
-        } catch let error as AuthError {
-            // "Email not confirmed" or similar → account exists
-            let msg = error.localizedDescription.lowercased()
-            if msg.contains("already registered") || msg.contains("email not confirmed") {
-                return true
-            }
-            return false
-        } catch {
-            // Any other error — treat as not found to avoid blocking sign-up
-            return false
-        }
-    }
 
     // MARK: - RFC 5322 format check
     private func isValidFormat(_ email: String) -> Bool {

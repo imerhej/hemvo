@@ -50,14 +50,19 @@ final class CertificatePinner: NSObject, URLSessionDelegate {
 
     // MARK: - Pinned hashes
     // SHA-256 of the SubjectPublicKeyInfo DER bytes, base64-encoded.
-    // Hashes verified 2026-06-25 against tyfdsrxkswwwfmdkjknk.supabase.co —
-    // certificate still unchanged, expires 2026-07-29.
+    // Verified 2026-06-25: leaf cert unchanged, expires 2026-07-29.
+    // Google typically renews ~2–3 weeks before expiry (around 2026-07-08).
     //
-    // ⚠️  ACTION REQUIRED BY 2026-07-14 (2 weeks before expiry):
-    //   1. Run scripts/update-pins.sh after Google renews the cert (~June 29)
-    //   2. ADD the new hashes here (keep the old ones too)
-    //   3. Ship an app update and wait ~2 weeks for it to propagate
-    //   4. REMOVE the old hashes in a follow-up release
+    // ⚠️  ACTION REQUIRED — two steps, both must happen before 2026-07-14:
+    //   Step 1 (after Google renews, ~2026-07-08):
+    //     Run `scripts/update-pins.sh` to fetch new hashes.
+    //     ADD the new hashes below (keep the existing ones — parallel pinning).
+    //     Ship an app update immediately.
+    //   Step 2 (~2 weeks later, after update propagates):
+    //     REMOVE the old hashes in a follow-up release.
+    //
+    // If the hashes below still match when you re-run the script, the cert
+    // has not been renewed yet — check again in a few days.
     private static let pinnedHashes: Set<String> = [
         "p51goejPCgGH+Oog/MU2k6PObcEfTrrr73jUcuWJ7w0=",  // *.supabase.co leaf (expires 2026-07-29)
         "kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4="   // Google Trust Services WE1 intermediate CA

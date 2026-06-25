@@ -8,7 +8,7 @@
 internal import OSLog
 
 extension Logger {
-    private static let subsystem = "com.issammerhej.Hemvo"
+    private static let subsystem = "com.issamnmerhej.Hemvo"
 
     static let auth        = Logger(subsystem: subsystem, category: "Auth")
     static let push        = Logger(subsystem: subsystem, category: "Push")

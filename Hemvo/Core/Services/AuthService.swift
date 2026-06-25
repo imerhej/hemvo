@@ -232,6 +232,11 @@ final class AuthService {
                 case subscriptionStatus = "subscription_status"
             }
         }
+        // Fail-open only for members checking a remote owner's status — so a
+        // network blip doesn't lock out legitimate household members.
+        // Fail-closed if we're the owner checking our own status — a network
+        // error should not silently grant the owner free access.
+        let selfID = await currentUserID()
         guard let row: StatusRow = try? await supabase
             .from("profiles")
             .select("subscription_status")
@@ -239,7 +244,7 @@ final class AuthService {
             .single()
             .execute()
             .value
-        else { return true }
+        else { return selfID != ownerID }
         let s = row.subscriptionStatus
         return s == "active" || s == "trial"
     }
@@ -270,18 +275,17 @@ final class AuthService {
         return available
     }
 
-    /// Looks up the email address for a given username.
+    /// Looks up the email address for a given username via a SECURITY DEFINER
+    /// RPC so the profiles table itself does not need anon SELECT access.
     /// Throws `AuthError.usernameNotFound` if no match.
     private func emailForUsername(_ username: String) async throws -> String {
-        struct Row: Decodable { let email: String? }
-        let rows: [Row] = try await supabase
-            .from("profiles")
-            .select("email")
-            .eq("username", value: username.lowercased().trimmingCharacters(in: .whitespaces))
-            .limit(1)
+        struct Result: Decodable { let email: String? }
+        let result: Result = try await supabase
+            .rpc("get_email_for_username",
+                 params: ["p_username": username.lowercased().trimmingCharacters(in: .whitespaces)])
             .execute()
             .value
-        guard let email = rows.first?.email else {
+        guard let email = result.email else {
             throw AuthError.usernameNotFound
         }
         return email

@@ -57,8 +57,12 @@ serve(async (req: Request) => {
   // the app calls this function after a failed signUp.
   const { data: existingUser } = await admin.auth.admin.getUserByEmail(email);
   if (!existingUser?.user) {
-    console.error(`send-confirmation-email: no auth.users row found for [redacted]`);
-    return jsonError(404, "User not found — account must be created via signUp first");
+    // Return success silently — leaking 404 would confirm that an email is
+    // not registered, enabling account enumeration via this endpoint.
+    console.log(`send-confirmation-email: no account found for [redacted], returning silent 200`);
+    return new Response(JSON.stringify({ sent: false }), {
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   // Rate limit: at most one confirmation email per 60 seconds per address.

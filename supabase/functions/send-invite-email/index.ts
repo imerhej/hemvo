@@ -10,10 +10,19 @@
 // Logs:   supabase functions logs send-invite-email
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const FROM_ADDRESS   = Deno.env.get("FROM_ADDRESS") ?? "Hemvo <noreply@hemvo.app>";
+const SUPABASE_URL   = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_KEY    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const APP_NAME       = "Hemvo";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin":  "https://hemvo.app",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type",
+};
 
 function htmlEscape(str: string): string {
   return str
@@ -25,15 +34,33 @@ function htmlEscape(str: string): string {
 }
 
 serve(async (req: Request) => {
+  // Handle CORS preflight.
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
   if (req.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405 });
   }
 
-  // Require a valid Supabase auth JWT — only authenticated users can send invites.
-  if (!req.headers.get("Authorization")) {
+  // Cryptographically verify the caller's JWT — not just presence, but validity.
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+  }
+  const token = authHeader.replace("Bearer ", "");
+  const admin  = createClient(SUPABASE_URL, SERVICE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  // Validate the JWT server-side — same pattern as delete-member.
+  const { data: { user }, error: authError } = await admin.auth.getUser(token);
+  if (authError || !user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   }
 
@@ -43,14 +70,14 @@ serve(async (req: Request) => {
   } catch {
     return new Response(JSON.stringify({ error: "Invalid JSON" }), {
       status: 400,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   }
 
   if (!to || !inviterName || !householdName || !code) {
     return new Response(JSON.stringify({ error: "Missing required fields: to, inviterName, householdName, code" }), {
       status: 400,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   }
 
@@ -105,15 +132,14 @@ serve(async (req: Request) => {
 
   if (res.ok) {
     return new Response(JSON.stringify({ sent: true }), {
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   }
 
   const errBody = await res.text();
   console.error(`Resend ${res.status}: ${errBody}`);
-  // Bubble the actual Resend error back so the client can log it.
-  return new Response(JSON.stringify({ error: "Email delivery failed", resendStatus: res.status, resendError: errBody }), {
+  return new Response(JSON.stringify({ error: "Email delivery failed", resendStatus: res.status }), {
     status: 502,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...corsHeaders },
   });
 });

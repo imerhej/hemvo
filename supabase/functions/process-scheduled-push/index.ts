@@ -93,7 +93,17 @@ async function sendAPNs(
 
 // ── Handler ──────────────────────────────────────────────────────────────────
 
-serve(async (_req: Request) => {
+const CRON_SECRET = Deno.env.get("CRON_SECRET");
+
+serve(async (req: Request) => {
+  // Reject requests that don't carry the shared cron secret.
+  // Set it once: supabase secrets set CRON_SECRET=<random-string>
+  // The pg_cron job must include X-Cron-Secret: <same-value> in its headers
+  // (see migration 20260625140000_add_cron_secret_to_scheduled_push.sql).
+  if (!CRON_SECRET || req.headers.get("X-Cron-Secret") !== CRON_SECRET) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 });
+  }
+
   // Use service-role key — bypasses RLS for cross-user queries.
   const sb = createClient(
     Deno.env.get("SUPABASE_URL")!,
