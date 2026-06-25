@@ -88,6 +88,10 @@ struct HemvoApp: App {
 
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
+    init() {
+        UIScrollView.appearance().keyboardDismissMode = .interactive
+    }
+
     @StateObject private var authVM      = AuthViewModel()
     @StateObject private var hsHolder    = HouseholdServiceHolder()
     @StateObject private var skHolder    = StoreKitServiceHolder()
