@@ -56,9 +56,10 @@ struct ProfileView: View {
 
     private func syncProfileCache() {
         guard let p = authVM.profile else { return }
-        displayName  = p.fullName ?? "Hemvo User"
-        displayEmail = p.email    ?? ""
-        let parts    = (p.fullName ?? "").split(separator: " ").prefix(2)
+        let nameForDisplay  = p.fullName ?? p.username ?? "Hemvo User"
+        displayName  = nameForDisplay
+        displayEmail = p.email ?? ""
+        let parts    = nameForDisplay.split(separator: " ").prefix(2)
         let joined   = parts.map { String($0.prefix(1)).uppercased() }.joined()
         initials     = joined.isEmpty ? "HV" : joined
     }

@@ -49,7 +49,9 @@ struct DashboardView: View {
     // First name derived from the Supabase profile
     private var firstName: String {
         let full = authVM.profile?.fullName ?? ""
-        return full.components(separatedBy: " ").first ?? "there"
+        return full.components(separatedBy: " ").first(where: { !$0.isEmpty })
+            ?? authVM.profile?.username
+            ?? "there"
     }
 
     var body: some View {
