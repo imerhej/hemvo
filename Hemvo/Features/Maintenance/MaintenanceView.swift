@@ -35,7 +35,7 @@ struct MaintenanceView: View {
     @State private var selectedTask:  MaintenanceItem? = nil
 
     var filteredItems: [MaintenanceItem] {
-        let base = selectedArea == nil ? vm.items : vm.items(for: selectedArea!)
+        let base = selectedArea.map { vm.items(for: $0) } ?? vm.items
         return base.sorted {
             if $0.isOverdue != $1.isOverdue { return $0.isOverdue }
             if $0.isDueSoon != $1.isDueSoon { return $0.isDueSoon }

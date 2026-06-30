@@ -406,7 +406,7 @@ final class MealPlanViewModel: ObservableObject {
         case 2:  summary = "\(names[0]) and \(names[1])"
         default:
             let leading = names.dropLast().joined(separator: ", ")
-            summary = "\(leading) and \(names.last!)"
+            summary = names.last.map { "\(leading) and \($0)" } ?? leading
         }
         let weekdayLabel = Meal.Weekday.from(
             calendarWeekday: cal.component(.weekday, from: dayStart)

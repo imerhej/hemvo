@@ -106,7 +106,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                 case 2: summary = "\(names[0]) and \(names[1])"
                 default:
                     let all = names.dropLast().joined(separator: ", ")
-                    summary = "\(all) and \(names.last!)"
+                    summary = names.last.map { "\(all) and \($0)" } ?? all
                 }
 
                 let weekdayLabel = Meal.Weekday.from(
