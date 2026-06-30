@@ -1,16 +1,29 @@
 name: Check Certificate Pins
 
 # Runs every Monday at 09:00 UTC.
-# Fetches the live SPKI hashes from the Supabase host and compares them
-# to what is hardcoded in CertificatePinner.swift. If they differ (Google
-# renewed the cert), it opens a PR with the new hashes already applied.
 #
-# Also fails the run when the cert expires in ≤ 30 days, so you get a
-# GitHub Actions alert even if the hashes haven't changed yet.
+# What it does automatically (no human intervention needed):
+#   1. Fetches live SPKI hashes from the Supabase host.
+#   2. If the leaf hash changed (Google renewed the cert):
+#        - ADDs the new hash alongside existing ones (parallel pinning so
+#          users on old builds keep working during the App Store rollout window).
+#        - OPENs a PR — merge it and ship to TestFlight/App Store.
+#   3. On every run, PRUNES any hash whose cert expired >14 days ago
+#      (safe to remove once rollout window has closed).
+#   4. Fails the run if a cert expires within 30 days and no renewal
+#      has been detected, so GitHub sends an alert email.
+#
+# Required GitHub secret: none beyond the default GITHUB_TOKEN.
+# Required permissions: contents: write, pull-requests: write (set below).
+
 on:
   schedule:
     - cron: "0 9 * * 1"    # every Monday 09:00 UTC
   workflow_dispatch:         # allow a manual run from the Actions tab
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   check-pins:
@@ -39,78 +52,127 @@ jobs:
           EXPIRY=$(echo | openssl s_client -servername "$HOST" -connect "$HOST":443 2>/dev/null \
             | openssl x509 -noout -enddate | cut -d= -f2)
 
-          EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s 2>/dev/null || date -j -f "%b %d %T %Y %Z" "$EXPIRY" +%s)
+          EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s)
           NOW_EPOCH=$(date +%s)
           DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
 
-          echo "leaf=$LEAF"         >> "$GITHUB_OUTPUT"
+          echo "leaf=$LEAF"               >> "$GITHUB_OUTPUT"
           echo "intermediate=$INTERMEDIATE" >> "$GITHUB_OUTPUT"
-          echo "expiry=$EXPIRY"     >> "$GITHUB_OUTPUT"
-          echo "days_left=$DAYS_LEFT" >> "$GITHUB_OUTPUT"
+          echo "expiry=$EXPIRY"           >> "$GITHUB_OUTPUT"
+          echo "days_left=$DAYS_LEFT"     >> "$GITHUB_OUTPUT"
 
           echo "Leaf hash:         $LEAF"
           echo "Intermediate hash: $INTERMEDIATE"
           echo "Cert expires:      $EXPIRY ($DAYS_LEFT days)"
 
-      - name: Fail if cert expires within 30 days
+      - name: Alert if cert expires within 30 days and is not yet renewed
         run: |
-          DAYS=${{ steps.fetch.outputs.days_left }}
-          if [ "$DAYS" -le 30 ]; then
-            echo "::error::Certificate expires in $DAYS days — update pins immediately!"
+          DAYS="${{ steps.fetch.outputs.days_left }}"
+          LEAF="${{ steps.fetch.outputs.leaf }}"
+          FILE="Hemvo/Core/Services/CertificatePinner.swift"
+
+          if [ "$DAYS" -le 30 ] && grep -qF "$LEAF" "$FILE"; then
+            # The live hash is already pinned but expiry is <30 days — stale cert,
+            # Google hasn't renewed yet. Alert so someone can monitor more closely.
+            echo "::error::Certificate expires in $DAYS days. Google has not yet renewed. Watch daily."
             exit 1
           fi
-          echo "Certificate is valid for $DAYS more days. No urgent action needed."
 
-      - name: Check if hashes differ from CertificatePinner.swift
-        id: diff
+          echo "Certificate is valid for $DAYS more days."
+
+      - name: Update CertificatePinner.swift (add new hashes, prune expired)
+        id: update
         run: |
-          LEAF="${{ steps.fetch.outputs.leaf }}"
-          INTERMEDIATE="${{ steps.fetch.outputs.intermediate }}"
-          FILE="Hemvo/Core/Services/CertificatePinner.swift"
-
-          if grep -qF "$LEAF" "$FILE" && grep -qF "$INTERMEDIATE" "$FILE"; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Hashes match — no update needed."
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "New hashes detected — will open a PR."
-          fi
-
-      - name: Update CertificatePinner.swift with new hashes
-        if: steps.diff.outputs.changed == 'true'
-        run: |
-          LEAF="${{ steps.fetch.outputs.leaf }}"
-          INTERMEDIATE="${{ steps.fetch.outputs.intermediate }}"
-          EXPIRY="${{ steps.fetch.outputs.expiry }}"
-          FILE="Hemvo/Core/Services/CertificatePinner.swift"
-          TODAY=$(date +%Y-%m-%d)
-
-          # Replace the comment datestamp
-          sed -i "s|// Hashes verified [0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}|// Hashes verified $TODAY|" "$FILE"
-
-          # Replace the entire pinnedHashes block content.
-          # Strategy: rewrite lines between the opening '[' and closing ']' of pinnedHashes.
-          python3 - "$FILE" "$LEAF" "$INTERMEDIATE" "$EXPIRY" <<'PYEOF'
+          python3 - \
+            "Hemvo/Core/Services/CertificatePinner.swift" \
+            "${{ steps.fetch.outputs.leaf }}" \
+            "${{ steps.fetch.outputs.intermediate }}" \
+            "${{ steps.fetch.outputs.expiry }}" <<'PYEOF'
           import sys, re
+          from datetime import datetime, timezone, timedelta
 
-          path, leaf, intermediate, expiry = sys.argv[1:]
+          path, new_leaf, new_intermediate, expiry_str = sys.argv[1:]
+
+          def parse_date(s):
+              s = s.strip().rstrip(',)')
+              for fmt in ("%b %d %H:%M:%S %Y %Z", "%b  %d %H:%M:%S %Y %Z", "%Y-%m-%d"):
+                  try:
+                      return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
+                  except ValueError:
+                      continue
+              return None
+
+          today = datetime.now(timezone.utc)
+          today_iso = today.strftime("%Y-%m-%d")
+          new_expiry_dt = parse_date(expiry_str)
+          new_expiry_iso = new_expiry_dt.strftime("%Y-%m-%d") if new_expiry_dt else expiry_str
+          remove_after_iso = (today + timedelta(days=21)).strftime("%Y-%m-%d")
 
           with open(path) as f:
               src = f.read()
 
-          new_block = (
-              f'    private static let pinnedHashes: Set<String> = [\n'
-              f'        "{leaf}",  // *.supabase.co leaf (expires {expiry})\n'
-              f'        "{intermediate}"   // Google Trust Services WE1 intermediate CA\n'
-              f'    ]'
+          # Locate the pinnedHashes block (indented, so match the leading spaces)
+          block_re = re.compile(
+              r'(    private static let pinnedHashes: Set<String> = \[)(.*?)(    \])',
+              re.DOTALL
           )
+          m = block_re.search(src)
+          if not m:
+              print("ERROR: could not find pinnedHashes block", file=sys.stderr)
+              sys.exit(1)
 
-          src = re.sub(
-              r'private static let pinnedHashes: Set<String> = \[.*?\]',
-              new_block,
-              src,
-              flags=re.DOTALL
-          )
+          prefix, body, suffix = m.group(1), m.group(2), m.group(3)
+
+          # Parse existing hash lines, pruning those expired >14 days
+          kept = []
+          for raw in body.split('\n'):
+              stripped = raw.strip()
+              if not stripped.startswith('"'):
+                  continue
+              h_m = re.match(r'"([^"]+)"', stripped)
+              if not h_m:
+                  continue
+              hash_val = h_m.group(1)
+
+              exp_m = re.search(r'expires (\S+)', stripped)
+              if exp_m:
+                  exp_dt = parse_date(exp_m.group(1))
+                  if exp_dt and (today - exp_dt).days > 14:
+                      print(f"Pruning expired hash ({(today - exp_dt).days}d past expiry): {hash_val[:32]}…")
+                      continue
+
+              kept.append((hash_val, stripped))
+
+          existing = {h for h, _ in kept}
+          changed = False
+
+          if new_leaf not in existing:
+              line = f'"{new_leaf}",  // leaf (expires {new_expiry_iso}, remove after {remove_after_iso})'
+              kept.insert(0, (new_leaf, line))
+              print(f"Added leaf: {new_leaf[:32]}…")
+              changed = True
+
+          if new_intermediate not in existing:
+              line = f'"{new_intermediate}"   // Google Trust Services WE1 intermediate CA'
+              kept.append((new_intermediate, line))
+              print(f"Added intermediate: {new_intermediate[:32]}…")
+              changed = True
+
+          # Detect pruning that already happened above
+          if len([h for h, _ in kept]) < sum(1 for raw in body.split('\n') if raw.strip().startswith('"')):
+              changed = True
+
+          if not changed:
+              print("CertificatePinner.swift is already up to date.")
+              sys.exit(0)
+
+          new_body = '\n' + ''.join(f'        {c}\n' for _, c in kept)
+          new_block = prefix + new_body + suffix
+          src = src[:m.start()] + new_block + src[m.end():]
+
+          # Update "Last checked" datestamp
+          src = re.sub(r'// Last checked: \d{4}-\d{2}-\d{2}',
+                       f'// Last checked: {today_iso}', src)
 
           with open(path, 'w') as f:
               f.write(src)
@@ -118,27 +180,41 @@ jobs:
           print("CertificatePinner.swift updated.")
           PYEOF
 
+      - name: Check for changes
+        id: diff
+        run: |
+          if git diff --quiet Hemvo/Core/Services/CertificatePinner.swift; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No changes detected."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff Hemvo/Core/Services/CertificatePinner.swift
+          fi
+
       - name: Open pull request
         if: steps.diff.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: chore/update-cert-pins
-          commit-message: "chore: update Supabase certificate SPKI pins"
-          title: "chore: update Supabase certificate SPKI pins"
+          commit-message: "chore: rotate Supabase certificate SPKI pins"
+          title: "chore: rotate Supabase certificate SPKI pins"
           body: |
-            The Supabase TLS certificate has been renewed by Google. This PR
-            updates the pinned SPKI hashes in `CertificatePinner.swift`.
+            Automated certificate pin rotation by `check-cert-pins.yml`.
 
             **New leaf hash:** `${{ steps.fetch.outputs.leaf }}`
-            **New intermediate hash:** `${{ steps.fetch.outputs.intermediate }}`
             **Certificate expires:** `${{ steps.fetch.outputs.expiry }}`
 
-            ### Before merging
-            - [ ] Build and run the app on a real device — confirm Supabase
-                  requests succeed (auth, database, Edge Functions)
-            - [ ] Ship to TestFlight and smoke-test before the old cert expires
+            Both old and new hashes ship together (parallel pinning) so users
+            on the previous build keep working during the App Store rollout window.
+            Old hashes whose cert expired >14 days ago have been pruned automatically.
 
-            ### After the update rolls out (~2 weeks)
-            Remove the old hashes from `pinnedHashes` in a follow-up PR.
+            ### Before merging
+            - [ ] Build on a real device and confirm Supabase requests succeed
+                  (auth, database, Edge Functions)
+            - [ ] Ship to TestFlight and smoke-test
+
+            ### No follow-up needed
+            The next Monday run will automatically prune the old leaf hash once
+            its cert has been expired for >14 days.
           labels: security,chore
