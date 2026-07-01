@@ -109,6 +109,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 2B70BA3E2F676B7E008EA50F /* Build configuration list for PBXNativeTarget "Hemvo" */;
 			buildPhases = (
+				2BD847682FF48FDB00565B93 /* ShellScript */,
 				2B70BA192F676B7C008EA50F /* Sources */,
 				2B70BA1A2F676B7C008EA50F /* Frameworks */,
 				2B70BA1B2F676B7C008EA50F /* Resources */,
@@ -236,6 +237,15 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		2BD847682FF48FDB00565B93 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			shellPath = /bin/bash;
+			shellScript = (
+				"# Type a script or drag a script file from your workspace to insert its path.",
+				"\"${SRCROOT}/scripts/validate-secrets.sh\"",
+				"",
+			);
+		};
 		AB2B70BA2F676B7C00000001 /* Version + Build Number from Git */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
