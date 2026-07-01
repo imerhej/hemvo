@@ -239,6 +239,8 @@
 /* Begin PBXShellScriptBuildPhase section */
 		2BD847682FF48FDB00565B93 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			name = "Validate AppSecrets";
 			shellPath = /bin/bash;
 			shellScript = (
 				"# Type a script or drag a script file from your workspace to insert its path.",
