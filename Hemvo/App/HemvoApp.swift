@@ -23,7 +23,8 @@ func isDeviceJailbroken() -> Bool {
     #if targetEnvironment(simulator)
     return false
     #else
-    let paths: [String] = [
+    // 1. Known jailbreak filesystem artifacts
+    let jailbreakPaths: [String] = [
         "/Applications/Cydia.app",
         "/Applications/Sileo.app",
         "/Applications/Zebra.app",
@@ -35,16 +36,57 @@ func isDeviceJailbroken() -> Bool {
         "/bin/sh",
         "/private/var/stash",
     ]
-    if paths.contains(where: { FileManager.default.fileExists(atPath: $0) }) {
+    if jailbreakPaths.contains(where: { FileManager.default.fileExists(atPath: $0) }) {
         return true
     }
-    // Attempt a write outside the sandbox — only succeeds on jailbroken devices.
+
+    // 2. Sandbox write probe — only succeeds on jailbroken devices.
     let probeFile = "/private/hemvo_jb_probe_\(Int.random(in: 1_000_000...9_999_999))"
     do {
         try "probe".write(toFile: probeFile, atomically: true, encoding: .utf8)
         try? FileManager.default.removeItem(atPath: probeFile)
         return true
     } catch { }
+
+    // 3. Injected dynamic libraries — Substrate tweaks, Cycript, SSL kill switches,
+    //    and similar tools load themselves into every process on jailbroken devices.
+    let suspiciousDylibs = [
+        "MobileSubstrate", "SubstrateLoader", "cynject",
+        "libcycript", "rocketbootstrap", "SSLKillSwitch",
+        "FLEXLoader", "libhooker", "substitute",
+    ]
+    for i in 0..<_dyld_image_count() {
+        if let rawName = _dyld_get_image_name(i) {
+            let imageName = String(cString: rawName)
+            if suspiciousDylibs.contains(where: { imageName.localizedCaseInsensitiveContains($0) }) {
+                return true
+            }
+        }
+    }
+
+    // 4. Protected system directories replaced by symlinks — a common jailbreak
+    //    side effect where read-only partitions are re-mounted read-write and key
+    //    directories are redirected via symlinks.
+    let protectedPaths = [
+        "/Applications",
+        "/Library/Ringtones",
+        "/Library/Wallpaper",
+        "/usr/include",
+        "/usr/libexec",
+        "/usr/share",
+    ]
+    for path in protectedPaths {
+        if (try? FileManager.default.destinationOfSymbolicLink(atPath: path)) != nil {
+            return true
+        }
+    }
+
+    // 5. DYLD_INSERT_LIBRARIES present — indicates the dynamic linker injected a
+    //    library into this process before main() ran.
+    if getenv("DYLD_INSERT_LIBRARIES") != nil {
+        return true
+    }
+
     return false
     #endif
 }

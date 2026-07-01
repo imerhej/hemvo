@@ -21,6 +21,14 @@ final class NativeCalendarService: ObservableObject {
 
     private let store = EKEventStore()
 
+    func checkExistingAccess() {
+        authStatus = EKEventStore.authorizationStatus(for: .event)
+        if authStatus == .fullAccess {
+            loadCalendars()
+            fetchEvents(for: Date())
+        }
+    }
+
     func requestAccess() async {
         let current = EKEventStore.authorizationStatus(for: .event)
         if current == .fullAccess {
@@ -114,6 +122,7 @@ struct FamilyCalendarView: View {
             ZStack {
                 VStack(spacing: 0) {
                     topBar
+                    calendarAccessBanner
                     if mode == .year  { yearView  }
                     else if mode == .month { monthView }
                     else { weekDayView }
@@ -151,7 +160,7 @@ struct FamilyCalendarView: View {
                     searchOverlay.transition(.opacity).zIndex(10)
                 }
             }
-            .task { await calSvc.requestAccess() }
+            .task { calSvc.checkExistingAccess() }
             .onAppear {
                 // Handle the case where jumpToDate is already set when the view is first created
                 // (e.g. tapping an event from the dashboard before the schedule tab is active)
@@ -218,6 +227,50 @@ struct FamilyCalendarView: View {
             } message: {
                 Text("Remove \"\(eventToDelete?.title ?? "this event")\"?")
             }
+        }
+    }
+
+    // MARK: - Calendar access banner
+    @ViewBuilder
+    private var calendarAccessBanner: some View {
+        if calSvc.isDenied {
+            HStack(spacing: 10) {
+                Image(systemName: "calendar.badge.exclamationmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.orange)
+                Text("Calendar access denied.")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.systemRed)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color(.systemGray6))
+        } else if calSvc.authStatus == .notDetermined {
+            HStack(spacing: 10) {
+                Image(systemName: "calendar.badge.plus")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.systemRed)
+                Text("Connect Apple Calendar to see your events here.")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Button("Connect") {
+                    Task { await calSvc.requestAccess() }
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.systemRed)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color(.systemGray6))
         }
     }
 

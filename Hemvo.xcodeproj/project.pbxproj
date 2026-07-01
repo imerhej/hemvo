@@ -109,7 +109,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 2B70BA3E2F676B7E008EA50F /* Build configuration list for PBXNativeTarget "Hemvo" */;
 			buildPhases = (
-				2BD847682FF48FDB00565B93 /* ShellScript */,
+				2BD847682FF48FDB00565B93 /* Validate AppSecrets */,
 				2B70BA192F676B7C008EA50F /* Sources */,
 				2B70BA1A2F676B7C008EA50F /* Frameworks */,
 				2B70BA1B2F676B7C008EA50F /* Resources */,
@@ -237,7 +237,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		2BD847682FF48FDB00565B93 /* ShellScript */ = {
+		2BD847682FF48FDB00565B93 /* Validate AppSecrets */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			name = "Validate AppSecrets";
