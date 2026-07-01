@@ -17,9 +17,13 @@ const SERVICE_KEY    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const REDIRECT_TO    = "hemvo://reset-password";
 const APP_NAME       = "Hemvo";
 
-// Max 5 reset emails per email address per hour.
-const RATE_LIMIT_MAX     = 5;
-const RATE_LIMIT_MINUTES = 60;
+// Per-email: 5 reset emails per hour.
+const EMAIL_RATE_LIMIT_MAX     = 5;
+const EMAIL_RATE_LIMIT_MINUTES = 60;
+
+// Per-IP: 10 reset attempts per hour.
+const IP_RATE_LIMIT_MAX     = 10;
+const IP_RATE_LIMIT_MINUTES = 60;
 
 function htmlEscape(str: string): string {
   return str
@@ -37,18 +41,32 @@ function jsonError(status: number, message: string): Response {
   });
 }
 
-async function isAllowed(admin: ReturnType<typeof createClient>, key: string, action: string): Promise<boolean> {
+async function isAllowed(
+  admin: ReturnType<typeof createClient>,
+  key: string,
+  action: string,
+  maxCount: number,
+  windowMinutes: number,
+): Promise<boolean> {
   const { data, error } = await admin.rpc("check_and_increment_rate_limit", {
     p_key: key,
     p_action: action,
-    p_max_count: RATE_LIMIT_MAX,
-    p_window_minutes: RATE_LIMIT_MINUTES,
+    p_max_count: maxCount,
+    p_window_minutes: windowMinutes,
   });
   if (error) {
     console.warn(`rate limit check failed: ${error.message}`);
     return true; // fail open — don't block legitimate requests on DB errors
   }
   return data === true;
+}
+
+function clientIP(req: Request): string {
+  return (
+    req.headers.get("CF-Connecting-IP") ??
+    req.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ??
+    "unknown"
+  );
 }
 
 serve(async (req: Request) => {
@@ -68,7 +86,12 @@ serve(async (req: Request) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  if (!await isAllowed(admin, email.toLowerCase(), "password-reset")) {
+  const ip = clientIP(req);
+  const [emailOk, ipOk] = await Promise.all([
+    isAllowed(admin, email.toLowerCase(), "password-reset",    EMAIL_RATE_LIMIT_MAX, EMAIL_RATE_LIMIT_MINUTES),
+    isAllowed(admin, ip,                  "password-reset-ip", IP_RATE_LIMIT_MAX,    IP_RATE_LIMIT_MINUTES),
+  ]);
+  if (!emailOk || !ipOk) {
     // Return the same shape as success to avoid leaking whether the email exists.
     return new Response(JSON.stringify({ sent: true }), {
       status: 429,
