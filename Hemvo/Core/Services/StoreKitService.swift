@@ -79,9 +79,8 @@ final class StoreKitService: ObservableObject {
 
     // MARK: - Check Active Subscription
     func hasActiveSubscription() async -> Bool {
-        #if DEBUG
-        // Simulator / debug builds have no sandbox purchases configured.
-        // Return true so the paywall never blocks development testing.
+        #if targetEnvironment(simulator)
+        // Simulator has no StoreKit sandbox — bypass paywall for development.
         return true
         #else
         await updateEntitlements()
