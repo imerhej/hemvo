@@ -17,14 +17,16 @@ ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 -- Authenticated users may read their own row and their household members' rows.
 -- Anon callers cannot read profiles directly; username login uses get_email_for_username() RPC.
 -- NOTE: tightened from the original USING (true) by migration 20260625150000.
+-- NOTE: a correlated subquery against profiles here re-triggers this same
+-- policy and recurses. Migration 20260628150000 fixed this by moving the
+-- household_id lookup into get_my_household_id(), a STABLE SECURITY DEFINER
+-- helper that bypasses RLS internally and breaks the recursion.
 CREATE POLICY "profiles_select"
   ON profiles FOR SELECT
   TO authenticated
   USING (
     id = auth.uid()
-    OR household_id IS NOT NULL AND household_id = (
-      SELECT household_id FROM profiles WHERE id = auth.uid() LIMIT 1
-    )
+    OR household_id IS NOT NULL AND household_id = get_my_household_id()
   );
 
 -- Users can only update their own profile row.
