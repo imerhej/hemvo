@@ -1,0 +1,32 @@
+-- Migration: drop_stray_profiles_select_policy
+--
+-- Follow-up to tighten_profiles_rls_and_username_rpc (20260625150000) and
+-- drop_stray_broad_write_policies (20260701140000): a third ad-hoc,
+-- dashboard-created policy was still live on `profiles`, not tracked in any
+-- prior migration:
+--
+--   "username email lookup" (SELECT, profiles) — USING (true), role public —
+--       exposed every column of every profile row to any caller, including
+--       fully unauthenticated requests using only the public anon key.
+--       Since RLS permissive policies are OR'd together, this silently
+--       defeated the "own row or household members only" restriction added
+--       by profiles_select in 20260625150000.
+--
+-- This was almost certainly the original permissive policy that
+-- tighten_profiles_rls_and_username_rpc intended to replace, but that
+-- migration's `DROP POLICY IF EXISTS "profiles_select"` didn't match it
+-- because the live policy had a different name.
+--
+-- Impact: unauthenticated clients could dump id/email/username/household_id
+-- (and any other profiles column) for every user in the database. It also
+-- broke the notify-household Edge Function's caller-identity lookup: with
+-- every profile row visible, `.select(...).single()` ambiguously matched
+-- multiple rows and the function returned 401 on every invocation, so no
+-- push notification (events, meals, house tasks, invites, expenses) was
+-- ever delivered to any household. Confirmed fixed live on 2026-07-01.
+--
+-- get_email_for_username() (SECURITY DEFINER, added in 20260625150000)
+-- already covers the legitimate use case this policy predates
+-- (username -> email resolution for login), so nothing depends on it.
+
+DROP POLICY IF EXISTS "username email lookup" ON profiles;

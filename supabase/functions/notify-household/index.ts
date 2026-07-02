@@ -112,8 +112,11 @@ serve(async (req: Request) => {
     });
   }
 
-  // Use the caller's JWT to look up their own profile (respects RLS so they
-  // can only read their own row, which is exactly what we need here).
+  // Use the caller's JWT to authoritatively resolve their own user ID (this
+  // hits the auth server directly, not a table subject to RLS — profiles_select
+  // intentionally also exposes household-mates' rows, so a plain `.single()`
+  // query with no filter would ambiguously match every member of the caller's
+  // household, not just the caller themself).
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
   const callerClient = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -121,9 +124,19 @@ serve(async (req: Request) => {
     { global: { headers: { Authorization: authHeader } } }
   );
 
+  const { data: { user: callerUser }, error: callerUserErr } = await callerClient.auth.getUser();
+  if (callerUserErr || !callerUser) {
+    console.error("notify-household: failed to resolve caller identity:", callerUserErr?.message);
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const { data: callerProfile, error: callerErr } = await callerClient
     .from("profiles")
     .select("id, household_id")
+    .eq("id", callerUser.id)
     .single();
 
   if (callerErr || !callerProfile) {
