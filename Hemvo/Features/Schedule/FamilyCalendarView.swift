@@ -8,6 +8,7 @@
 
 internal import SwiftUI
 internal import EventKit
+internal import EventKitUI
 internal import Combine
 internal import UserNotifications
 
@@ -70,6 +71,45 @@ final class NativeCalendarService: ObservableObject {
     var isDenied: Bool     { authStatus == .denied || authStatus == .restricted }
 }
 
+// MARK: - Native (synced) event detail
+
+/// `.sheet(item:)` requires Identifiable; EKEvent doesn't conform, so wrap it.
+private struct IdentifiableEvent: Identifiable, Equatable {
+    let event: EKEvent
+    var id: String { event.eventIdentifier ?? event.description }
+
+    static func == (lhs: IdentifiableEvent, rhs: IdentifiableEvent) -> Bool { lhs.id == rhs.id }
+}
+
+/// Presents the system's own event detail screen (via EventKitUI) for synced
+/// Apple Calendar events, so read-only details (invitees, alerts, notes,
+/// source calendar, etc.) match what the Calendar app shows.
+private struct NativeEventDetailView: UIViewControllerRepresentable {
+    let event:  EKEvent
+    let onDone: () -> Void
+
+    func makeUIViewController(context: Context) -> UINavigationController {
+        let controller = EKEventViewController()
+        controller.event = event
+        controller.allowsEditing = false
+        controller.allowsCalendarPreview = true
+        controller.delegate = context.coordinator
+        return UINavigationController(rootViewController: controller)
+    }
+
+    func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(onDone: onDone) }
+
+    final class Coordinator: NSObject, EKEventViewDelegate {
+        let onDone: () -> Void
+        init(onDone: @escaping () -> Void) { self.onDone = onDone }
+        func eventViewController(_ controller: EKEventViewController, didCompleteWith action: EKEventViewAction) {
+            onDone()
+        }
+    }
+}
+
 // MARK: - FamilyCalendarView
 struct FamilyCalendarView: View {
 
@@ -109,6 +149,7 @@ struct FamilyCalendarView: View {
     @State private var eventToEdit:    CalendarEvent? = nil
     @State private var eventToDelete:  CalendarEvent? = nil
     @State private var eventToView:    CalendarEvent? = nil
+    @State private var nativeEventToView: IdentifiableEvent? = nil
     @State private var showDeleteAlert = false
     @State private var monthScrollID: Date? = {
         let c = Calendar.current
@@ -218,6 +259,10 @@ struct FamilyCalendarView: View {
                     onDelete:  { eventToDelete = ev; showDeleteAlert = true },
                     canDelete: vm.canDelete(ev),
                     canEdit:   canWrite && vm.canEdit(ev))
+            }
+            .sheet(item: $nativeEventToView) { wrapper in
+                NativeEventDetailView(event: wrapper.event) { nativeEventToView = nil }
+                    .ignoresSafeArea()
             }
             .alert("Delete Event", isPresented: $showDeleteAlert) {
                 Button("Delete", role: .destructive) {
@@ -565,6 +610,7 @@ struct FamilyCalendarView: View {
                 .onChange(of: showCalendars) { _, showing in reanchorIfNeeded(showing, proxy: proxy) }
                 .onChange(of: eventToEdit)   { _, ev     in if ev == nil { reanchorScroll(proxy: proxy) } }
                 .onChange(of: eventToView)   { _, ev     in if ev == nil { reanchorScroll(proxy: proxy) } }
+                .onChange(of: nativeEventToView) { _, ev in if ev == nil { reanchorScroll(proxy: proxy) } }
             }
         }
     }
@@ -656,9 +702,12 @@ struct FamilyCalendarView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(events, id: \.eventIdentifier) { ev in
-                            eventPill(title: ev.title ?? "",
-                                      color: Color(cgColor: ev.calendar.cgColor),
-                                      isAllDay: ev.isAllDay)
+                            Button { nativeEventToView = IdentifiableEvent(event: ev) } label: {
+                                eventPill(title: ev.title ?? "",
+                                          color: Color(cgColor: ev.calendar.cgColor),
+                                          isAllDay: ev.isAllDay)
+                            }
+                            .buttonStyle(.plain)
                         }
                         ForEach(hbEvents, id: \.id) { ev in
                             Button { eventToView = ev } label: {
@@ -676,9 +725,12 @@ struct FamilyCalendarView: View {
             } else {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(events, id: \.eventIdentifier) { ev in
-                        eventPill(title: ev.title ?? "",
-                                  color: Color(cgColor: ev.calendar.cgColor),
-                                  isAllDay: ev.isAllDay)
+                        Button { nativeEventToView = IdentifiableEvent(event: ev) } label: {
+                            eventPill(title: ev.title ?? "",
+                                      color: Color(cgColor: ev.calendar.cgColor),
+                                      isAllDay: ev.isAllDay)
+                        }
+                        .buttonStyle(.plain)
                     }
                     let remaining = max(0, maxPills - events.count)
                     ForEach(hbEvents.prefix(remaining), id: \.id) { ev in
@@ -735,16 +787,19 @@ struct FamilyCalendarView: View {
                     }
                     .padding(.horizontal, 16).padding(.vertical, 12)
                 } else {
-                    // Native EKEvents (read-only, no edit — they live in Apple Calendar)
+                    // Native EKEvents — tappable to view details; not editable/deletable (they live in Apple Calendar)
                     ForEach(events, id: \.eventIdentifier) { ev in
-                        dayListEventRow(
-                            title: ev.title ?? "Untitled",
-                            time:  ev.isAllDay ? "all-day" : ev.startDate.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits)),
-                            color: Color(cgColor: ev.calendar.cgColor),
-                            cal:   ev.calendar?.title ?? "",
-                            onEdit:   nil,
-                            onDelete: nil
-                        )
+                        Button { nativeEventToView = IdentifiableEvent(event: ev) } label: {
+                            dayListEventRow(
+                                title: ev.title ?? "Untitled",
+                                time:  ev.isAllDay ? "all-day" : ev.startDate.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits)),
+                                color: Color(cgColor: ev.calendar.cgColor),
+                                cal:   ev.calendar?.title ?? "",
+                                onEdit:   nil,
+                                onDelete: nil
+                            )
+                        }
+                        .buttonStyle(.plain)
                         Divider().padding(.leading, 16)
                     }
 
@@ -906,6 +961,11 @@ struct FamilyCalendarView: View {
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                                     eventToView = ev
                                 }
+                            } else if let nativeEv = item.nativeEvent {
+                                withAnimation { showSearch = false }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                    nativeEventToView = IdentifiableEvent(event: nativeEv)
+                                }
                             }
                         } label: {
                             HStack(spacing: 12) {
@@ -918,7 +978,7 @@ struct FamilyCalendarView: View {
                                         .font(.system(size: 12)).foregroundColor(.secondary)
                                 }
                                 Spacer()
-                                if item.event != nil {
+                                if item.event != nil || item.nativeEvent != nil {
                                     Image(systemName: "chevron.right")
                                         .font(.system(size: 12))
                                         .foregroundColor(.secondary)
@@ -940,11 +1000,12 @@ struct FamilyCalendarView: View {
     }
 
     private struct SearchResult: Identifiable {
-        let id       = UUID()
-        let title:    String
-        let subtitle: String
-        let color:    Color
-        let event:    CalendarEvent?   // nil for native EK events
+        let id         = UUID()
+        let title:      String
+        let subtitle:   String
+        let color:      Color
+        let event:      CalendarEvent?  // nil for native EK events
+        let nativeEvent: EKEvent?       // nil for Hemvo events
     }
 
     private var searchResults: [SearchResult] {
@@ -956,7 +1017,8 @@ struct FamilyCalendarView: View {
                 title:    ev.title,
                 subtitle: ev.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) + " · " + ev.formattedTime,
                 color:    Color(hex: ev.colorHex) ?? .purple,
-                event:    ev
+                event:    ev,
+                nativeEvent: nil
             ))
         }
         for ev in calSvc.nativeEvents where (ev.title ?? "").lowercased().contains(q) {
@@ -964,7 +1026,8 @@ struct FamilyCalendarView: View {
                 title:    ev.title ?? "",
                 subtitle: ev.startDate.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()),
                 color:    Color(cgColor: ev.calendar.cgColor),
-                event:    nil
+                event:    nil,
+                nativeEvent: ev
             ))
         }
         return out
@@ -1158,7 +1221,8 @@ struct FamilyCalendarView: View {
         }
         .offset(y: top)
         .frame(height: max(height, 30))
-        .allowsHitTesting(false)
+        .contentShape(Rectangle())
+        .onTapGesture { nativeEventToView = IdentifiableEvent(event: ev) }
     }
 
     private func hbEventBlock(_ ev: CalendarEvent) -> some View {
