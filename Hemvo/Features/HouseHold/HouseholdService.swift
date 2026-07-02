@@ -20,6 +20,7 @@ enum HouseholdError: LocalizedError {
     case notOwner
     case emailMismatch             // signed-in account email doesn't match invite recipient
     case emailFailed(code: String) // invite was saved but email delivery failed
+    case rateLimitExceeded
 
     var errorDescription: String? {
         switch self {
@@ -30,6 +31,7 @@ enum HouseholdError: LocalizedError {
         case .notOwner:           return "Only the household owner can do that."
         case .emailMismatch:      return "This invite was sent to a different email address. Sign in with the account that received the invite."
         case .emailFailed(let c): return "Invite saved, but the email couldn't be delivered. Share this code manually: \(c)"
+        case .rateLimitExceeded:  return "Too many attempts. Please wait a few minutes and try again."
         }
     }
 }
@@ -361,6 +363,8 @@ final class HouseholdService: ObservableObject {
                 throw HouseholdError.emailMismatch
             } else if msg.contains("ALREADY_MEMBER") {
                 throw HouseholdError.alreadyMember
+            } else if msg.contains("RATE_LIMIT_EXCEEDED") {
+                throw HouseholdError.rateLimitExceeded
             }
             throw error
         }

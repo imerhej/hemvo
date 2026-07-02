@@ -55,7 +55,7 @@ Deep links (`hemvo://reset-password?token=XXX`) are handled in `HemvoApp.onOpenU
 ### Data Persistence
 
 - **Supabase (PostgreSQL)** — primary backend for all user, household, and app data. Client configured in `Hemvo/SupabaseClient.swift` with certificate pinning and Keychain session storage. Credentials live in `Hemvo/AppSecrets.swift` (not committed).
-- **CoreData + NSPersistentCloudKitContainer** — local structured data via `PersistenceService`. CloudKit sync is disabled; the container is kept for offline caching.
+- **CoreData** — local structured data via `PersistenceService`, backed by a plain `NSPersistentContainer` (not CloudKit-backed). Kept for offline caching; no iCloud container is configured in either entitlements file.
 - **UserDefaults** — ViewModel-level caches (e.g. `hb_meals`, `hb_events`) and household data (`hb_household_v2`). All keys still use the legacy `hb_` prefix — migrate to `hemvo_` at a later point.
 - **UserPreferences** — `@MainActor` singleton that caches four notification toggles in `UserDefaults` and debounce-syncs them to Supabase `profiles` (0.5 s debounce). Avatar color is written to `UserDefaults` only and persisted via `AuthService.updateProfile()`. Seeded from the authoritative profile on login via `seed(from:)`.
 - **Keychain** — Supabase auth session token stored via `KeychainHelper` through a custom `KeychainAuthStorage` adapter (see `SupabaseClient.swift`).
@@ -119,7 +119,7 @@ Deployed under `supabase/functions/`. All are invoked via `supabase.functions.in
 - **Resend API** — transactional email (confirmation, password reset, invites). API key is stored as Supabase secret `RESEND_API_KEY` — never reaches the iOS client.
 - **Apple Push Notification service (APNs)** — push delivery. Required Supabase secrets: `APNS_KEY_ID` (key VBY93G9JH7), `APNS_TEAM_ID`, `APNS_PRIVATE_KEY`. Debug builds use sandbox; release/TestFlight use production.
 - **App Store Connect** — StoreKit product IDs must exist in ASC before purchases work in production.
-- **CloudKit** — container `iCloud.com.hemvo.app`; entitlements differ between Debug (`Hemvo.entitlements`) and Release (`HemvoRelease.entitlements`). Sync is currently disabled.
+- **CloudKit** — not currently wired up. No iCloud container is declared in `Hemvo.entitlements` or `HemvoRelease.entitlements` (both only set `aps-environment`), and no Swift code references CloudKit. `PersistenceService` uses a plain `NSPersistentContainer`.
 - **GitHub Actions** — `.github/workflows/supabase-keep-alive.yml` pings Supabase on a schedule to prevent the free-tier project from pausing. `.github/workflows/check-cert-pins.yml` monitors certificate pin expiry and opens an issue when rotation is needed.
 
 ## Key Conventions

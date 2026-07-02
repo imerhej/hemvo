@@ -18,6 +18,38 @@ const SERVICE_KEY    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const REDIRECT_TO    = "hemvo://";
 const APP_NAME       = "Hemvo";
 
+// Per-IP: 10 confirmation-email requests per hour (mirrors send-password-reset-email).
+const IP_RATE_LIMIT_MAX     = 10;
+const IP_RATE_LIMIT_MINUTES = 60;
+
+async function isAllowed(
+  admin: ReturnType<typeof createClient>,
+  key: string,
+  action: string,
+  maxCount: number,
+  windowMinutes: number,
+): Promise<boolean> {
+  const { data, error } = await admin.rpc("check_and_increment_rate_limit", {
+    p_key: key,
+    p_action: action,
+    p_max_count: maxCount,
+    p_window_minutes: windowMinutes,
+  });
+  if (error) {
+    console.warn(`rate limit check failed: ${error.message}`);
+    return true; // fail open — don't block legitimate requests on DB errors
+  }
+  return data === true;
+}
+
+function clientIP(req: Request): string {
+  return (
+    req.headers.get("CF-Connecting-IP") ??
+    req.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ??
+    "unknown"
+  );
+}
+
 function htmlEscape(str: string): string {
   return str
     .replace(/&/g, "&amp;")
@@ -50,6 +82,11 @@ serve(async (req: Request) => {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+
+  const ip = clientIP(req);
+  if (!await isAllowed(admin, ip, "confirmation-email-ip", IP_RATE_LIMIT_MAX, IP_RATE_LIMIT_MINUTES)) {
+    return jsonError(429, "Too many requests — please wait before requesting another confirmation email");
+  }
 
   // Guard: only generate a link for an account that already exists.
   // generateLink({ type: "magiclink" }) creates a bare user as a side-effect if
