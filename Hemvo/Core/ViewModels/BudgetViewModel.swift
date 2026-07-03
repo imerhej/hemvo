@@ -119,7 +119,8 @@ final class BudgetViewModel: ObservableObject {
         Task { await supabaseUpsert(stamped) }
         if stamped.scope == .household {
             Task {
-                let label = stamped.isRecurring ? "💸 New Bill" : "💰 New Expense"
+                let creator = HouseholdService.shared.displayName(forUserID: cachedUserID)
+                let label = stamped.isRecurring ? "💸 \(creator) added a bill" : "💰 \(creator) added an expense"
                 await PushNotificationService.shared.notifyHouseholdFiltered(
                     permission: \.receiveExpenseAlerts,
                     title: label,

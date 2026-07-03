@@ -107,11 +107,12 @@ final class MealPlanViewModel: ObservableObject {
             guard let hid = cachedHouseholdID else { return }
             // Immediate push to household members who have meal alerts enabled
             // (excludes sender via creator_id).
+            let creator = HouseholdService.shared.displayName(forUserID: cachedUserID)
             await PushNotificationService.shared.notifyHouseholdFiltered(
                 householdID: hid.uuidString,
                 creatorID:   cachedUserID?.uuidString,
                 permission:  \.receiveMealAlerts,
-                title: "🍽️ Meal Planned",
+                title: "🍽️ \(creator) planned a meal",
                 body:  "\(stamped.name) · \(stamped.day.label) \(stamped.mealType.rawValue)"
             )
             // Scheduled 8 PM push the evening before for the whole household.

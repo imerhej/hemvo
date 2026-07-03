@@ -61,6 +61,15 @@ final class HouseholdService: ObservableObject {
         return "\(base)_user_\(userID)"
     }
 
+    /// Display name for a household member, for use in "<name> did X" notification text.
+    func displayName(forUserID id: UUID?) -> String {
+        guard let idString = id?.uuidString,
+              let member = household?.members.first(where: { $0.id == idString }) else {
+            return "Someone"
+        }
+        return member.username
+    }
+
     // MARK: Realtime (profiles — live role/permissions updates)
 
     private var profilesRealtimeTask:    Task<Void, Never>?
