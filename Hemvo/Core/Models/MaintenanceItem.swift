@@ -106,11 +106,6 @@ struct MaintenanceItem: Codable, Identifiable, Equatable {
         return "Due in \(daysUntilDue)d"
     }
 
-    mutating func markComplete() {
-        lastCompleted = Date()
-        nextDue = Calendar.current.date(byAdding: .day, value: frequency.days, to: Date()) ?? Date()
-    }
-
     // MARK: - HomeArea
     enum HomeArea: String, Codable, CaseIterable, Identifiable {
         case kitchen  = "Kitchen"

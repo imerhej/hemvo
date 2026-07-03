@@ -204,12 +204,13 @@ final class ScheduleViewModel: ObservableObject {
         let dateStr = event.isAllDay
             ? event.date.formatted(.dateTime.month(.abbreviated).day())
             : event.date.formatted(.dateTime.month(.abbreviated).day().hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits))
+        let creator = HouseholdService.shared.displayName(forUserID: cachedUserID)
 
         if event.scope == .personal {
             guard !event.inviteeIDs.isEmpty else { return }
             await PushNotificationService.shared.notifyUsers(
                 event.inviteeIDs,
-                title: "📅 You're invited: \(event.title)",
+                title: "📅 \(creator) invited you: \(event.title)",
                 body:  dateStr
             )
             return
@@ -219,19 +220,19 @@ final class ScheduleViewModel: ObservableObject {
         if event.inviteeIDs.isEmpty {
             await PushNotificationService.shared.notifyHouseholdFiltered(
                 permission: \.receiveCalendarAlerts,
-                title: "📅 New Event",
+                title: "📅 \(creator) added an event",
                 body:  "\(event.title) · \(dateStr)"
             )
         } else {
             async let inviteePush: Void = PushNotificationService.shared.notifyUsers(
                 event.inviteeIDs,
-                title: "📅 You're invited: \(event.title)",
+                title: "📅 \(creator) invited you: \(event.title)",
                 body:  dateStr
             )
             async let othersPush: Void = PushNotificationService.shared.notifyHouseholdExcludingFiltered(
                 userIDs:    event.inviteeIDs,
                 permission: \.receiveCalendarAlerts,
-                title:      "📅 New Event",
+                title:      "📅 \(creator) added an event",
                 body:       "\(event.title) · \(dateStr)"
             )
             _ = await (inviteePush, othersPush)
@@ -868,6 +869,7 @@ final class ScheduleViewModel: ObservableObject {
     private func loadTasksFromSupabase(uid: UUID) async {
         do {
             var query = supabase.from("house_tasks").select()
+                .eq("task_type", value: "schedule")
             if let hid = cachedHouseholdID {
                 query = query.eq("household_id", value: hid.uuidString)
             } else {
@@ -1155,6 +1157,7 @@ private struct SupabaseTaskRow: Codable {
     var notes:         String
     var completedDate: Date?
     let createdBy:     UUID
+    let taskType:      String       // discriminates from Maintenance's rows in the same table
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -1167,6 +1170,7 @@ private struct SupabaseTaskRow: Codable {
         case notes
         case completedDate = "completed_date"
         case createdBy    = "created_by"
+        case taskType     = "task_type"
     }
 
     init(from task: HouseTask, userId: UUID, householdId: UUID) {
@@ -1181,6 +1185,7 @@ private struct SupabaseTaskRow: Codable {
         priority         = task.priority.rawValue
         notes            = task.notes
         completedDate    = task.completedDate
+        taskType         = "schedule"
     }
 
     func toTask() -> HouseTask {

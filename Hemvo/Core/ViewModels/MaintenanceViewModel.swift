@@ -20,6 +20,8 @@ final class MaintenanceViewModel: ObservableObject {
     private var cachedHouseholdID: UUID?
     private var deletedItemIDs:    Set<UUID> = []
     private var pendingUploadIDs:  Set<UUID> = []
+    private var deletedCompletionIDs: Set<UUID> = []
+    private var pendingCompletionIDs: Set<UUID> = []
 
     private var realtimeTask:     Task<Void, Never>?
     private var realtimeDebounce: Task<Void, Never>?
@@ -77,19 +79,20 @@ final class MaintenanceViewModel: ObservableObject {
 
     private func sendItemCreationPush(for item: MaintenanceItem) async {
         let dateStr  = item.nextDue.formatted(.dateTime.month().day())
-        let taskWord = item.difficulty == .hard ? "Maintenance Task" : "Chore"
+        let taskWord = item.difficulty == .hard ? "task" : "chore"
         let icon     = item.difficulty == .hard ? "🔧" : "🧹"
+        let creator  = HouseholdService.shared.displayName(forUserID: cachedUserID)
         if item.assignedMemberIDs.isEmpty {
             await PushNotificationService.shared.notifyHouseholdFiltered(
                 permission: \.receiveMaintenanceAlerts,
-                title: "\(icon) New \(taskWord)",
+                title: "\(icon) \(creator) added a \(taskWord)",
                 body: "\(item.title) · Due \(dateStr)"
             )
         } else {
             let uuids = item.assignedMemberIDs.compactMap { UUID(uuidString: $0) }
             await PushNotificationService.shared.notifyUsers(
                 uuids,
-                title: "\(icon) \(taskWord) Assigned",
+                title: "\(icon) \(creator) assigned you a \(taskWord)",
                 body: "\(item.title) · Due \(dateStr)"
             )
         }
@@ -120,9 +123,13 @@ final class MaintenanceViewModel: ObservableObject {
         Task { await supabaseUpdate(item) }
     }
 
+    // Recurring: logs a completion event and rolls the task's due date forward
+    // by one frequency cycle instead of retiring it. Anchored to the due date
+    // that was just met (not today) so the cadence stays fixed even if a task
+    // is completed early or late.
     func markComplete(_ item: MaintenanceItem) {
         guard let idx = items.firstIndex(where: { $0.id == item.id }) else { return }
-        let completed = CompletedTask(
+        let completion = CompletedTask(
             id:               UUID(),
             originalID:       item.id,
             title:            item.title,
@@ -132,17 +139,25 @@ final class MaintenanceViewModel: ObservableObject {
             notes:            item.notes,
             completedDate:    Date(),
             nextDue:          item.nextDue,
-            createdBy:        item.createdBy
+            createdBy:        cachedUserID?.uuidString
         )
-        history.insert(completed, at: 0)
-        items.remove(at: idx)
+        history.insert(completion, at: 0)
+        pendingCompletionIDs.insert(completion.id)
+        persistPendingCompletionIDs()
+
+        var rolled = item
+        rolled.lastCompleted = Date()
+        rolled.nextDue = Calendar.current.date(byAdding: .day, value: item.frequency.days, to: item.nextDue) ?? item.nextDue
+        items[idx] = rolled
         persist()
+
         notif.cancelMaintenanceReminder(for: item.id)
-        // Update is_complete = true instead of deleting so the row stays in Supabase
-        // for history and the active-tasks query (is_complete = false) won't return it.
-        Task { await supabaseMarkComplete(id: item.id) }
-        // Tombstone cleared in loadFromSupabase once is_complete=true rows
-        // stop appearing in the is_complete=false query.
+        if UserPreferences.shared.notifMaintenance {
+            notif.scheduleMaintenanceReminder(for: rolled)
+        }
+
+        Task { await supabaseInsertCompletion(completion, taskId: item.id) }
+        Task { await supabaseRollTaskForward(rolled) }
     }
 
     func deleteItem(_ item: MaintenanceItem) {
@@ -170,12 +185,12 @@ final class MaintenanceViewModel: ObservableObject {
     func deleteHistory(_ task: CompletedTask) {
         history.removeAll { $0.id == task.id }
         persist()
-        // Tombstone prevents the row from being re-added during sync before the
-        // Supabase delete propagates. Cleared in loadFromSupabase once the row
-        // is confirmed absent from both active and completed queries.
-        deletedItemIDs.insert(task.originalID)
-        persistDeletedIDs()
-        Task { await supabaseDelete(id: task.originalID) }
+        // Deletes only this completion log entry — task.originalID may still
+        // point at an active recurring task, which must not be touched.
+        // Tombstone cleared in loadFromSupabase once the row is confirmed absent.
+        deletedCompletionIDs.insert(task.id)
+        persistDeletedCompletionIDs()
+        Task { await supabaseDeleteCompletion(id: task.id) }
     }
 
     deinit {
@@ -193,10 +208,14 @@ final class MaintenanceViewModel: ObservableObject {
     private let historyKey           = "hemvo_maintenanceHistory"
     private let deletedItemIDsKey    = "hemvo_deletedMaintenanceIDs"
     private let pendingUploadIDsKey  = "hemvo_pendingUploadMaintenanceIDs"
+    private let deletedCompletionIDsKey = "hemvo_deletedMaintenanceCompletionIDs"
+    private let pendingCompletionIDsKey = "hemvo_pendingUploadMaintenanceCompletionIDs"
 
     init() {
         loadDeletedIDs()
         loadPendingUploadIDs()
+        loadDeletedCompletionIDs()
+        loadPendingCompletionIDs()
         load()
         if UserPreferences.shared.notifMaintenance {
             notif.scheduleMaintenanceReminders(for: items)
@@ -240,6 +259,30 @@ final class MaintenanceViewModel: ObservableObject {
         }
     }
 
+    private func loadDeletedCompletionIDs() {
+        guard let d = UserDefaults.standard.data(forKey: deletedCompletionIDsKey),
+              let v = try? JSONDecoder().decode([UUID].self, from: d) else { return }
+        deletedCompletionIDs = Set(v)
+    }
+
+    private func persistDeletedCompletionIDs() {
+        if let d = try? JSONEncoder().encode(Array(deletedCompletionIDs)) {
+            UserDefaults.standard.set(d, forKey: deletedCompletionIDsKey)
+        }
+    }
+
+    private func loadPendingCompletionIDs() {
+        guard let d = UserDefaults.standard.data(forKey: pendingCompletionIDsKey),
+              let v = try? JSONDecoder().decode([UUID].self, from: d) else { return }
+        pendingCompletionIDs = Set(v)
+    }
+
+    private func persistPendingCompletionIDs() {
+        if let d = try? JSONEncoder().encode(Array(pendingCompletionIDs)) {
+            UserDefaults.standard.set(d, forKey: pendingCompletionIDsKey)
+        }
+    }
+
     // MARK: - Supabase Sync
 
     func loadFromSupabase() async {
@@ -258,108 +301,70 @@ final class MaintenanceViewModel: ObservableObject {
         }
 
         do {
-            // ── Build scoped queries ───────────────────────────────────────
-            var activeQuery    = supabase.from("house_tasks").select()
-            var completedQuery = supabase.from("house_tasks").select()
+            // ── Active tasks: task_type = maintenance, is_complete always false ──
+            // (Maintenance never flips is_complete anymore — completion is logged
+            // to maintenance_completions instead, see markComplete().)
+            var activeQuery = supabase.from("house_tasks").select()
+                .eq("task_type", value: "maintenance")
+                .eq("is_complete", value: false)
             if let hid = cachedHouseholdID {
-                activeQuery    = activeQuery.eq("household_id", value: hid.uuidString)
-                    .eq("is_complete", value: false)
-                completedQuery = completedQuery.eq("household_id", value: hid.uuidString)
-                    .eq("is_complete", value: true)
+                activeQuery = activeQuery.eq("household_id", value: hid.uuidString)
             } else {
-                activeQuery    = activeQuery.eq("created_by", value: uid.uuidString)
-                    .eq("is_complete", value: false)
-                completedQuery = completedQuery.eq("created_by", value: uid.uuidString)
-                    .eq("is_complete", value: true)
+                activeQuery = activeQuery.eq("created_by", value: uid.uuidString)
             }
+            let rows: [SupabaseHouseTaskRow] = try await activeQuery.execute().value
 
-            let rows:          [SupabaseHouseTaskRow] = try await activeQuery.execute().value
-            let completedRows: [SupabaseHouseTaskRow] = try await completedQuery.execute().value
-            let completedIDs = Set(completedRows.map { $0.id })
+            // ── Completion log (history) ─────────────────────────────────────
+            var completionsQuery = supabase.from("maintenance_completions").select()
+            if let hid = cachedHouseholdID {
+                completionsQuery = completionsQuery.eq("household_id", value: hid.uuidString)
+            } else {
+                completionsQuery = completionsQuery.eq("completed_by", value: uid.uuidString)
+            }
+            let completionRows: [SupabaseCompletionRow] = try await completionsQuery.execute().value
 
-            // ── Clear tombstones confirmed absent from BOTH queries ────────
-            // A tombstoned ID that still appears in completedRows hasn't been
-            // deleted from Supabase yet — keep the tombstone and retry below.
+            // ── Clear active-task tombstones confirmed absent remotely ──────
             let fetchedActiveIDs = Set(rows.map { $0.id })
-            let confirmedGone    = deletedItemIDs.filter {
-                !fetchedActiveIDs.contains($0) && !completedIDs.contains($0)
-            }
-            if !confirmedGone.isEmpty {
-                confirmedGone.forEach { deletedItemIDs.remove($0) }
+            let confirmedGoneItems = deletedItemIDs.filter { !fetchedActiveIDs.contains($0) }
+            if !confirmedGoneItems.isEmpty {
+                confirmedGoneItems.forEach { deletedItemIDs.remove($0) }
                 persistDeletedIDs()
             }
+            let staleActive = rows.filter { deletedItemIDs.contains($0.id) }
+            for row in staleActive { Task { await supabaseDelete(id: row.id) } }
 
-            // ── Retry delete for tombstoned rows still present in Supabase ─
-            let staleActive    = rows.filter          { deletedItemIDs.contains($0.id) }
-            let staleCompleted = completedRows.filter { deletedItemIDs.contains($0.id) }
-            for row in staleActive    { Task { await supabaseDelete(id: row.id) } }
-            for row in staleCompleted { Task { await supabaseDelete(id: row.id) } }
-
-            // ── Sync completed tasks into history for all household members ─
-            // Uses local item data where available so area/frequency/estimatedMinutes
-            // are preserved; falls back to DB defaults when the item was never cached.
-            let historyOriginalIDs = Set(history.map { $0.originalID })
-            let localItemsByID     = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-            var historyChanged     = false
-
-            for row in completedRows
-                where !historyOriginalIDs.contains(row.id) && !deletedItemIDs.contains(row.id) {
-                let ct: CompletedTask
-                if let local = localItemsByID[row.id] {
-                    ct = CompletedTask(
-                        id:               row.id,
-                        originalID:       row.id,
-                        title:            local.title,
-                        area:             local.area,
-                        frequency:        local.frequency,
-                        estimatedMinutes: local.estimatedMinutes,
-                        notes:            local.notes,
-                        completedDate:    row.completedDate ?? Date(),
-                        nextDue:          local.nextDue,
-                        createdBy:        row.createdBy.uuidString
-                    )
-                } else {
-                    ct = CompletedTask(
-                        id:               row.id,
-                        originalID:       row.id,
-                        title:            row.title,
-                        area:             .general,
-                        frequency:        .monthly,
-                        estimatedMinutes: 15,
-                        notes:            row.notes,
-                        completedDate:    row.completedDate ?? Date(),
-                        nextDue:          row.dueDate,
-                        createdBy:        row.createdBy.uuidString
-                    )
-                }
-                history.append(ct)
-                historyChanged = true
+            // ── Clear completion tombstones confirmed absent remotely ───────
+            let fetchedCompletionIDs = Set(completionRows.map { $0.id })
+            let confirmedGoneCompletions = deletedCompletionIDs.filter { !fetchedCompletionIDs.contains($0) }
+            if !confirmedGoneCompletions.isEmpty {
+                confirmedGoneCompletions.forEach { deletedCompletionIDs.remove($0) }
+                persistDeletedCompletionIDs()
             }
+            let staleCompletions = completionRows.filter { deletedCompletionIDs.contains($0.id) }
+            for row in staleCompletions { Task { await supabaseDeleteCompletion(id: row.id) } }
 
-            // ── Remove history entries deleted by another household member ──
-            // If a completed row is no longer in Supabase and wasn't tombstoned
-            // by this device, it was deleted by someone else — purge it locally.
-            let prevCount = history.count
-            history.removeAll {
-                !completedIDs.contains($0.originalID) && !deletedItemIDs.contains($0.originalID)
+            // ── Merge history: server truth + not-yet-synced local completions ──
+            let remoteHistory = completionRows
+                .filter { !deletedCompletionIDs.contains($0.id) }
+                .map { $0.toCompletedTask() }
+            let remoteHistoryIDs = Set(remoteHistory.map { $0.id })
+            let pendingLocalHistory = history.filter {
+                pendingCompletionIDs.contains($0.id) &&
+                !remoteHistoryIDs.contains($0.id) &&
+                !deletedCompletionIDs.contains($0.id)
             }
-            if history.count != prevCount { historyChanged = true }
-
-            if historyChanged {
-                history.sort { $0.completedDate > $1.completedDate }
-                persist()
-            }
+            history = (remoteHistory + pendingLocalHistory).sorted { $0.completedDate > $1.completedDate }
+            persist()
+            for h in pendingLocalHistory { Task { await supabaseInsertCompletion(h, taskId: h.originalID) } }
 
             // ── Merge active tasks ─────────────────────────────────────────
-            let historyIDs  = Set(history.map { $0.originalID })
             let remoteItems = rows.map { $0.toItem() }
-                .filter { !deletedItemIDs.contains($0.id) && !historyIDs.contains($0.id) }
-            let remoteIDs   = Set(remoteItems.map { $0.id })
+                .filter { !deletedItemIDs.contains($0.id) }
+            let remoteIDs = Set(remoteItems.map { $0.id })
             let pendingLocal = items.filter {
                 pendingUploadIDs.contains($0.id) &&
                 !remoteIDs.contains($0.id) &&
-                !deletedItemIDs.contains($0.id) &&
-                !completedIDs.contains($0.id)
+                !deletedItemIDs.contains($0.id)
             }
             items = remoteItems + pendingLocal
             persist()
@@ -492,22 +497,85 @@ final class MaintenanceViewModel: ObservableObject {
         }
     }
 
-    private func supabaseMarkComplete(id: UUID) async {
-        struct Completion: Encodable {
-            let isComplete: Bool
-            let completedDate: Date
+    // Bumps due_date (and last_completed) forward on the same row instead of
+    // flipping is_complete — the row stays active for the next occurrence.
+    private func supabaseRollTaskForward(_ item: MaintenanceItem) async {
+        struct RollForward: Encodable {
+            let dueDate:       Date
+            let completedDate: Date?
             enum CodingKeys: String, CodingKey {
-                case isComplete   = "is_complete"
+                case dueDate       = "due_date"
                 case completedDate = "completed_date"
             }
         }
         do {
             try await supabase.from("house_tasks")
-                .update(Completion(isComplete: true, completedDate: Date()))
-                .eq("id", value: id.uuidString)
+                .update(RollForward(dueDate: item.nextDue, completedDate: item.lastCompleted))
+                .eq("id", value: item.id.uuidString)
                 .execute()
         } catch {
-            Logger.maintenance.error("markComplete house_task error: \(error.localizedDescription)")
+            Logger.maintenance.error("roll forward house_task error: \(error.localizedDescription)")
+        }
+    }
+
+    private func supabaseInsertCompletion(_ completion: CompletedTask, taskId: UUID) async {
+        guard !deletedCompletionIDs.contains(completion.id) else { return }
+        await resolveIDs()
+        guard let uid = cachedUserID, let hid = cachedHouseholdID else { return }
+
+        struct CompletionRow: Encodable {
+            let id:                 UUID
+            let taskId:             UUID
+            let householdId:        UUID
+            let completedBy:        UUID
+            let completedDate:      Date
+            let dueDateAtCompletion: Date
+            let title:              String
+            let area:               String
+            let frequency:          String
+            let estimatedMinutes:   Int
+            let notes:              String
+            enum CodingKeys: String, CodingKey {
+                case id
+                case taskId              = "task_id"
+                case householdId         = "household_id"
+                case completedBy         = "completed_by"
+                case completedDate       = "completed_date"
+                case dueDateAtCompletion = "due_date_at_completion"
+                case title, area, frequency, notes
+                case estimatedMinutes    = "estimated_minutes"
+            }
+        }
+
+        let row = CompletionRow(
+            id:                 completion.id,
+            taskId:             taskId,
+            householdId:        hid,
+            completedBy:        uid,
+            completedDate:      completion.completedDate,
+            dueDateAtCompletion: completion.nextDue,
+            title:              completion.title,
+            area:               completion.area.rawValue,
+            frequency:          completion.frequency.rawValue,
+            estimatedMinutes:   completion.estimatedMinutes,
+            notes:              completion.notes
+        )
+        do {
+            try await supabase.from("maintenance_completions").insert(row).execute()
+            pendingCompletionIDs.remove(completion.id)
+            persistPendingCompletionIDs()
+        } catch {
+            Logger.maintenance.error("insert maintenance_completion error: \(error.localizedDescription)")
+        }
+    }
+
+    private func supabaseDeleteCompletion(id: UUID) async {
+        do {
+            try await supabase.from("maintenance_completions").delete()
+                .eq("id", value: id.uuidString).execute()
+            // Tombstone cleared in loadFromSupabase once the row is confirmed absent.
+        } catch {
+            Logger.maintenance.error("delete maintenance_completion error: \(error.localizedDescription)")
         }
     }
 
@@ -553,6 +621,7 @@ private struct SupabaseHouseTaskRow: Codable {
     var notes:              String
     var completedDate:      Date?
     let createdBy:          UUID
+    let taskType:           String   // discriminates from Schedule's rows in the same table
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -570,6 +639,7 @@ private struct SupabaseHouseTaskRow: Codable {
         case notes
         case completedDate      = "completed_date"
         case createdBy          = "created_by"
+        case taskType           = "task_type"
     }
 
     init(from item: MaintenanceItem, userId: UUID, householdId: UUID) {
@@ -591,6 +661,7 @@ private struct SupabaseHouseTaskRow: Codable {
         difficulty        = item.difficulty.rawValue
         notes             = item.notes
         completedDate     = item.lastCompleted
+        taskType          = "maintenance"
     }
 
     func toItem() -> MaintenanceItem {
@@ -616,19 +687,45 @@ private struct SupabaseHouseTaskRow: Codable {
             createdBy:         createdBy.uuidString
         )
     }
+}
+
+// MARK: - Supabase row mapping (maintenance_completions table)
+private struct SupabaseCompletionRow: Codable {
+    let id:                  UUID
+    let taskId:              UUID?   // nullable: ON DELETE SET NULL if the recurring task is later deleted
+    let householdId:         UUID
+    let completedBy:         UUID
+    let completedDate:       Date
+    let dueDateAtCompletion: Date
+    let title:               String
+    let area:                String?
+    let frequency:           String?
+    let estimatedMinutes:    Int?
+    let notes:               String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case taskId              = "task_id"
+        case householdId         = "household_id"
+        case completedBy         = "completed_by"
+        case completedDate       = "completed_date"
+        case dueDateAtCompletion = "due_date_at_completion"
+        case title, area, frequency, notes
+        case estimatedMinutes    = "estimated_minutes"
+    }
 
     func toCompletedTask() -> CompletedTask {
         CompletedTask(
             id:               id,
-            originalID:       id,
+            originalID:       taskId ?? id,
             title:            title,
             area:             MaintenanceItem.HomeArea(rawValue: area ?? "") ?? .general,
             frequency:        MaintenanceItem.Frequency(rawValue: frequency ?? "") ?? .monthly,
             estimatedMinutes: estimatedMinutes ?? 15,
-            notes:            notes,
-            completedDate:    completedDate ?? Date(),
-            nextDue:          dueDate,
-            createdBy:        createdBy.uuidString
+            notes:            notes ?? "",
+            completedDate:    completedDate,
+            nextDue:          dueDateAtCompletion,
+            createdBy:        completedBy.uuidString
         )
     }
 }
