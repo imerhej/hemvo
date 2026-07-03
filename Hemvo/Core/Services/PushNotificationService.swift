@@ -207,6 +207,42 @@ final class PushNotificationService {
         await notifyUsers(targetIDs, title: title, body: body)
     }
 
+    /// Sends a push to household members who have the given permission enabled,
+    /// resolving membership directly from Supabase `profiles` rather than
+    /// `HouseholdService`'s in-memory cache. Use this when the household ID is
+    /// already resolved (e.g. right after launch, before `HouseholdService`
+    /// has ever populated its member list) but the push still needs to honour
+    /// each recipient's notification permissions.
+    func notifyHouseholdFiltered(
+        householdID: String, creatorID: String?,
+        permission: KeyPath<MemberPermissions, Bool>,
+        title: String, body: String
+    ) async {
+        struct ProfileRow: Decodable {
+            let id: UUID
+            let role: String?
+            let permissions: MemberPermissions?
+        }
+        do {
+            let profiles: [ProfileRow] = try await supabase
+                .from("profiles")
+                .select("id, role, permissions")
+                .eq("household_id", value: householdID)
+                .execute()
+                .value
+            let targetIDs = profiles.compactMap { row -> UUID? in
+                if row.id.uuidString == creatorID { return nil }
+                let role  = HouseholdRole(rawValue: row.role ?? "") ?? .adult
+                let perms = row.permissions ?? .defaults(for: role)
+                return perms[keyPath: permission] ? row.id : nil
+            }
+            guard !targetIDs.isEmpty else { return }
+            await notifyUsers(targetIDs, title: title, body: body)
+        } catch {
+            Logger.push.error("notify-household-filtered error: \(error.localizedDescription)")
+        }
+    }
+
     /// Sends a push to every member of the given household, optionally skipping
     /// the creator. Use this when the household ID is already resolved so the
     /// call doesn't depend on HouseholdService in-memory state being loaded.
