@@ -31,7 +31,7 @@ struct PaywallView: View {
         ("dollarsign.circle.fill",             .blue,            "Budget Tracking",     "Expenses, limits & bill reminders"),
         ("calendar.circle.fill",              .purple,          "Family Schedule",     "Shared calendar & task delegation"),
         ("wrench.and.screwdriver",            .red,             "Home Maintenance",    "Chore tracker & seasonal checklists"),
-        ("icloud.circle.fill",               .teal,            "iCloud Sync",         "Access your data on all devices"),
+        ("arrow.triangle.2.circlepath.circle.fill", .teal,      "Cloud Sync",          "Access your data on all devices"),
         ("bell.badge.circle.fill",           .orange,          "Smart Reminders",     "Never miss a bill or chore again"),
     ]
 

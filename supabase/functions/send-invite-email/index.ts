@@ -89,9 +89,9 @@ serve(async (req: Request) => {
     });
   }
 
-  let to: string, inviterName: string, householdName: string, code: string;
+  let code: string;
   try {
-    ({ to, inviterName, householdName, code } = await req.json());
+    ({ code } = await req.json());
   } catch {
     return new Response(JSON.stringify({ error: "Invalid JSON" }), {
       status: 400,
@@ -99,16 +99,53 @@ serve(async (req: Request) => {
     });
   }
 
-  if (!to || !inviterName || !householdName || !code) {
-    return new Response(JSON.stringify({ error: "Missing required fields: to, inviterName, householdName, code" }), {
+  if (!code) {
+    return new Response(JSON.stringify({ error: "Missing required field: code" }), {
       status: 400,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   }
 
+  // Look up the invite server-side instead of trusting client-supplied
+  // to/inviterName/householdName — without this, any authenticated caller could
+  // send Hemvo-branded emails with arbitrary text to arbitrary addresses using
+  // the app's Resend sending domain (found in security audit, 2026-07-03).
+  const { data: invite, error: inviteError } = await admin
+    .from("household_invites")
+    .select("invitee_email, inviter_name, household_name, created_by, expires_at, accepted_at")
+    .ilike("code", code.trim())
+    .maybeSingle();
+
+  if (inviteError || !invite) {
+    return new Response(JSON.stringify({ error: "Invalid invite code" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+  }
+  if (invite.created_by !== user.id) {
+    return new Response(JSON.stringify({ error: "Not your invite" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+  }
+  if (invite.accepted_at) {
+    return new Response(JSON.stringify({ error: "Invite already accepted" }), {
+      status: 409,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+  }
+  if (new Date(invite.expires_at) < new Date()) {
+    return new Response(JSON.stringify({ error: "Invite expired" }), {
+      status: 410,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+  }
+
+  const to = invite.invitee_email;
+
   // Sanitize all user-supplied values before embedding in HTML.
-  const safeInviter   = htmlEscape(inviterName);
-  const safeHousehold = htmlEscape(householdName);
+  const safeInviter   = htmlEscape(invite.inviter_name);
+  const safeHousehold = htmlEscape(invite.household_name);
   const safeCode      = htmlEscape(code.toUpperCase());
   const year          = new Date().getFullYear();
 

@@ -29,7 +29,12 @@ CREATE POLICY "profiles_select"
     OR household_id IS NOT NULL AND household_id = get_my_household_id()
   );
 
--- Users can only update their own profile row.
+-- Users can only update their own profile row. Row-level only — see
+-- guard_profile_privilege_columns and guard_trial_end_date triggers
+-- (migration 20260703150000) for the column-level restrictions that stop a
+-- user editing their own role/household_id/permissions/disabled/trial_end_date
+-- directly (those must go through update_member_role(), update_member_permissions(),
+-- set_member_disabled(), join_household_with_code(), or the trial-start path).
 CREATE POLICY "profiles_update"
   ON profiles FOR UPDATE
   TO authenticated
@@ -90,10 +95,16 @@ CREATE POLICY "events_select"
     OR created_by = auth.uid()
   );
 
+-- household_id must be NULL or the caller's own household (migration
+-- 20260703150000) — created_by alone let any authenticated user inject rows
+-- into another household by UUID.
 CREATE POLICY "events_insert"
   ON events FOR INSERT
   TO authenticated
-  WITH CHECK (created_by = auth.uid());
+  WITH CHECK (
+    created_by = auth.uid()
+    AND (household_id IS NULL OR household_id = get_my_household_id())
+  );
 
 -- Any household member may update events (replaced created_by-only restriction
 -- in migration 20260510140000_events_update_allow_household).
@@ -143,10 +154,14 @@ CREATE POLICY "house_tasks_select"
     OR created_by = auth.uid()
   );
 
+-- household_id must be NULL or the caller's own household (migration 20260703150000).
 CREATE POLICY "house_tasks_insert"
   ON house_tasks FOR INSERT
   TO authenticated
-  WITH CHECK (created_by = auth.uid());
+  WITH CHECK (
+    created_by = auth.uid()
+    AND (household_id IS NULL OR household_id = get_my_household_id())
+  );
 
 -- Owner/Adult: full write access to any task in their household.
 -- Teen: restricted to tasks they created or are assigned to (for marking complete).
@@ -207,10 +222,14 @@ CREATE POLICY "expenses_select"
     OR created_by = auth.uid()
   );
 
+-- household_id must be NULL or the caller's own household (migration 20260703150000).
 CREATE POLICY "expenses_insert"
   ON expenses FOR INSERT
   TO authenticated
-  WITH CHECK (created_by = auth.uid());
+  WITH CHECK (
+    created_by = auth.uid()
+    AND (household_id IS NULL OR household_id = get_my_household_id())
+  );
 
 CREATE POLICY "expenses_update"
   ON expenses FOR UPDATE
@@ -237,10 +256,14 @@ CREATE POLICY "meals_select"
     OR created_by = auth.uid()
   );
 
+-- household_id must be NULL or the caller's own household (migration 20260703150000).
 CREATE POLICY "meals_insert"
   ON meals FOR INSERT
   TO authenticated
-  WITH CHECK (created_by = auth.uid());
+  WITH CHECK (
+    created_by = auth.uid()
+    AND (household_id IS NULL OR household_id = get_my_household_id())
+  );
 
 CREATE POLICY "meals_update"
   ON meals FOR UPDATE
@@ -273,10 +296,14 @@ CREATE POLICY "grocery_items_select"
     )
   );
 
+-- household_id must be NULL or the caller's own household (migration 20260703150000).
 CREATE POLICY "grocery_items_insert"
   ON grocery_items FOR INSERT
   TO authenticated
-  WITH CHECK (created_by = auth.uid());
+  WITH CHECK (
+    created_by = auth.uid()
+    AND (household_id IS NULL OR household_id = get_my_household_id())
+  );
 
 CREATE POLICY "grocery_items_update"
   ON grocery_items FOR UPDATE
@@ -385,10 +412,14 @@ CREATE POLICY "shopping_lists_select"
     )
   );
 
+-- household_id must be NULL or the caller's own household (migration 20260703150000).
 CREATE POLICY "shopping_lists_insert"
   ON shopping_lists FOR INSERT
   TO authenticated
-  WITH CHECK (created_by = auth.uid());
+  WITH CHECK (
+    created_by = auth.uid()
+    AND (household_id IS NULL OR household_id = get_my_household_id())
+  );
 
 CREATE POLICY "shopping_lists_update"
   ON shopping_lists FOR UPDATE
