@@ -134,7 +134,7 @@ Deployed under `supabase/functions/`. All are invoked via `supabase.functions.in
 - `AuthService` methods that call `supabase.auth.session` are `nonisolated` — calling them from the main actor can cause deadlocks on token refresh.
 - SwiftUI previews use `PersistenceService.preview` (in-memory CoreData) and inject mock environment objects.
 - Certificate pins in `CertificatePinner.swift` expire **2026-07-29** — run `scripts/update-pins.sh` by 2026-07-08, add new SPKI hashes (keep old ones for overlap), ship an app update, then remove old hashes in a follow-up release after 2026-07-29.
-- `PrivacyInfo.xcprivacy` declares UserDefaults (`CA92.1`) and DeviceID (`C617.1`) API usage — required for App Store submission.
+- `PrivacyInfo.xcprivacy` declares UserDefaults (`CA92.1`) required-reason API usage and `NSPrivacyCollectedDataTypeDeviceID` as a collected data type — required for App Store submission. DeviceID is **not** a valid `NSPrivacyAccessedAPIType` category (only UserDefaults, FileTimestamp, SystemBootTime, DiskSpace, ActiveKeyboards are); it only belongs under `NSPrivacyCollectedDataTypes`.
 - `HemvoApp.swift` includes jailbreak detection; returns `false` in simulator to allow development.
 - `Hemvo/Features/Onboarding/EmailValidator.swift` validates disposable email domains (hardcoded blocklist) and MX records via Cloudflare DNS; uses `URLSession.shared` (intentionally unpinned — no credentials sent).
 - `profiles` RLS restricts SELECT to own row or household members only (tightened in migration `20260625150000`); `get_email_for_username()` is a SECURITY DEFINER RPC to allow username login without broader profile access.

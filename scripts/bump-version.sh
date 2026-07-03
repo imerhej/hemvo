@@ -1,7 +1,9 @@
 #!/bin/bash
 # Usage: ./scripts/bump-version.sh [major|minor|patch]
 # Bumps the marketing version (CFBundleShortVersionString) in the Xcode project.
-# The build number is set automatically from git commit count on every build.
+# The build number (CFBundleVersion) is managed separately via agvtool and
+# auto-increments by one on every Archive (see the "Version + Build Number
+# (agvtool)" Run Script build phase).
 #
 # Examples:
 #   ./scripts/bump-version.sh patch   1.1.0 → 1.1.1
