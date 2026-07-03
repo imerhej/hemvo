@@ -488,25 +488,37 @@ final class AuthViewModel: ObservableObject {
 
     func refreshSubscriptionStatus() async {
         let hasSub = await storeKit.hasActiveSubscription()
-        let isActive: Bool
+        let isTrialActive: Bool
         if hasSub {
             isSubscriptionActive = true
             trialDaysRemaining   = 0
-            isActive             = true
+            isTrialActive        = false
         } else if let end = Self.kcDate(KC.trialEndDate, iCloudSync: true) {
             let days = Calendar.current.dateComponents([.day], from: Date(), to: end).day ?? 0
             trialDaysRemaining   = max(days, 0)
             isSubscriptionActive = end > Date()
-            isActive             = end > Date()
+            isTrialActive        = end > Date()
         } else {
             isSubscriptionActive = false
             trialDaysRemaining   = 0
-            isActive             = false
+            isTrialActive        = false
         }
 
         if isOwner {
             // Push owner's current status to Supabase so members can read it.
-            await auth.updateSubscriptionStatus(isActive: isActive)
+            // A real subscription is confirmed with Apple before it can flip the
+            // column to `active`; trial activation is bounded by the server's own
+            // trial_end_date. Neither path lets the client set `active` for free.
+            if hasSub, let transactionID = storeKit.currentTransactionID {
+                let verified = await auth.verifySubscription(transactionID: transactionID)
+                if !verified {
+                    await auth.expireSubscriptionStatus()
+                }
+            } else if isTrialActive {
+                await auth.activateTrialSubscription()
+            } else {
+                await auth.expireSubscriptionStatus()
+            }
         } else {
             // Member: check whether the owner is still paying.
             await checkOwnerSubscriptionStatus()

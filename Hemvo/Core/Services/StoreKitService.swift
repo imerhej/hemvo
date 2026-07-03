@@ -18,6 +18,11 @@ final class StoreKitService: ObservableObject {
     @Published var purchasedProductIDs: Set<String> = []
     @Published var isLoading: Bool                  = false
 
+    /// Transaction id of the currently active subscription entitlement, if any.
+    /// Sent to the verify-subscription Edge Function so the server can confirm
+    /// the purchase with Apple before marking the household subscription active.
+    @Published var currentTransactionID: UInt64?
+
     // MARK: - Transaction Listener
     private var transactionListener: Task<Void, Error>?
 
@@ -93,12 +98,17 @@ final class StoreKitService: ObservableObject {
     @discardableResult
     func updateEntitlements() async -> Set<String> {
         var active = Set<String>()
+        var latestTransactionID: UInt64?
         for await result in Transaction.currentEntitlements {
             if let tx = try? verify(result), tx.revocationDate == nil {
                 active.insert(tx.productID)
+                if StoreIDs.all.contains(tx.productID) {
+                    latestTransactionID = tx.id
+                }
             }
         }
         purchasedProductIDs = active
+        currentTransactionID = latestTransactionID
         return active
     }
 

@@ -193,12 +193,35 @@ final class AuthService {
 
     // MARK: - Subscription Status Sync
 
-    /// Writes the owner's current subscription state to their Supabase profile row so
-    /// members on other devices can read it without needing StoreKit access.
-    func updateSubscriptionStatus(isActive: Bool) async {
-        let status = isActive ? "active" : "expired"
+    /// Asks the verify-subscription Edge Function to confirm a StoreKit transaction
+    /// with Apple's App Store Server API before marking the owner's profile row
+    /// `active`. Only the server-verified path may grant `active` — the RPC that
+    /// used to let any client self-report `active` unconditionally was revoked
+    /// (security audit, 2026-07-03). Members on other devices read this column.
+    func verifySubscription(transactionID: UInt64) async -> Bool {
+        struct Payload: Encodable { let transactionId: String }
+        struct Response: Decodable { let active: Bool }
+        guard let response: Response = try? await supabase.functions.invoke(
+            "verify-subscription",
+            options: FunctionInvokeOptions(body: Payload(transactionId: String(transactionID)))
+        ) else { return false }
+        return response.active
+    }
+
+    /// Marks the owner's profile row `active` for the remainder of their trial
+    /// window. Bounded server-side by `profiles.trial_end_date` (set once at
+    /// signup, not client-extendable) — never an unconditional grant.
+    func activateTrialSubscription() async {
         _ = try? await supabase
-            .rpc("update_subscription_status", params: ["p_status": status])
+            .rpc("activate_trial_subscription")
+            .execute()
+    }
+
+    /// Self-downgrade only — always safe for a client to request, since it can
+    /// never grant unauthorized access.
+    func expireSubscriptionStatus() async {
+        _ = try? await supabase
+            .rpc("expire_my_subscription")
             .execute()
     }
 
