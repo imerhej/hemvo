@@ -68,6 +68,7 @@ final class AuthViewModel: ObservableObject {
         static let biometricEnabled = "hemvo_biometricEnabled"
         static let lockedOut        = "hemvo_lockedOut"
         static let trialEndDate     = "hemvo_trialEndDate"
+        static let notBefore        = "hemvo_notBefore"
         static func gracePeriod(householdID: String) -> String {
             "hemvo_ownerLapsedAt_\(householdID)"
         }
@@ -93,6 +94,21 @@ final class AuthViewModel: ObservableObject {
     }
     private static func deleteKCDate(_ key: String, iCloudSync: Bool = false) {
         KeychainHelper.shared.delete(key: key, iCloudSync: iCloudSync)
+    }
+
+    /// Returns the later of the device clock and the highest timestamp this
+    /// device has ever observed, persisting the result. Trial expiry is
+    /// compared against this instead of raw `Date()` so winding the system
+    /// clock backward can't un-expire a trial once real elapsed time has
+    /// already carried the anchor past `trialEndDate`.
+    private static func advancingNotBeforeAnchor() -> Date {
+        let now    = Date()
+        let stored = kcDate(KC.notBefore)
+        let anchor = max(now, stored ?? .distantPast)
+        if stored == nil || anchor > stored! {
+            setKCDate(KC.notBefore, anchor)
+        }
+        return anchor
     }
 
     // MARK: - One-time migration: UserDefaults → Keychain
@@ -201,7 +217,7 @@ final class AuthViewModel: ObservableObject {
         guard isOwner else { return false }
         guard !isSubscriptionActive else { return false }
         if let end = Self.kcDate(KC.trialEndDate, iCloudSync: true) {
-            return end < Date()
+            return end < Self.advancingNotBeforeAnchor()
         }
         return false
     }
@@ -237,11 +253,14 @@ final class AuthViewModel: ObservableObject {
             profile = loaded
             UserPreferences.shared.seed(from: loaded)
             await HouseholdService.shared.syncWithProfile(loaded)
-            // Restore trial end date from Supabase if Keychain lost it
-            // (e.g. complete device wipe without iCloud Keychain) so the
-            // trial guard in login() can see the existing trial.
-            if Self.kcDate(KC.trialEndDate, iCloudSync: true) == nil,
-               let serverEnd = loaded.trialEndDate {
+            // Reconcile the local trial-end cache to the server's value.
+            // trial_end_date is guarded server-side (settable at most once,
+            // never regressed), so it's always safe — and necessary — to
+            // overwrite the local copy rather than only filling in a nil.
+            // Otherwise a stale Keychain value left over from a previous
+            // account on this device (e.g. after account deletion) could
+            // silently apply to a newly created account.
+            if let serverEnd = loaded.trialEndDate {
                 Self.setKCDate(KC.trialEndDate, serverEnd, iCloudSync: true)
             }
         } catch {

@@ -158,11 +158,16 @@ final class KeychainHelper {
     }
 
     /// Delete ALL Hemvo Keychain items — call on account deletion only.
+    /// Must pass kSecAttrSynchronizableAny like every other method here:
+    /// without it, SecItemDelete only matches non-synchronizable items and
+    /// silently leaves iCloud-synced items (e.g. trialEndDate) behind, which
+    /// can then bleed into a new account created on the same device/iCloud.
     @discardableResult
     func deleteAll() -> Bool {
         let query: [CFString: Any] = [
-            kSecClass:       kSecClassGenericPassword,
-            kSecAttrService: service
+            kSecClass:               kSecClassGenericPassword,
+            kSecAttrService:         service,
+            kSecAttrSynchronizable:  kSecAttrSynchronizableAny
         ]
         let status = SecItemDelete(query as CFDictionary)
         return status == errSecSuccess || status == errSecItemNotFound

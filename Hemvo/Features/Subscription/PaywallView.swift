@@ -174,10 +174,10 @@ struct PaywallView: View {
             // Annual — highlighted
             PlanCard(
                 title:         "Yearly",
-                price:         "$49.99",
+                price:         storeKit.formattedPrice(for: StoreIDs.annual),
                 period:        "/ year",
                 badge:         "BEST VALUE  •  Save 17%",
-                detail:        "~$4.17/mo • Billed annually",
+                detail:        "~\(annualMonthlyStr)/mo • Billed annually",
                 isSelected:    selectedPlan == StoreIDs.annual,
                 isRecommended: true,
                 accentColor:   accentColor
@@ -190,7 +190,7 @@ struct PaywallView: View {
             // Monthly
             PlanCard(
                 title:         "Monthly",
-                price:         "$4.99",
+                price:         storeKit.formattedPrice(for: StoreIDs.monthly),
                 period:        "/ month",
                 badge:         nil,
                 detail:        "Billed monthly • Cancel anytime",
@@ -205,7 +205,14 @@ struct PaywallView: View {
         }
     }
 
-    private var annualMonthlyStr: String { "4.17" }
+    /// Actual per-month cost of the annual plan, derived from the real
+    /// App Store price (not hardcoded) so it stays correct — with the right
+    /// currency symbol — across storefronts and if pricing changes in App
+    /// Store Connect.
+    private var annualMonthlyStr: String {
+        guard let product = storeKit.product(for: StoreIDs.annual) else { return "—" }
+        return (product.price / 12).formatted(product.priceFormatStyle)
+    }
 
     // MARK: - CTA
     private var ctaSection: some View {

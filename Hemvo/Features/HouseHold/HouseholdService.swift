@@ -207,6 +207,10 @@ final class HouseholdService: ObservableObject {
         let row = SupabaseHouseholdRow(id: householdUUID,
                                        name: name,
                                        ownerId: ownerUUID)
+        struct ClaimParams: Encodable {
+            let pHouseholdId: UUID
+            enum CodingKeys: String, CodingKey { case pHouseholdId = "p_household_id" }
+        }
         do {
             // 1. Insert the household row.
             try await supabase
@@ -214,12 +218,11 @@ final class HouseholdService: ObservableObject {
                 .upsert(row, onConflict: "id")
                 .execute()
 
-            // 2. Update the owner's profile: set household_id and role.
+            // 2. Claim ownership: sets the owner's household_id and role via a
+            // guarded RPC (a raw profiles UPDATE is blocked by
+            // guard_profile_privilege_columns).
             try await supabase
-                .from("profiles")
-                .update(["household_id": householdUUID.uuidString,
-                         "role": HouseholdRole.owner.rawValue])
-                .eq("id", value: ownerID)
+                .rpc("claim_new_household_ownership", params: ClaimParams(pHouseholdId: householdUUID))
                 .execute()
 
             Logger.household.debug("household created")
@@ -503,25 +506,14 @@ final class HouseholdService: ObservableObject {
         }
     }
 
-    // Nullifies household_id and role on a profile row.
-    // Uses explicit encode(to:) so nil is sent as JSON null, not omitted.
+    // Nullifies household_id and role on the caller's own profile row via a
+    // guarded RPC (a raw profiles UPDATE is blocked by
+    // guard_profile_privilege_columns). Both call sites always pass the
+    // current session's own user id.
     private func clearProfileHousehold(userID: String) async {
-        struct NullFields: Encodable {
-            func encode(to encoder: Encoder) throws {
-                var c = encoder.container(keyedBy: CodingKeys.self)
-                try c.encode(String?.none, forKey: .householdId)
-                try c.encode(String?.none, forKey: .role)
-            }
-            enum CodingKeys: String, CodingKey {
-                case householdId = "household_id"
-                case role
-            }
-        }
         do {
             try await supabase
-                .from("profiles")
-                .update(NullFields())
-                .eq("id", value: userID)
+                .rpc("leave_household")
                 .execute()
             Logger.household.debug("profile household cleared")
         } catch {
@@ -532,19 +524,22 @@ final class HouseholdService: ObservableObject {
     private func transferOwnershipInSupabase(householdID: String,
                                              newOwnerID: String,
                                              leavingUserID: String) async {
+        struct TransferParams: Encodable {
+            let pHouseholdId: String
+            let pNewOwnerId: String
+            enum CodingKeys: String, CodingKey {
+                case pHouseholdId = "p_household_id"
+                case pNewOwnerId = "p_new_owner_id"
+            }
+        }
         do {
-            // Update the household's owner_id — RLS allows this while the
-            // leaving user's session is still active (owner_id = auth.uid()).
+            // Updates households.owner_id and the new owner's profile.role in
+            // one guarded RPC — the new owner's row isn't the caller's own,
+            // so a raw update is rejected by both profiles_update RLS and
+            // guard_profile_privilege_columns.
             try await supabase
-                .from("households")
-                .update(["owner_id": newOwnerID])
-                .eq("id", value: householdID)
-                .execute()
-            // Promote the new owner's role in profiles.
-            try await supabase
-                .from("profiles")
-                .update(["role": HouseholdRole.owner.rawValue])
-                .eq("id", value: newOwnerID)
+                .rpc("transfer_household_ownership",
+                     params: TransferParams(pHouseholdId: householdID, pNewOwnerId: newOwnerID))
                 .execute()
             Logger.household.debug("ownership transferred")
         } catch {
