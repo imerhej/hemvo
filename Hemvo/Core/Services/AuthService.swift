@@ -225,13 +225,24 @@ final class AuthService {
             .execute()
     }
 
-    /// Reads `subscription_status` from the owner's profile row.
-    /// Returns `true` (fail-open) on any network error so members aren't wrongly locked out.
-    func fetchOwnerSubscriptionStatus(ownerID: String) async -> Bool {
+    struct OwnerSubscriptionState {
+        let isActive: Bool
+        /// Server-stamped moment the owner's status left 'active'/'trial'
+        /// (maintained by the guard trigger, never client-writable). All member
+        /// devices derive the grace countdown from this single timestamp so
+        /// everyone sees the same number of days left.
+        let lapsedAt: Date?
+    }
+
+    /// Reads `subscription_status` + `subscription_lapsed_at` from the owner's profile row.
+    /// Reports active (fail-open) on any network error so members aren't wrongly locked out.
+    func fetchOwnerSubscriptionState(ownerID: String) async -> OwnerSubscriptionState {
         struct StatusRow: Decodable {
             let subscriptionStatus: String?
+            let subscriptionLapsedAt: Date?
             enum CodingKeys: String, CodingKey {
-                case subscriptionStatus = "subscription_status"
+                case subscriptionStatus  = "subscription_status"
+                case subscriptionLapsedAt = "subscription_lapsed_at"
             }
         }
         // Fail-open only for members checking a remote owner's status — so a
@@ -241,14 +252,17 @@ final class AuthService {
         let selfID = await currentUserID()
         guard let row: StatusRow = try? await supabase
             .from("profiles")
-            .select("subscription_status")
+            .select("subscription_status, subscription_lapsed_at")
             .eq("id", value: ownerID)
             .single()
             .execute()
             .value
-        else { return selfID?.uuidString != ownerID }
+        else {
+            return OwnerSubscriptionState(isActive: selfID?.uuidString != ownerID, lapsedAt: nil)
+        }
         let s = row.subscriptionStatus
-        return s == "active" || s == "trial"
+        return OwnerSubscriptionState(isActive: s == "active" || s == "trial",
+                                      lapsedAt: row.subscriptionLapsedAt)
     }
 
     // MARK: - Update Profile
@@ -310,6 +324,9 @@ struct HemvoProfile: Codable, Identifiable, Equatable {
     var householdId: UUID?
     var role: String?
     var subscriptionStatus: String?
+    /// Set server-side (guard trigger) when subscription_status leaves 'active'/'trial'.
+    /// Owners read their own value to show the members' grace countdown on the paywall.
+    var subscriptionLapsedAt: Date?
     var trialEndDate: Date?
     var createdAt: Date?
     /// Per-member notification permissions stored as JSONB in Supabase.
@@ -330,9 +347,10 @@ struct HemvoProfile: Codable, Identifiable, Equatable {
         case avatarColor        = "avatar_color"
         case householdId        = "household_id"
         case role
-        case subscriptionStatus = "subscription_status"
-        case trialEndDate       = "trial_end_date"
-        case createdAt          = "created_at"
+        case subscriptionStatus   = "subscription_status"
+        case subscriptionLapsedAt = "subscription_lapsed_at"
+        case trialEndDate         = "trial_end_date"
+        case createdAt            = "created_at"
         case permissions
         case disabled
         case notifBills         = "notif_bills"

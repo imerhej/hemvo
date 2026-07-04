@@ -532,11 +532,15 @@ final class AuthViewModel: ObservableObject {
                 let verified = await auth.verifySubscription(transactionID: transactionID)
                 if !verified {
                     await auth.expireSubscriptionStatus()
+                    // Pick up the server-stamped subscription_lapsed_at so the
+                    // paywall can show how long members keep access.
+                    await loadProfile()
                 }
             } else if isTrialActive {
                 await auth.activateTrialSubscription()
             } else {
                 await auth.expireSubscriptionStatus()
+                await loadProfile()
             }
         } else {
             // Member: check whether the owner is still paying.
@@ -548,34 +552,36 @@ final class AuthViewModel: ObservableObject {
 
     private func checkOwnerSubscriptionStatus() async {
         guard let h = HouseholdService.shared.household, !h.ownerUserID.isEmpty else { return }
-        let ownerActive = await auth.fetchOwnerSubscriptionStatus(ownerID: h.ownerUserID)
-        if ownerActive {
-            clearOwnerGracePeriod()
+        let state = await auth.fetchOwnerSubscriptionState(ownerID: h.ownerUserID)
+        if state.isActive {
+            // Clean up the legacy per-device Keychain grace clock.
+            Self.deleteKCDate(KC.gracePeriod(householdID: h.id))
             ownerSubscriptionLapsed  = false
             gracePeriodDaysRemaining = 0
         } else {
-            startOrCheckGracePeriod(householdID: h.id)
+            // The countdown derives from the server-stamped lapse moment, so
+            // every member device shows the same number of days. nil only
+            // happens transiently (status flipped before the migration ran);
+            // treat it as "just lapsed" — the server value takes over on the
+            // next refresh.
+            let remaining = Self.graceDaysRemaining(since: state.lapsedAt ?? Date())
+            gracePeriodDaysRemaining = remaining
+            ownerSubscriptionLapsed  = remaining == 0
         }
     }
 
-    private func startOrCheckGracePeriod(householdID: String) {
-        let key = KC.gracePeriod(householdID: householdID)
-        let lapsedAt: Date
-        if let stored = Self.kcDate(key) {
-            lapsedAt = stored
-        } else {
-            lapsedAt = Date()
-            Self.setKCDate(key, lapsedAt)
-        }
-        let elapsed   = Calendar.current.dateComponents([.day], from: lapsedAt, to: Date()).day ?? 0
-        let remaining = max(0, AppConstants.gracePeriodDays - elapsed)
-        gracePeriodDaysRemaining = remaining
-        ownerSubscriptionLapsed  = remaining == 0
+    /// Whole 24-hour periods, deliberately timezone-independent so all member
+    /// devices compute the identical days-left from the shared server timestamp.
+    static func graceDaysRemaining(since lapsedAt: Date) -> Int {
+        let elapsedDays = Int(Date().timeIntervalSince(lapsedAt) / 86_400)
+        return max(0, AppConstants.gracePeriodDays - elapsedDays)
     }
 
-    private func clearOwnerGracePeriod() {
-        guard let h = HouseholdService.shared.household else { return }
-        Self.deleteKCDate(KC.gracePeriod(householdID: h.id))
+    /// Owner-side view of the same countdown: days their household members
+    /// keep access after the owner's own subscription lapsed. 0 when N/A.
+    var memberGraceDaysRemaining: Int {
+        guard let lapsedAt = profile?.subscriptionLapsedAt else { return 0 }
+        return Self.graceDaysRemaining(since: lapsedAt)
     }
 
     // MARK: - Sign Out

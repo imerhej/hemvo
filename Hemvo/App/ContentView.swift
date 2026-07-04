@@ -13,8 +13,10 @@ struct ContentView: View {
 
     @EnvironmentObject var authVM:           AuthViewModel
     @EnvironmentObject var householdService: HouseholdService
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab:      Tab  = .dashboard
     @State private var scheduleJumpDate: Date? = nil
+    @State private var showGracePopup   = false
 
     private var currentRole: HouseholdRole? {
         let uid = authVM.profile?.id.uuidString ?? authVM.userID?.uuidString ?? ""
@@ -103,44 +105,157 @@ struct ContentView: View {
 
             LiquidTabBar(selectedTab: $selectedTab)
 
-            // Grace period warning shown to members when the owner's sub has lapsed
-            // but the 5-day window hasn't expired yet.
-            if !authVM.isOwner && authVM.gracePeriodDaysRemaining > 0 {
-                GracePeriodBanner(daysRemaining: authVM.gracePeriodDaysRemaining)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+            // Grace period popup shown to members on app open when the owner's
+            // sub has lapsed but the 5-day window hasn't expired yet.
+            if showGracePopup {
+                GracePeriodPopup(
+                    daysRemaining: authVM.gracePeriodDaysRemaining,
+                    onDismiss: {
+                        withAnimation(.easeInOut(duration: 0.25)) { showGracePopup = false }
+                    }
+                )
+                .transition(.opacity)
+                .zIndex(10)
             }
         }
         .ignoresSafeArea(edges: .bottom)
-        .animation(.easeInOut(duration: 0.3), value: authVM.gracePeriodDaysRemaining)
+        .onAppear { presentGracePopupIfNeeded() }
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            // Re-present when the app is re-opened from the background, not on
+            // every inactive/active flicker (control centre, notification pull).
+            if oldPhase == .background && newPhase == .active {
+                presentGracePopupIfNeeded()
+            }
+        }
+        .onChange(of: authVM.gracePeriodDaysRemaining) { _, _ in
+            // Covers the owner lapsing while the app is already running.
+            presentGracePopupIfNeeded()
+        }
+    }
+
+    private func presentGracePopupIfNeeded() {
+        guard !authVM.isOwner, authVM.gracePeriodDaysRemaining > 0 else {
+            showGracePopup = false
+            return
+        }
+        withAnimation(.easeInOut(duration: 0.25)) { showGracePopup = true }
     }
 }
 
-// MARK: - GracePeriodBanner
+// MARK: - GracePeriodPopup
 
-private struct GracePeriodBanner: View {
+private struct GracePeriodPopup: View {
+    @EnvironmentObject var authVM:           AuthViewModel
+    @EnvironmentObject var householdService: HouseholdService
+
     let daysRemaining: Int
+    let onDismiss: () -> Void
+
+    @State private var isSendingReminder = false
+    @State private var reminderSent      = false
+
+    /// Throttle: one renew reminder per member per day, so a household of
+    /// members can't flood the owner with pushes.
+    @AppStorage("hemvo_renewReminderSentAt") private var reminderSentAt: Double = 0
+
+    private var ownerName: String {
+        guard let h = householdService.household else { return "the owner" }
+        return h.members.first { $0.id == h.ownerUserID }?.username ?? "the owner"
+    }
+
+    private var alreadyRemindedToday: Bool {
+        Date().timeIntervalSince1970 - reminderSentAt < 86_400
+    }
 
     var body: some View {
-        VStack {
-            HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundColor(.white)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Subscription Paused")
-                        .font(.caption).bold().foregroundColor(.white)
-                    Text(daysRemaining == 1
-                         ? "1 day left — ask your owner to renew."
-                         : "\(daysRemaining) days left — ask your owner to renew.")
-                        .font(.caption2).foregroundColor(.white.opacity(0.9))
+        ZStack {
+            Color.black.opacity(0.45)
+                .ignoresSafeArea()
+                .onTapGesture { onDismiss() }
+
+            VStack(spacing: 20) {
+                ZStack {
+                    Circle()
+                        .fill(Color.orange.opacity(0.15))
+                        .frame(width: 76, height: 76)
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(.orange)
                 }
-                Spacer()
+
+                VStack(spacing: 8) {
+                    Text("Subscription Paused")
+                        .font(.title3).bold()
+                        .multilineTextAlignment(.center)
+
+                    Text("\(ownerName)'s subscription has ended. "
+                         + (daysRemaining == 1
+                            ? "You have 1 day left before the household is paused."
+                            : "You have \(daysRemaining) days left before the household is paused."))
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                VStack(spacing: 10) {
+                    Button { sendRenewReminder() } label: {
+                        ZStack {
+                            if isSendingReminder {
+                                ProgressView().tint(.white)
+                            } else if reminderSent || alreadyRemindedToday {
+                                Label("Reminder Sent", systemImage: "checkmark")
+                                    .font(.headline)
+                            } else {
+                                Text("Ask \(ownerName) to Renew")
+                                    .font(.headline)
+                            }
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background((reminderSent || alreadyRemindedToday) ? Color.green.opacity(0.8) : Color.orange)
+                        .cornerRadius(14)
+                    }
+                    .disabled(isSendingReminder || reminderSent || alreadyRemindedToday)
+
+                    Button(action: onDismiss) {
+                        Text("Dismiss")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                    }
+                }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(Color.orange)
-            Spacer()
+            .padding(28)
+            .background(Color(.systemBackground))
+            .cornerRadius(24)
+            .shadow(color: .black.opacity(0.25), radius: 28, y: 8)
+            .padding(.horizontal, 36)
         }
-        .ignoresSafeArea(edges: .top)
+    }
+
+    private func sendRenewReminder() {
+        guard let h = householdService.household,
+              let ownerID = UUID(uuidString: h.ownerUserID) else { return }
+        isSendingReminder = true
+        let senderName = authVM.profile?.fullName ?? authVM.profile?.username ?? "A household member"
+        let days = daysRemaining
+        Task {
+            await PushNotificationService.shared.notifyUsers(
+                [ownerID],
+                title: "Renew your Hemvo subscription",
+                body: days == 1
+                    ? "\(senderName) asked you to renew — 1 day left before your household is paused."
+                    : "\(senderName) asked you to renew — \(days) days left before your household is paused."
+            )
+            isSendingReminder = false
+            reminderSent      = true
+            reminderSentAt    = Date().timeIntervalSince1970
+            // Give the confirmation state a beat, then close.
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            onDismiss()
+        }
     }
 }
 

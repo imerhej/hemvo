@@ -26,6 +26,19 @@ struct PaywallView: View {
 
     var accentColor: Color { Color(hex: avatarColor) ?? .homeBaseGreen }
 
+    /// The grace note only matters when someone besides the owner is affected.
+    private var otherMemberCount: Int {
+        guard let h = HouseholdService.shared.household else { return 0 }
+        return max(0, h.members.count - 1)
+    }
+
+    private var memberGraceText: String {
+        let days = authVM.memberGraceDaysRemaining
+        if days > 1  { return "Household members lose access in \(days) days" }
+        if days == 1 { return "Household members lose access in 1 day" }
+        return "Your household members' access is paused"
+    }
+
     private let features: [(icon: String, color: Color, title: String, desc: String)] = [
         ("fork.knife.circle.fill",             .orange,          "Meal Planning",       "Weekly plans & auto grocery lists"),
         ("dollarsign.circle.fill",             .blue,            "Budget Tracking",     "Expenses, limits & bill reminders"),
@@ -116,6 +129,21 @@ struct PaywallView: View {
                         .foregroundColor(.white.opacity(0.9))
                         .padding(.horizontal, 14).padding(.vertical, 6)
                         .background(Color.white.opacity(0.18))
+                        .cornerRadius(20)
+                    }
+
+                    // Owner whose sub lapsed: show the members' grace countdown
+                    // (same server-stamped clock the members' popup uses).
+                    if authVM.isOwner, otherMemberCount > 0,
+                       authVM.profile?.subscriptionLapsedAt != nil {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.2.fill").font(.caption)
+                            Text(memberGraceText)
+                                .font(.caption).bold()
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14).padding(.vertical, 6)
+                        .background(Color.orange.opacity(0.9))
                         .cornerRadius(20)
                     }
 
