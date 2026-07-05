@@ -21,7 +21,7 @@ struct BudgetEditorView: View {
     // MARK: - Computed
     var income: Double          { Double(incomeText) ?? 0 }
     var totalAllocated: Double  {
-        vm.budgetCategories.reduce(0) { sum, cat in
+        vm.monthCategories.reduce(0) { sum, cat in
             sum + (Double(categoryLimits[cat.name] ?? "") ?? cat.limit)
         }
     }
@@ -90,7 +90,7 @@ struct BudgetEditorView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { incomeFocused = true }
             }
             .onChange(of: vm.budget.categories.count) { _, _ in
-                for cat in vm.budgetCategories where categoryLimits[cat.name] == nil {
+                for cat in vm.monthCategories where categoryLimits[cat.name] == nil {
                     categoryLimits[cat.name] = String(Int(cat.limit))
                 }
             }
@@ -242,7 +242,9 @@ struct BudgetEditorView: View {
             }
 
             VStack(spacing: 1) {
-                ForEach(Array(vm.budgetCategories.enumerated()), id: \.element.id) { idx, cat in
+                // Scoped to the selected month — categories used only in other
+                // months keep their limits but don't clutter this month's editor.
+                ForEach(Array(vm.monthCategories.enumerated()), id: \.element.id) { idx, cat in
                     let limitStr = Binding<String>(
                         get: { categoryLimits[cat.name] ?? String(Int(cat.limit)) },
                         set: { categoryLimits[cat.name] = $0 }
@@ -258,10 +260,11 @@ struct BudgetEditorView: View {
                         pct:      pct,
                         catColor: catColor,
                         iconName: categoryIcon(cat.name),
+                        isInUse:  vm.isCategoryInUse(cat),
                         onDelete: { vm.deleteCategory(cat) }
                     )
 
-                    if idx < vm.budgetCategories.count - 1 {
+                    if idx < vm.monthCategories.count - 1 {
                         Color.bpDivider.frame(height: 1).padding(.leading, 62)
                     }
                 }
@@ -328,7 +331,7 @@ struct BudgetEditorView: View {
 
     private func prefill() {
         incomeText = String(format: "%.0f", vm.budget.monthlyIncome)
-        for cat in vm.budgetCategories {
+        for cat in vm.monthCategories {
             categoryLimits[cat.name] = String(Int(cat.limit))
         }
     }
@@ -338,8 +341,9 @@ struct BudgetEditorView: View {
             withAnimation { shakeTrigger += 1 }
             return
         }
+        // Only the month's visible categories are saved — hidden ones keep their limits.
         var limits: [UUID: Double] = [:]
-        for cat in vm.budgetCategories {
+        for cat in vm.monthCategories {
             let s = categoryLimits[cat.name] ?? String(Int(cat.limit))
             if let lim = Double(s) {
                 limits[cat.id] = lim
@@ -363,6 +367,9 @@ struct BudgetEditorCategoryRow: View {
     let pct:      Double
     let catColor: Color
     let iconName: String
+    /// Whether any expense or bill (any month) still uses this category —
+    /// deletion is blocked while true, since sync would recreate the category.
+    let isInUse:  Bool
     let onDelete: () -> Void
 
     @State private var showDeleteAlert = false
@@ -418,9 +425,9 @@ struct BudgetEditorCategoryRow: View {
                         .cornerRadius(8)
                 }
 
-                // Delete button — grayed when has spending
+                // Delete button — grayed while expenses/bills still use the category
                 Button {
-                    if cat.spent > 0 {
+                    if isInUse {
                         showDeleteAlert = true
                     } else {
                         onDelete()
@@ -428,11 +435,11 @@ struct BudgetEditorCategoryRow: View {
                 } label: {
                     Image(systemName: "trash")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(cat.spent > 0 ? Color.bpTextSub.opacity(0.4) : .red)
+                        .foregroundColor(isInUse ? Color.bpTextSub.opacity(0.4) : .red)
                         .frame(width: 30, height: 30)
                         .background(
                             RoundedRectangle(cornerRadius: 7)
-                                .fill(cat.spent > 0 ? Color.bpDivider : Color.red.opacity(0.1))
+                                .fill(isInUse ? Color.bpDivider : Color.red.opacity(0.1))
                         )
                 }
                 .buttonStyle(.plain)
@@ -457,7 +464,7 @@ struct BudgetEditorCategoryRow: View {
         .alert("Cannot Delete", isPresented: $showDeleteAlert) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text("\"\(cat.name)\" has $\(Int(cat.spent)) in spending. Remove all expenses in this category before deleting it.")
+            Text("\"\(cat.name)\" is still used by expenses or bills — including ones from other months. Delete those first.")
         }
     }
 }

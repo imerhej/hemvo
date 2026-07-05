@@ -89,10 +89,12 @@ final class PushNotificationService {
     // MARK: - Household Notifications
 
     /// Sends a push notification to specific users (e.g. event invitees).
-    /// Skips the current user automatically via creator_id on the Edge Function.
+    /// The current user is dropped here and again by the Edge Function via
+    /// creator_id, so callers may pass member lists that include the sender.
     func notifyUsers(_ userIDs: [UUID], title: String, body: String) async {
-        guard !userIDs.isEmpty else { return }
         guard let uid = await AuthService.shared.currentUserID() else { return }
+        let userIDs = userIDs.filter { $0 != uid }
+        guard !userIDs.isEmpty else { return }
 
         struct Payload: Encodable {
             let userIds:   [String]

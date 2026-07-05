@@ -159,8 +159,13 @@ serve(async (req: Request) => {
     }
 
     if (tokenRows && tokenRows.length > 0) {
+      // One push per physical device: the same token can appear under several
+      // user_ids when accounts share a device, and APNs would deliver each copy.
+      const uniqueTokenRows = [
+        ...new Map(tokenRows.map((r) => [r.token, r])).values(),
+      ];
       const deliveryResults = await Promise.all(
-        tokenRows.map(async ({ token, apns_environment }: { token: string; apns_environment: string }) => {
+        uniqueTokenRows.map(async ({ token, apns_environment }: { token: string; apns_environment: string }) => {
           const res = await fetch(`${apns_environment === "sandbox" ? APNS_HOST_SANDBOX : APNS_HOST_PROD}/3/device/${token}`, {
             method: "POST",
             headers: {

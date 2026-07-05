@@ -24,6 +24,7 @@ final class BudgetViewModel: ObservableObject {
     private var cachedHouseholdID:  UUID?
 
     private var deletedExpenseIDs:  Set<UUID> = []
+    private var deletedCategoryIDs: Set<UUID> = []
 
     // Real-time sync — expenses
     private var cancellables:       Set<AnyCancellable> = []
@@ -64,7 +65,10 @@ final class BudgetViewModel: ObservableObject {
             .sorted { $0.date > $1.date }
     }
 
-    var totalSpent: Double      { monthlyExpenses.reduce(0) { $0 + $1.amount } }
+    /// Every expense counts the moment it's created — including unpaid bills, which
+    /// count toward the month of their due date. Month scoping (not paid status) is
+    /// what keeps each month's numbers separate.
+    var totalSpent: Double { monthlyExpenses.reduce(0) { $0 + $1.amount } }
     var remainingBudget: Double { budget.monthlyIncome - totalSpent }
     var spentPercent: Double    {
         guard budget.monthlyIncome > 0 else { return 0 }
@@ -93,6 +97,14 @@ final class BudgetViewModel: ObservableObject {
             .sorted { $0.date < $1.date }
     }
     var budgetCategories: [BudgetCategory] { budget.categories }
+
+    /// Categories relevant to the selected month: ones with spending dated in that
+    /// month, plus fresh categories no expense uses yet. Categories used only in
+    /// other months keep their limits but stay out of view, so every month starts
+    /// with a clean slate without having to delete historical payments.
+    var monthCategories: [BudgetCategory] {
+        budget.categories.filter { $0.spent > 0 || !isCategoryInUse($0) }
+    }
 
     func setScope(_ scope: BudgetScope) {
         selectedScope = scope
@@ -177,8 +189,7 @@ final class BudgetViewModel: ObservableObject {
             if !stillUsed, let cat = budget.categories.first(where: {
                 $0.name.lowercased().trimmingCharacters(in: .whitespaces) == categoryName
             }) {
-                budget.categories.removeAll { $0.id == cat.id }
-                Task { await supabaseDeleteCategory(id: cat.id) }
+                removeCategory(cat)
             }
         }
 
@@ -232,10 +243,31 @@ final class BudgetViewModel: ObservableObject {
         Task { await supabaseUpsertCategory(category) }
     }
 
+    /// True while any household expense (any month, paid or not) still maps to this
+    /// category. Deleting a category in use is pointless — autoCreateCategory would
+    /// recreate it from those expenses on the next sync.
+    func isCategoryInUse(_ category: BudgetCategory) -> Bool {
+        let name = category.name.lowercased().trimmingCharacters(in: .whitespaces)
+        return expenses.contains {
+            $0.scope == .household &&
+            expenseCategoryDisplayName($0.category)
+                .lowercased().trimmingCharacters(in: .whitespaces) == name
+        }
+    }
+
     func deleteCategory(_ category: BudgetCategory) {
+        guard !isCategoryInUse(category) else { return }
+        removeCategory(category)
+        objectWillChange.send()
+    }
+
+    /// Tombstones the ID before removing so a loadBudgetFromSupabase() fetch that
+    /// races the async remote delete can't resurrect the category.
+    private func removeCategory(_ category: BudgetCategory) {
+        deletedCategoryIDs.insert(category.id)
+        persistDeletedCategoryIDs()
         budget.categories.removeAll { $0.id == category.id }
         persist()
-        objectWillChange.send()
         Task { await supabaseDeleteCategory(id: category.id) }
     }
 
@@ -313,7 +345,8 @@ final class BudgetViewModel: ObservableObject {
     // MARK: - Persistence (UserDefaults cache)
     private let expenseKey          = "hemvo_expenses"
     private let budgetKey           = "hemvo_budget"
-    private let deletedExpenseIDsKey = "hemvo_deletedExpenseIDs"
+    private let deletedExpenseIDsKey  = "hemvo_deletedExpenseIDs"
+    private let deletedCategoryIDsKey = "hemvo_deletedCategoryIDs"
 
     init() {
         loadDeletedIDs()
@@ -363,14 +396,25 @@ final class BudgetViewModel: ObservableObject {
     }
 
     private func loadDeletedIDs() {
-        guard let d = UserDefaults.standard.data(forKey: deletedExpenseIDsKey),
-              let v = try? JSONDecoder().decode([UUID].self, from: d) else { return }
-        deletedExpenseIDs = Set(v)
+        if let d = UserDefaults.standard.data(forKey: deletedExpenseIDsKey),
+           let v = try? JSONDecoder().decode([UUID].self, from: d) {
+            deletedExpenseIDs = Set(v)
+        }
+        if let d = UserDefaults.standard.data(forKey: deletedCategoryIDsKey),
+           let v = try? JSONDecoder().decode([UUID].self, from: d) {
+            deletedCategoryIDs = Set(v)
+        }
     }
 
     private func persistDeletedIDs() {
         if let d = try? JSONEncoder().encode(Array(deletedExpenseIDs)) {
             UserDefaults.standard.set(d, forKey: deletedExpenseIDsKey)
+        }
+    }
+
+    private func persistDeletedCategoryIDs() {
+        if let d = try? JSONEncoder().encode(Array(deletedCategoryIDs)) {
+            UserDefaults.standard.set(d, forKey: deletedCategoryIDsKey)
         }
     }
 
@@ -706,16 +750,29 @@ final class BudgetViewModel: ObservableObject {
                 budget.monthlyIncome = s.monthlyIncome
             }
 
-            if !remoteCategories.isEmpty {
+            // Clear tombstones only for IDs confirmed absent from Supabase, and
+            // re-fire the delete for tombstoned rows still present — this fetch may
+            // have raced ahead of a deleteCategory() whose remote delete is in flight.
+            let remoteCategoryIDs = Set(remoteCategories.map { $0.id })
+            let confirmedGone = deletedCategoryIDs.filter { !remoteCategoryIDs.contains($0) }
+            if !confirmedGone.isEmpty {
+                confirmedGone.forEach { deletedCategoryIDs.remove($0) }
+                persistDeletedCategoryIDs()
+            }
+            let staleCategories = remoteCategories.filter { deletedCategoryIDs.contains($0.id) }
+            for row in staleCategories { Task { await supabaseDeleteCategory(id: row.id) } }
+
+            let liveCategories = remoteCategories.filter { !deletedCategoryIDs.contains($0.id) }
+            if !liveCategories.isEmpty {
                 // Remote is authoritative; carry over in-memory spent amounts so the
                 // progress bars don't flicker before updateCategorySpend() runs.
                 let spentByName = budget.categories.reduce(into: [String: Double]()) {
                     $0[$1.name.lowercased()] = $1.spent
                 }
-                budget.categories = remoteCategories.map { row in
+                budget.categories = liveCategories.map { row in
                     row.toBudgetCategory(spent: spentByName[row.name.lowercased()] ?? 0)
                 }
-            } else if !budget.categories.isEmpty {
+            } else if remoteCategories.isEmpty && !budget.categories.isEmpty {
                 // Nothing in Supabase yet — push the local UserDefaults cache up.
                 await migrateBudgetToSupabase()
             }

@@ -241,7 +241,18 @@ serve(async (req: Request) => {
 
   if (user_ids && user_ids.length > 0) {
     // Targeting specific users (e.g. invitees) — filter out the creator.
-    targetUserIds = user_ids.filter(id => id !== creator_id);
+    // Normalize case: the iOS client sends uppercase UUID strings while
+    // Postgres returns lowercase, so a plain string comparison never matches
+    // and the creator would push-notify themself.
+    const creatorLower = String(creator_id).toLowerCase();
+    targetUserIds = user_ids
+      .map((id: string) => id.toLowerCase())
+      .filter((id: string) => id !== creatorLower);
+    if (targetUserIds.length === 0) {
+      return new Response(JSON.stringify({ sent: 0 }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
   } else {
     // Broadcast to the whole household: resolve member IDs via profiles table.
     // This is more reliable than filtering device_tokens by household_id because
@@ -299,10 +310,16 @@ serve(async (req: Request) => {
     });
   }
 
+  // One push per physical device: the same token can appear under several
+  // user_ids when accounts share a device, and APNs would deliver each copy.
+  const uniqueRows = [
+    ...new Map(rows.map((r: { token: string; apns_environment: string }) => [r.token, r])).values(),
+  ] as { token: string; apns_environment: string }[];
+
   // Sign JWT once and reuse for every delivery in this request.
   const jwt = await makeAPNsJWT();
   const results = await Promise.all(
-    rows.map(({ token, apns_environment }: { token: string; apns_environment: string }) =>
+    uniqueRows.map(({ token, apns_environment }: { token: string; apns_environment: string }) =>
       sendAPNs(token, title, body, jwt,
         apns_environment === "sandbox" ? APNS_HOST_SANDBOX : APNS_HOST_PROD).then(r => ({
           token,
@@ -325,8 +342,8 @@ serve(async (req: Request) => {
 
   const succeeded = results.filter(r => r.ok).length;
   const sanitized = results.map(({ token: _t, ...rest }) => rest);
-  console.log(`notify-household: ${succeeded}/${rows.length} delivered, results: ${JSON.stringify(sanitized)}`);
-  return new Response(JSON.stringify({ sent: rows.length, delivered: succeeded, results: sanitized }), {
+  console.log(`notify-household: ${succeeded}/${uniqueRows.length} delivered, results: ${JSON.stringify(sanitized)}`);
+  return new Response(JSON.stringify({ sent: uniqueRows.length, delivered: succeeded, results: sanitized }), {
     headers: { "Content-Type": "application/json" },
   });
 });

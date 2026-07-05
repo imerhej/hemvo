@@ -355,7 +355,7 @@ struct BudgetDashboardView: View {
                          icon: "arrow.up.circle.fill",
                          iconColor: Color(hex: "#C0392B") ?? .clear)
 
-            WarmStatTile(value: "\(vm.monthlyExpenses.filter { !$0.isPaid }.count)",
+            WarmStatTile(value: "\(vm.monthlyExpenses.filter { !$0.isRecurring || $0.isPaid }.count)",
                          label: "Transactions",
                          icon: "list.bullet.rectangle.fill",
                          iconColor: Color.wAmber)
@@ -388,6 +388,7 @@ struct BudgetDashboardView: View {
                         WarmCategoryRow(
                             category: cat,
                             canWrite: canWrite,
+                            isInUse:  vm.isCategoryInUse(cat),
                             onEdit:   { showBudgetEditor = true },
                             onDelete: { vm.deleteCategory(cat) }
                         )
@@ -561,6 +562,9 @@ struct WarmStatTile: View {
 struct WarmCategoryRow: View {
     let category:  BudgetCategory
     var canWrite:  Bool = true
+    /// Whether any expense or bill (any month) still uses this category —
+    /// deletion is blocked while true, since sync would recreate the category.
+    var isInUse:   Bool = true
     let onEdit:    () -> Void
     let onDelete:  () -> Void
 
@@ -654,13 +658,13 @@ struct WarmCategoryRow: View {
 
                     // Delete
                     Button {
-                        category.spent > 0 ? (showDeleteAlert = true) : onDelete()
+                        isInUse ? (showDeleteAlert = true) : onDelete()
                     } label: {
                         Image(systemName: "trash")
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(category.spent > 0 ? Color.wMuted.opacity(0.4) : .red)
+                            .foregroundColor(isInUse ? Color.wMuted.opacity(0.4) : .red)
                             .frame(width: 28, height: 28)
-                            .background(category.spent > 0 ? Color.wDivider : Color.red.opacity(0.1))
+                            .background(isInUse ? Color.wDivider : Color.red.opacity(0.1))
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
@@ -689,7 +693,7 @@ struct WarmCategoryRow: View {
         .alert("Cannot Delete", isPresented: $showDeleteAlert) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text("\"\(category.name)\" has $\(Int(category.spent)) in spending. Remove all expenses in this category first.")
+            Text("\"\(category.name)\" is still used by expenses or bills — including ones from other months. Delete those first.")
         }
     }
 }
