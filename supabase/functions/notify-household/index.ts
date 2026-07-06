@@ -382,7 +382,11 @@ serve(async (req: Request) => {
   const succeeded = results.filter(r => r.ok).length;
   const sanitized = results.map(({ token: _t, ...rest }) => rest);
   console.log(`notify-household: ${succeeded}/${uniqueRows.length} delivered, results: ${JSON.stringify(sanitized)}`);
-  return new Response(JSON.stringify({ sent: uniqueRows.length, delivered: succeeded, results: sanitized }), {
+  // Only return aggregate counts to the caller. Per-token delivery details
+  // (token suffix, APNs env, failure reasons) stay in the server log above —
+  // there's no reason to expose another household member's device state to the
+  // client that triggered the push.
+  return new Response(JSON.stringify({ sent: uniqueRows.length, delivered: succeeded }), {
     headers: { "Content-Type": "application/json" },
   });
 });
