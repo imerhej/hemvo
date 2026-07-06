@@ -16,6 +16,11 @@ const SUPABASE_URL   = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY       = Deno.env.get("SUPABASE_ANON_KEY")!;
 const APP_NAME       = "Hemvo";
 
+// Per-user: 5 password-changed alerts per hour — the legit flow sends at most
+// one per actual password change; this stops using us as an email cannon.
+const RATE_LIMIT_MAX     = 5;
+const RATE_LIMIT_MINUTES = 60;
+
 function jsonError(status: number, message: string): Response {
   return new Response(JSON.stringify({ error: message }), {
     status,
@@ -39,6 +44,21 @@ serve(async (req: Request) => {
 
   const { data: { user }, error: userError } = await userClient.auth.getUser();
   if (userError || !user?.email) return jsonError(401, "Could not identify user");
+
+  const admin = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { data: allowed, error: rlErr } = await admin.rpc("check_and_increment_rate_limit", {
+    p_key: user.id,
+    p_action: "password-changed-email",
+    p_max_count: RATE_LIMIT_MAX,
+    p_window_minutes: RATE_LIMIT_MINUTES,
+  });
+  if (rlErr) {
+    console.warn(`rate limit check failed: ${rlErr.message}`); // fail open
+  } else if (allowed !== true) {
+    return jsonError(429, "Too many requests. Please try again later.");
+  }
 
   const email = user.email;
   const year  = new Date().getFullYear();

@@ -15,6 +15,15 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const APNS_KEY_ID   = Deno.env.get("APNS_KEY_ID")!;
 const APNS_TEAM_ID  = Deno.env.get("APNS_TEAM_ID")!;
 const APNS_PRIV_KEY = Deno.env.get("APNS_PRIVATE_KEY")!;
+
+// Per-user: 120 push requests per hour (a busy household member creating
+// content legitimately stays well under this; it only stops spam loops).
+const USER_RATE_LIMIT_MAX     = 120;
+const USER_RATE_LIMIT_MINUTES = 60;
+
+// APNs payloads cap at 4 KB — bound the alert fields well below that.
+const MAX_TITLE_LENGTH = 120;
+const MAX_BODY_LENGTH  = 500;
 const BUNDLE_ID          = "com.issamnmerhej.Hemvo";
 const APNS_HOST_PROD     = "https://api.push.apple.com";
 const APNS_HOST_SANDBOX  = "https://api.sandbox.push.apple.com";
@@ -149,6 +158,27 @@ serve(async (req: Request) => {
 
   const callerHouseholdId: string | null = callerProfile.household_id;
 
+  // ── Rate limit: per caller, fail open on DB errors ───────────────────────
+
+  const rateLimitClient = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+  const { data: allowed, error: rlErr } = await rateLimitClient.rpc("check_and_increment_rate_limit", {
+    p_key: callerUser.id,
+    p_action: "notify-household",
+    p_max_count: USER_RATE_LIMIT_MAX,
+    p_window_minutes: USER_RATE_LIMIT_MINUTES,
+  });
+  if (rlErr) {
+    console.warn(`notify-household: rate limit check failed: ${rlErr.message}`);
+  } else if (allowed !== true) {
+    return new Response(JSON.stringify({ error: "Too many notifications. Please try again later." }), {
+      status: 429,
+      headers: { "Content-Type": "application/json", "Retry-After": "3600" },
+    });
+  }
+
   // ── Parse request body ───────────────────────────────────────────────────
 
   let household_id: string | undefined,
@@ -171,6 +201,15 @@ serve(async (req: Request) => {
       headers: { "Content-Type": "application/json" },
     });
   }
+
+  if (typeof title !== "string" || typeof body !== "string" || !title.trim() || !body.trim()) {
+    return new Response(JSON.stringify({ error: "title and body are required" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  title = title.slice(0, MAX_TITLE_LENGTH);
+  body  = body.slice(0, MAX_BODY_LENGTH);
 
   // ── Membership check ─────────────────────────────────────────────────────
 

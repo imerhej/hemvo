@@ -124,14 +124,20 @@ serve(async (req: Request) => {
       || msg.includes("already exists") || msg.includes("duplicate");
 
     if (alreadyExists) {
-      const { data: existing } = await admin.auth.admin.getUserByEmail(email);
-      if (existing?.user && !existing.user.email_confirmed_at) {
-        // Unconfirmed — fall through and resend the confirmation link below.
-        console.log("create-account: resending confirmation for unconfirmed user [redacted]");
-      } else {
-        // Confirmed — this is a genuine "already registered" error.
+      // supabase-js has no admin.getUserByEmail — probe with generateLink
+      // instead: its response carries the user record, and the link itself is
+      // regenerated below before sending, so this one is never delivered.
+      const { data: probe, error: probeErr } = await admin.auth.admin.generateLink({
+        type: "magiclink",
+        email,
+        options: { redirectTo: REDIRECT_TO },
+      });
+      if (probeErr || !probe?.user || probe.user.email_confirmed_at) {
+        // Confirmed (or unknown) — this is a genuine "already registered" error.
         return jsonError(409, "An account with this email already exists. Please sign in instead.");
       }
+      // Unconfirmed — fall through and resend the confirmation link below.
+      console.log("create-account: resending confirmation for unconfirmed user [redacted]");
     } else {
       console.error(`create-account: createUser error: ${createError.message}`);
       return jsonError(400, createError.message);

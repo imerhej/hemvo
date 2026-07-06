@@ -21,6 +21,39 @@ function jsonError(status: number, message: string): Response {
   });
 }
 
+// Only sessions established via a recovery link may set a password without
+// knowing the current one — logged-in users go through the change_user_password
+// RPC, which verifies the current password. GoTrue stamps grant method "otp"
+// on recovery/magic-link verifications and "password" on password logins
+// (supabase/auth internal/api/verify.go); "recovery"/"magiclink" are accepted
+// too in case the claim name shifts across GoTrue versions. The claim is
+// trusted because auth.getUser() below validates the token's signature first.
+const RECOVERY_AMR_METHODS = new Set(["otp", "recovery", "magiclink"]);
+const RECOVERY_WINDOW_SECONDS = 15 * 60;
+
+function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
+  try {
+    const seg = jwt.split(".")[1] ?? "";
+    const padded = seg.replace(/-/g, "+").replace(/_/g, "/");
+    const pad = padded.length % 4 === 0 ? "" : "=".repeat(4 - (padded.length % 4));
+    return JSON.parse(atob(padded + pad));
+  } catch {
+    return null;
+  }
+}
+
+function hasRecentRecoveryGrant(accessToken: string): boolean {
+  const payload = decodeJwtPayload(accessToken);
+  const amr = Array.isArray(payload?.amr) ? payload.amr as { method?: string; timestamp?: number }[] : [];
+  const nowSec = Math.floor(Date.now() / 1000);
+  return amr.some((entry) =>
+    typeof entry?.method === "string" &&
+    RECOVERY_AMR_METHODS.has(entry.method) &&
+    typeof entry?.timestamp === "number" &&
+    nowSec - entry.timestamp <= RECOVERY_WINDOW_SECONDS
+  );
+}
+
 serve(async (req: Request) => {
   if (req.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405 });
@@ -57,6 +90,12 @@ serve(async (req: Request) => {
   const { data: { user }, error: userError } = await userClient.auth.getUser();
   if (userError || !user) {
     return jsonError(401, "Invalid or expired recovery token");
+  }
+
+  // Token is signature-valid; now require it to be a fresh recovery session,
+  // not an ordinary password-login session someone may have stolen.
+  if (!hasRecentRecoveryGrant(accessToken)) {
+    return jsonError(403, "Password reset requires a recent recovery link session");
   }
 
   // Update password via admin API — bypasses secure_password_change
