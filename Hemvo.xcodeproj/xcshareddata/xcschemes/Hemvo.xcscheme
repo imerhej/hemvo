@@ -41,17 +41,6 @@
                ReferencedContainer = "container:Hemvo.xcodeproj">
             </BuildableReference>
          </TestableReference>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "2B70BA332F676B7E008EA50F"
-               BuildableName = "HemvoUITests.xctest"
-               BlueprintName = "HemvoUITests"
-               ReferencedContainer = "container:Hemvo.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

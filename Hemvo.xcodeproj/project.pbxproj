@@ -22,20 +22,12 @@
 			remoteGlobalIDString = 2B70BA1C2F676B7C008EA50F;
 			remoteInfo = Hemvo;
 		};
-		2B70BA352F676B7E008EA50F /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 2B70BA152F676B7C008EA50F /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 2B70BA1C2F676B7C008EA50F;
-			remoteInfo = Hemvo;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		2B41C5E72FED6C0E00B1B3CA /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		2B70BA1D2F676B7C008EA50F /* Hemvo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Hemvo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2B70BA2A2F676B7E008EA50F /* HemvoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HemvoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		2B70BA342F676B7E008EA50F /* HemvoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HemvoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -66,11 +58,6 @@
 			files = (
 			);
 		};
-		2B70BA312F676B7E008EA50F /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			files = (
-			);
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -90,7 +77,6 @@
 			children = (
 				2B70BA1D2F676B7C008EA50F /* Hemvo.app */,
 				2B70BA2A2F676B7E008EA50F /* HemvoTests.xctest */,
-				2B70BA342F676B7E008EA50F /* HemvoUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -152,24 +138,6 @@
 			productReference = 2B70BA2A2F676B7E008EA50F /* HemvoTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		2B70BA332F676B7E008EA50F /* HemvoUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 2B70BA442F676B7E008EA50F /* Build configuration list for PBXNativeTarget "HemvoUITests" */;
-			buildPhases = (
-				2B70BA302F676B7E008EA50F /* Sources */,
-				2B70BA312F676B7E008EA50F /* Frameworks */,
-				2B70BA322F676B7E008EA50F /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				2B70BA362F676B7E008EA50F /* PBXTargetDependency */,
-			);
-			name = HemvoUITests;
-			productName = HemvoUITests;
-			productReference = 2B70BA342F676B7E008EA50F /* HemvoUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -184,10 +152,6 @@
 						CreatedOnToolsVersion = 26.2;
 					};
 					2B70BA292F676B7E008EA50F = {
-						CreatedOnToolsVersion = 26.2;
-						TestTargetID = 2B70BA1C2F676B7C008EA50F;
-					};
-					2B70BA332F676B7E008EA50F = {
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = 2B70BA1C2F676B7C008EA50F;
 					};
@@ -212,7 +176,6 @@
 			targets = (
 				2B70BA1C2F676B7C008EA50F /* Hemvo */,
 				2B70BA292F676B7E008EA50F /* HemvoTests */,
-				2B70BA332F676B7E008EA50F /* HemvoUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -225,11 +188,6 @@
 			);
 		};
 		2B70BA282F676B7E008EA50F /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			files = (
-			);
-		};
-		2B70BA322F676B7E008EA50F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -288,11 +246,6 @@
 			files = (
 			);
 		};
-		2B70BA302F676B7E008EA50F /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			files = (
-			);
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -300,11 +253,6 @@
 			isa = PBXTargetDependency;
 			target = 2B70BA1C2F676B7C008EA50F /* Hemvo */;
 			targetProxy = 2B70BA2B2F676B7E008EA50F /* PBXContainerItemProxy */;
-		};
-		2B70BA362F676B7E008EA50F /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 2B70BA1C2F676B7C008EA50F /* Hemvo */;
-			targetProxy = 2B70BA352F676B7E008EA50F /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -562,48 +510,6 @@
 			};
 			name = Release;
 		};
-		2B70BA452F676B7E008EA50F /* Debug configuration for PBXNativeTarget "HemvoUITests" */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 41;
-				DEVELOPMENT_TEAM = 545XYWBM95;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.issamnmerhej.HemvoUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = Hemvo;
-			};
-			name = Debug;
-		};
-		2B70BA462F676B7E008EA50F /* Release configuration for PBXNativeTarget "HemvoUITests" */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 41;
-				DEVELOPMENT_TEAM = 545XYWBM95;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.issamnmerhej.HemvoUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = Hemvo;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -628,14 +534,6 @@
 			buildConfigurations = (
 				2B70BA422F676B7E008EA50F /* Debug configuration for PBXNativeTarget "HemvoTests" */,
 				2B70BA432F676B7E008EA50F /* Release configuration for PBXNativeTarget "HemvoTests" */,
-			);
-			defaultConfigurationName = Release;
-		};
-		2B70BA442F676B7E008EA50F /* Build configuration list for PBXNativeTarget "HemvoUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				2B70BA452F676B7E008EA50F /* Debug configuration for PBXNativeTarget "HemvoUITests" */,
-				2B70BA462F676B7E008EA50F /* Release configuration for PBXNativeTarget "HemvoUITests" */,
 			);
 			defaultConfigurationName = Release;
 		};
