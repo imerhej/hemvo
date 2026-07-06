@@ -11,24 +11,30 @@ internal import UserNotifications
 
 struct PaywallView: View {
 
-    @EnvironmentObject var authVM:   AuthViewModel
-    @EnvironmentObject var storeKit: StoreKitService
+    @EnvironmentObject var authVM:           AuthViewModel
+    @EnvironmentObject var storeKit:         StoreKitService
+    @EnvironmentObject var householdService: HouseholdService
     @Environment(\.dismiss) var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @AppStorage("hemvo_avatarColor") private var avatarColor: String = "#4CAF74"
 
-    @State private var selectedPlan  = StoreIDs.annual
-    @State private var isPurchasing  = false
-    @State private var isRestoring   = false
+    @State private var selectedPlan   = StoreIDs.annual
+    @State private var isPurchasing   = false
+    @State private var isRestoring    = false
     @State private var errorMessage: String?
-    @State private var showSuccess   = false
-    @State private var animateBadge  = false
+    @State private var showSuccess    = false
+    @State private var animateBadge   = false
+    @State private var showGracePopup = false
 
     var accentColor: Color { Color(hex: avatarColor) ?? .homeBaseGreen }
 
     /// The grace note only matters when someone besides the owner is affected.
+    /// Reads the observed environment object (not the singleton directly) so
+    /// the badge/popup re-evaluate if the household finishes loading after the
+    /// paywall is already on screen.
     private var otherMemberCount: Int {
-        guard let h = HouseholdService.shared.household else { return 0 }
+        guard let h = householdService.household else { return 0 }
         return max(0, h.members.count - 1)
     }
 
@@ -77,6 +83,25 @@ struct PaywallView: View {
                 }
 
                 if showSuccess { successOverlay }
+
+                // Owner-side counterpart of the members' GracePeriodPopup:
+                // shown over the paywall on app open while the server-stamped
+                // grace window is running, so the owner sees the same days-left
+                // countdown their household members see.
+                if showGracePopup {
+                    OwnerGracePopup(
+                        daysRemaining: authVM.memberGraceDaysRemaining,
+                        onRenew: {
+                            // Already on the paywall — just reveal the plans.
+                            withAnimation(.easeInOut(duration: 0.25)) { showGracePopup = false }
+                        },
+                        onDismiss: {
+                            withAnimation(.easeInOut(duration: 0.25)) { showGracePopup = false }
+                        }
+                    )
+                    .transition(.opacity)
+                    .zIndex(10)
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(accentColor, for: .navigationBar)
@@ -88,8 +113,33 @@ struct PaywallView: View {
                         .foregroundColor(.red)
                 }
             }
-            .onAppear { Task { await storeKit.loadProducts() } }
+            .onAppear {
+                Task { await storeKit.loadProducts() }
+                presentGracePopupIfNeeded()
+            }
+            .onChange(of: scenePhase) { oldPhase, newPhase in
+                // Re-present when the app is re-opened from the background —
+                // same cadence as the members' popup in ContentView.
+                if oldPhase == .background && newPhase == .active {
+                    presentGracePopupIfNeeded()
+                }
+            }
+            .onChange(of: authVM.profile?.subscriptionLapsedAt) { _, _ in
+                // Covers the lapse landing (or clearing) while the paywall is
+                // already on screen, e.g. right after refreshSubscriptionStatus.
+                presentGracePopupIfNeeded()
+            }
         }
+    }
+
+    private func presentGracePopupIfNeeded() {
+        guard authVM.isOwner,
+              authVM.profile?.subscriptionLapsedAt != nil,
+              otherMemberCount > 0 else {
+            showGracePopup = false
+            return
+        }
+        withAnimation(.easeInOut(duration: 0.25)) { showGracePopup = true }
     }
 
     // MARK: - Hero
@@ -354,6 +404,85 @@ struct PaywallView: View {
     }
 }
 
+// MARK: - OwnerGracePopup
+
+/// Owner-facing twin of ContentView's GracePeriodPopup. Both derive days-left
+/// from the same server-stamped `subscription_lapsed_at`, so the owner and the
+/// members always see the identical countdown. Shown over the paywall when the
+/// lapsed owner is locked out, and over ContentView when the owner still has
+/// local access (e.g. simulator dev bypass) while the server row says lapsed.
+struct OwnerGracePopup: View {
+    let daysRemaining: Int
+    let onRenew:       () -> Void
+    let onDismiss:     () -> Void
+
+    @AppStorage("hemvo_avatarColor") private var avatarColor: String = "#4CAF74"
+    private var accentColor: Color { Color(hex: avatarColor) ?? .homeBaseGreen }
+
+    private var message: String {
+        switch daysRemaining {
+        case 0:  return "Your subscription has ended and your household is now paused. Renew to restore access for everyone."
+        case 1:  return "Your subscription has ended. Your household members lose access in 1 day unless you renew."
+        default: return "Your subscription has ended. Your household members lose access in \(daysRemaining) days unless you renew."
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.45)
+                .ignoresSafeArea()
+                .onTapGesture { onDismiss() }
+
+            VStack(spacing: 20) {
+                ZStack {
+                    Circle()
+                        .fill(Color.orange.opacity(0.15))
+                        .frame(width: 76, height: 76)
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(.orange)
+                }
+
+                VStack(spacing: 8) {
+                    Text("Subscription Ended")
+                        .font(.title3).bold()
+                        .multilineTextAlignment(.center)
+
+                    Text(message)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                VStack(spacing: 10) {
+                    Button(action: onRenew) {
+                        Text("Renew Now")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(accentColor)
+                            .cornerRadius(14)
+                    }
+
+                    Button(action: onDismiss) {
+                        Text("Dismiss")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                    }
+                }
+            }
+            .padding(28)
+            .background(Color(.systemBackground))
+            .cornerRadius(24)
+            .shadow(color: .black.opacity(0.25), radius: 28, y: 8)
+            .padding(.horizontal, 36)
+        }
+    }
+}
+
 // MARK: - PlanCard
 struct PlanCard: View {
     let title:         String
@@ -424,4 +553,5 @@ struct PlanCard: View {
     PaywallView()
         .environmentObject(AuthViewModel())
         .environmentObject(StoreKitService.shared)
+        .environmentObject(HouseholdService.shared)
 }

@@ -528,14 +528,21 @@ final class AuthViewModel: ObservableObject {
             // A real subscription is confirmed with Apple before it can flip the
             // column to `active`; trial activation is bounded by the server's own
             // trial_end_date. Neither path lets the client set `active` for free.
-            if hasSub, let transactionID = storeKit.currentTransactionID {
-                let verified = await auth.verifySubscription(transactionID: transactionID)
-                if !verified {
-                    await auth.expireSubscriptionStatus()
-                    // Pick up the server-stamped subscription_lapsed_at so the
-                    // paywall can show how long members keep access.
-                    await loadProfile()
+            if hasSub {
+                if let transactionID = storeKit.currentTransactionID {
+                    let verified = await auth.verifySubscription(transactionID: transactionID)
+                    if !verified {
+                        await auth.expireSubscriptionStatus()
+                        // Pick up the server-stamped subscription_lapsed_at so the
+                        // paywall can show how long members keep access.
+                        await loadProfile()
+                    }
                 }
+                // hasSub with no transaction ID only happens via the simulator
+                // dev bypass (hasActiveSubscription() returns true without
+                // loading entitlements) — leave the server row alone rather
+                // than expiring it, which would start the members' grace clock
+                // from a state that doesn't reflect a real device.
             } else if isTrialActive {
                 await auth.activateTrialSubscription()
             } else {
