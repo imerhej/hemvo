@@ -532,9 +532,15 @@ final class AuthViewModel: ObservableObject {
                 if let transactionID = storeKit.currentTransactionID {
                     let verified = await auth.verifySubscription(transactionID: transactionID)
                     if !verified {
+                        // Server just stamped subscription_lapsed_at — reload so
+                        // the paywall can show how long members keep access.
                         await auth.expireSubscriptionStatus()
-                        // Pick up the server-stamped subscription_lapsed_at so the
-                        // paywall can show how long members keep access.
+                        await loadProfile()
+                    } else if profile?.subscriptionLapsedAt != nil {
+                        // Renewal after a lapse: the guard trigger cleared
+                        // subscription_lapsed_at, so reload once to stop the grace
+                        // popup firing. Skip the reload on the common already-clear
+                        // path to avoid a profiles round-trip on every foreground.
                         await loadProfile()
                     }
                 }

@@ -133,7 +133,12 @@ struct PaywallView: View {
     }
 
     private func presentGracePopupIfNeeded() {
+        // Never nag an owner whose subscription is currently active: after a
+        // renewal isSubscriptionActive flips true immediately, so the popup
+        // stops firing even if the profile's cleared subscription_lapsed_at
+        // hasn't been reloaded yet.
         guard authVM.isOwner,
+              !authVM.isSubscriptionActive,
               authVM.profile?.subscriptionLapsedAt != nil,
               otherMemberCount > 0 else {
             showGracePopup = false
@@ -184,7 +189,7 @@ struct PaywallView: View {
 
                     // Owner whose sub lapsed: show the members' grace countdown
                     // (same server-stamped clock the members' popup uses).
-                    if authVM.isOwner, otherMemberCount > 0,
+                    if authVM.isOwner, !authVM.isSubscriptionActive, otherMemberCount > 0,
                        authVM.profile?.subscriptionLapsedAt != nil {
                         HStack(spacing: 6) {
                             Image(systemName: "person.2.fill").font(.caption)

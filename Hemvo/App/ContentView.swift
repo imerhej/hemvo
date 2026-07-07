@@ -17,7 +17,6 @@ struct ContentView: View {
     @State private var selectedTab:      Tab  = .dashboard
     @State private var scheduleJumpDate: Date? = nil
     @State private var showGracePopup   = false
-    @State private var showRenewPaywall = false
 
     private var currentRole: HouseholdRole? {
         let uid = authVM.profile?.id.uuidString ?? authVM.userID?.uuidString ?? ""
@@ -106,39 +105,24 @@ struct ContentView: View {
 
             LiquidTabBar(selectedTab: $selectedTab)
 
-            // Grace period popup shown on app open while the owner's sub has
-            // lapsed but the 5-day window hasn't expired yet. Members get the
-            // variant with the "ask the owner to renew" reminder; the owner —
-            // who can end up here with local access while the server row says
-            // lapsed — gets the renew variant with the same days-left count.
+            // Grace period popup shown to household members on app open while
+            // the owner's sub has lapsed but the 5-day window hasn't expired
+            // yet — it carries the "ask the owner to renew" reminder. Owners
+            // never see this: an owner only reaches ContentView while their own
+            // subscription is active, and a lapsed owner is routed to the
+            // paywall (where they get the renew popup) by RootView instead.
             if showGracePopup {
-                if authVM.isOwner {
-                    OwnerGracePopup(
-                        daysRemaining: authVM.memberGraceDaysRemaining,
-                        onRenew: {
-                            showGracePopup   = false
-                            showRenewPaywall = true
-                        },
-                        onDismiss: {
-                            withAnimation(.easeInOut(duration: 0.25)) { showGracePopup = false }
-                        }
-                    )
-                    .transition(.opacity)
-                    .zIndex(10)
-                } else {
-                    GracePeriodPopup(
-                        daysRemaining: authVM.gracePeriodDaysRemaining,
-                        onDismiss: {
-                            withAnimation(.easeInOut(duration: 0.25)) { showGracePopup = false }
-                        }
-                    )
-                    .transition(.opacity)
-                    .zIndex(10)
-                }
+                GracePeriodPopup(
+                    daysRemaining: authVM.gracePeriodDaysRemaining,
+                    onDismiss: {
+                        withAnimation(.easeInOut(duration: 0.25)) { showGracePopup = false }
+                    }
+                )
+                .transition(.opacity)
+                .zIndex(10)
             }
         }
         .ignoresSafeArea(edges: .bottom)
-        .fullScreenCover(isPresented: $showRenewPaywall) { PaywallView() }
         .onAppear { presentGracePopupIfNeeded() }
         .onChange(of: scenePhase) { oldPhase, newPhase in
             // Re-present when the app is re-opened from the background, not on
@@ -151,21 +135,12 @@ struct ContentView: View {
             // Covers the owner lapsing while the app is already running.
             presentGracePopupIfNeeded()
         }
-        .onChange(of: authVM.profile?.subscriptionLapsedAt) { _, _ in
-            // Owner-side equivalent: fires when refreshSubscriptionStatus
-            // reloads the profile with a freshly stamped (or cleared) lapse.
-            presentGracePopupIfNeeded()
-        }
     }
 
     private func presentGracePopupIfNeeded() {
-        // Owner: the server row says the sub lapsed (grace clock running or
-        // expired) and other members are affected. Member: the shared grace
-        // countdown is still running.
-        let otherMembers = max(0, (householdService.household?.members.count ?? 0) - 1)
-        let shouldShow = authVM.isOwner
-            ? (authVM.profile?.subscriptionLapsedAt != nil && otherMembers > 0)
-            : authVM.gracePeriodDaysRemaining > 0
+        // Members only: show the reminder popup while the shared grace countdown
+        // is still running. Owners handle renewal on the paywall, not here.
+        let shouldShow = !authVM.isOwner && authVM.gracePeriodDaysRemaining > 0
         guard shouldShow else {
             showGracePopup = false
             return
