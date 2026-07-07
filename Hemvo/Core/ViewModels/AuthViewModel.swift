@@ -528,30 +528,28 @@ final class AuthViewModel: ObservableObject {
             // A real subscription is confirmed with Apple before it can flip the
             // column to `active`; trial activation is bounded by the server's own
             // trial_end_date. Neither path lets the client set `active` for free.
-            if hasSub {
-                if let transactionID = storeKit.currentTransactionID {
-                    let verified = await auth.verifySubscription(transactionID: transactionID)
-                    if !verified {
-                        // Server just stamped subscription_lapsed_at — reload so
-                        // the paywall can show how long members keep access.
-                        await auth.expireSubscriptionStatus()
-                        await loadProfile()
-                    } else if profile?.subscriptionLapsedAt != nil {
-                        // Renewal after a lapse: the guard trigger cleared
-                        // subscription_lapsed_at, so reload once to stop the grace
-                        // popup firing. Skip the reload on the common already-clear
-                        // path to avoid a profiles round-trip on every foreground.
+            switch SubscriptionDecision.ownerServerSync(
+                hasSub: hasSub,
+                transactionID: storeKit.currentTransactionID,
+                isTrialActive: isTrialActive
+            ) {
+            case .verifyTransaction(let transactionID):
+                switch SubscriptionDecision.followUp(for: await auth.verifySubscription(transactionID: transactionID)) {
+                case .confirmed:
+                    if profile?.subscriptionLapsedAt != nil {
                         await loadProfile()
                     }
+                case .downgrade:
+                    await auth.expireSubscriptionStatus()
+                    await loadProfile()
+                case .leaveUnchanged:
+                    break
                 }
-                // hasSub with no transaction ID only happens via the simulator
-                // dev bypass (hasActiveSubscription() returns true without
-                // loading entitlements) — leave the server row alone rather
-                // than expiring it, which would start the members' grace clock
-                // from a state that doesn't reflect a real device.
-            } else if isTrialActive {
+            case .leaveUnchanged:
+                break
+            case .activateTrial:
                 await auth.activateTrialSubscription()
-            } else {
+            case .expire:
                 await auth.expireSubscriptionStatus()
                 await loadProfile()
             }
@@ -680,5 +678,66 @@ final class AuthViewModel: ObservableObject {
         profile                  = nil
         userID                   = nil
         return nil
+    }
+}
+
+// MARK: - Subscription reconciliation decisions
+//
+// Pure decision logic factored out of the @MainActor AuthViewModel so it carries
+// no actor isolation and can be unit-tested directly, without StoreKit, the
+// network, or the Keychain. `refreshSubscriptionStatus()` executes the side
+// effects these functions choose.
+//
+// `nonisolated` (the project defaults every type to MainActor isolation): keeps
+// these pure and their synthesized Equatable conformances usable from any
+// context — including Swift Testing's nonisolated comparison closures.
+nonisolated enum SubscriptionDecision {
+
+    /// How an owner's device should reconcile the server `subscription_status`
+    /// column after checking its local StoreKit entitlement.
+    nonisolated enum OwnerServerSync: Equatable {
+        /// Live entitlement + a real transaction id → confirm it with Apple.
+        case verifyTransaction(UInt64)
+        /// Live entitlement but no transaction id (simulator dev bypass, which
+        /// returns hasSub == true without loading entitlements). Leave the row
+        /// alone rather than expiring it, which would start members' grace clock
+        /// from a state that doesn't reflect a real device.
+        case leaveUnchanged
+        /// No entitlement but the trial window is still open.
+        case activateTrial
+        /// No entitlement and no trial → downgrade.
+        case expire
+    }
+
+    static func ownerServerSync(
+        hasSub: Bool, transactionID: UInt64?, isTrialActive: Bool
+    ) -> OwnerServerSync {
+        guard hasSub else { return isTrialActive ? .activateTrial : .expire }
+        if let transactionID { return .verifyTransaction(transactionID) }
+        return .leaveUnchanged
+    }
+
+    /// What to do with the server row + local profile after Apple verification.
+    nonisolated enum VerificationFollowUp: Equatable {
+        /// `.active` — verify-subscription already set the row `active` and the
+        /// guard trigger cleared subscription_lapsed_at; only a local reload is
+        /// ever needed (to clear the owner's own paywall grace copy after a lapse).
+        case confirmed
+        /// `.invalid` — Apple says the transaction is genuinely not valid; expire.
+        case downgrade
+        /// `.unverifiable` — couldn't reach Apple/the edge function. Keep the row
+        /// unchanged and retry next foreground; a transient blip must never expire
+        /// a paying owner and strand household members on the grace popup.
+        case leaveUnchanged
+    }
+
+    static func followUp(
+        for verification: AuthService.SubscriptionVerification
+    ) -> VerificationFollowUp {
+        switch verification {
+        case .active:       return .confirmed
+        case .invalid:      return .downgrade
+        case .unverifiable: return .leaveUnchanged
+        }
     }
 }

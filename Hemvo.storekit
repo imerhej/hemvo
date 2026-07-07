@@ -1,0 +1,75 @@
+{
+  "identifier" : "02199B85-5E38-4B2D-8EE4-334D4251FE68",
+  "nonRenewingSubscriptions" : [
+  ],
+  "products" : [
+  ],
+  "settings" : {
+    "_askToBuyEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_developerTeamID" : "545XYWBM95",
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA"
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "20250101",
+      "localizations" : [
+      ],
+      "name" : "Hemvo Premium",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+          ],
+          "codeOffers" : [
+          ],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "E08C4106-A31C-4B85-9CC3-A36BA9267D2E",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Full access to Hemvo, billed monthly.",
+              "displayName" : "Hemvo Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.hemvo.app.subscription.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Hemvo Monthly",
+          "subscriptionGroupID" : "20250101",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+          ],
+          "codeOffers" : [
+          ],
+          "displayPrice" : "49.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "BCEDFD1D-DE0E-4D70-BAB4-20A9BE6B6DD3",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Full access to Hemvo, billed yearly.",
+              "displayName" : "Hemvo Annual",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.hemvo.app.subscription.annual",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Hemvo Annual",
+          "subscriptionGroupID" : "20250101",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

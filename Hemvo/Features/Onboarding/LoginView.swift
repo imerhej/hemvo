@@ -177,11 +177,24 @@ struct LoginView: View {
                             toggleMode
 
                             if isSignUp {
-                                Text("By creating an account you agree to our Terms of Service and Privacy Policy.")
-                                    .font(.caption2)
-                                    .foregroundColor(.white.opacity(0.55))
-                                    .multilineTextAlignment(.center)
-                                    .padding(.horizontal, 32)
+                                VStack(spacing: 6) {
+                                    Text("By creating an account you agree to our")
+                                        .foregroundColor(.white.opacity(0.55))
+
+                                    HStack(spacing: 4) {
+                                        Link("Terms of Service", destination: AppConstants.termsOfServiceURL)
+                                            .foregroundColor(.white.opacity(0.85))
+                                            .underline()
+                                        Text("and")
+                                            .foregroundColor(.white.opacity(0.55))
+                                        Link("Privacy Policy", destination: AppConstants.privacyPolicyURL)
+                                            .foregroundColor(.white.opacity(0.85))
+                                            .underline()
+                                    }
+                                }
+                                .font(.caption2)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 32)
                             }
                         }
                         Spacer(minLength: 40)
