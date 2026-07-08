@@ -51,13 +51,15 @@ final class CertificatePinner: NSObject, URLSessionDelegate {
     // MARK: - Pinned hashes
     // SHA-256 of the SubjectPublicKeyInfo DER bytes, base64-encoded.
     // Managed by .github/workflows/check-cert-pins.yml (runs every Monday).
-    // Last checked: 2026-07-06 — live host serves the 2026-09-26 leaf below.
+    // Last checked: 2026-07-08 — live host serves the Aug 2026 leaf below.
     // New hashes are added alongside old ones (parallel pinning); hashes whose
     // expiry date is >14 days past are pruned automatically on the next run.
     private static let pinnedHashes: Set<String> = [
-        "ZcJbApTb7wyllleAjHw2vYAskqdT+DhMY9aPDFwAtf4=",  // leaf — CURRENTLY LIVE (expires 2026-09-26; refresh pins by ~2026-09-05, remove only after the next cert is live)
+        "jZvbU2NwzFKUpYBh/YIRrDhfajUjz1KeuO9Di+xUu4s=",  // leaf — CURRENTLY LIVE (expires 2026-08-07; refresh pins by ~2026-07-24, remove only after the next cert is live)
+        "RrNnbkTIogvQPacL92xaGADwq8HUy+4nA5poMeewrLo=",  // Google Trust Services WE1 intermediate CA (added 2026-07-08)
+        "ZcJbApTb7wyllleAjHw2vYAskqdT+DhMY9aPDFwAtf4=",  // leaf — previous cert (expires 2026-09-26, safe to remove after 2026-08-21)
         "p51goejPCgGH+Oog/MU2k6PObcEfTrrr73jUcuWJ7w0=",  // leaf — previous cert, no longer served (expires 2026-07-29, safe to remove after 2026-08-12)
-        "kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4="   // Google Trust Services WE1 intermediate CA
+        "kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4="   // Google Trust Services WE1 intermediate CA (previous)
     ]
 
     // MARK: - URLSessionDelegate
