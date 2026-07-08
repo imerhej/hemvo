@@ -296,7 +296,12 @@ final class AuthViewModel: ObservableObject {
 
     // MARK: - Friendly error messages
     private func friendlyAuthError(_ error: Error) -> String {
-        let raw = error.localizedDescription.lowercased()
+        // Edge Functions return {"error": "..."} with non-2xx codes, but
+        // FunctionsError.httpError's localizedDescription is only
+        // "Edge Function returned a non-2xx status code: N" — the real message
+        // is in the response body, so decode it before keyword matching.
+        let message = Self.edgeFunctionMessage(from: error) ?? error.localizedDescription
+        let raw = message.lowercased()
         if raw.contains("rate limit") || raw.contains("too many") || raw.contains("429")
             || raw.contains("over_email_send_rate_limit") || raw.contains("email rate limit") {
             return "Too many sign-up attempts. Please wait a few minutes and try again."
@@ -327,7 +332,14 @@ final class AuthViewModel: ObservableObject {
         if raw.contains("network") || raw.contains("offline") || raw.contains("connection") {
             return "No internet connection. Please check your network and try again."
         }
-        return error.localizedDescription
+        return message
+    }
+
+    private static func edgeFunctionMessage(from error: Error) -> String? {
+        guard case let FunctionsError.httpError(_, data) = error else { return nil }
+        struct Body: Decodable { let error: String?; let message: String? }
+        guard let body = try? JSONDecoder().decode(Body.self, from: data) else { return nil }
+        return body.error ?? body.message
     }
 
     // MARK: - Login
