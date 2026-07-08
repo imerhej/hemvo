@@ -66,6 +66,15 @@ let supabase = SupabaseClient(
     options: SupabaseClientOptions(
         auth: SupabaseClientOptions.AuthOptions(
             storage: KeychainAuthStorage(),
+            // .implicit, not the SDK-default .pkce: the password-reset link is
+            // generated server-side (send-password-reset-email Edge Function via
+            // admin.generateLink), so GoTrue's /verify redirect returns the
+            // session as URL-fragment tokens with no ?code= param. Under .pkce,
+            // auth.session(from:) rejects that URL ("Not a valid PKCE flow URL")
+            // and the reset deep link dies silently. Implicit-flow parsing still
+            // validates the token server-side (GET /user) before establishing
+            // the session. No other flow here depends on PKCE (no OAuth/OTP).
+            flowType: .implicit,
             emitLocalSessionAsInitialSession: true
         ),
         global: SupabaseClientOptions.GlobalOptions(
