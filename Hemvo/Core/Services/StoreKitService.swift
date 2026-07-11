@@ -23,6 +23,9 @@ final class StoreKitService: ObservableObject {
     /// the purchase with Apple before marking the household subscription active.
     @Published var currentTransactionID: UInt64?
 
+    /// Expiration (= next renewal) date of the active subscription entitlement.
+    @Published var subscriptionExpirationDate: Date?
+
     // MARK: - Transaction Listener
     private var transactionListener: Task<Void, Error>?
 
@@ -86,6 +89,11 @@ final class StoreKitService: ObservableObject {
     func hasActiveSubscription() async -> Bool {
         #if targetEnvironment(simulator)
         // Simulator has no StoreKit sandbox — bypass paywall for development.
+        // Still load entitlements: with the scheme's StoreKit configuration a
+        // simulated purchase exists, and skipping this left purchasedProductIDs
+        // and subscriptionExpirationDate empty (plan name fell back to
+        // "Hemvo Premium" and the Renews On row never appeared).
+        await updateEntitlements()
         return true
         #else
         await updateEntitlements()
@@ -99,16 +107,19 @@ final class StoreKitService: ObservableObject {
     func updateEntitlements() async -> Set<String> {
         var active = Set<String>()
         var latestTransactionID: UInt64?
+        var latestExpiration: Date?
         for await result in Transaction.currentEntitlements {
             if let tx = try? verify(result), tx.revocationDate == nil {
                 active.insert(tx.productID)
                 if StoreIDs.all.contains(tx.productID) {
                     latestTransactionID = tx.id
+                    latestExpiration    = tx.expirationDate
                 }
             }
         }
         purchasedProductIDs = active
         currentTransactionID = latestTransactionID
+        subscriptionExpirationDate = latestExpiration
         return active
     }
 

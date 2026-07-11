@@ -94,14 +94,26 @@ struct SettingsView: View {
     private var isTrial:  Bool { authVM.trialDaysRemaining > 0 }
     private var isActive: Bool { authVM.isSubscriptionActive && !isTrial }
 
+    /// Supabase-visible status — what household members' devices read.
+    /// Can lag the local StoreKit entitlement when verify-subscription
+    /// hasn't confirmed the purchase; surface that instead of hiding it.
+    private var serverSaysActive: Bool {
+        let s = authVM.profile?.subscriptionStatus
+        return s == "active" || s == "trial"
+    }
+    private var syncPending: Bool { isActive && !serverSaysActive }
+
     private var subColor: Color {
         isTrial ? Color(hex: "#E67E22") ?? .clear : isActive ? Color(hex: "#2E7D32") ?? .clear : .red
     }
     private var subIcon: String {
-        isTrial ? "clock.fill" : isActive ? "crown.fill" : "xmark.circle.fill"
+        isTrial ? "clock.fill"
+        : syncPending ? "exclamationmark.triangle.fill"
+        : isActive ? "crown.fill" : "xmark.circle.fill"
     }
     private var subLabel: String {
         isTrial  ? "Free Trial · \(authVM.trialDaysRemaining)d left"
+        : syncPending ? "Premium · Household sync needed"
         : isActive ? "Premium Active"
         : "Subscription Expired"
     }
@@ -266,10 +278,10 @@ struct SettingsView: View {
                             .font(.system(size: 12, weight: .heavy))
                             .kerning(0.2)
                         Spacer()
-                        Text(isActive ? "Manage →" : "Upgrade →")
+                        Text(syncPending ? "Sync →" : isActive ? "Manage →" : "Upgrade →")
                             .font(.system(size: 11, weight: .heavy))
                     }
-                    .foregroundColor(accent)
+                    .foregroundColor(syncPending ? Color(hex: "#E67E22") ?? .clear : accent)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 9)
                     .background(Color.white.opacity(0.92))

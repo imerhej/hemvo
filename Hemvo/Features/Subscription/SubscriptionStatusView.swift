@@ -20,6 +20,22 @@ struct SubscriptionStatusView: View {
     private var isActive:  Bool { authVM.isSubscriptionActive && !isTrial }
     private var isExpired: Bool { !authVM.isSubscriptionActive }
 
+    /// The server-visible status (profiles.subscription_status) — this is what
+    /// household members' devices read to decide whether THEY keep access.
+    /// The hero above reflects the local StoreKit entitlement; these two can
+    /// disagree when verify-subscription hasn't confirmed the purchase yet.
+    private var serverSaysActive: Bool {
+        let s = authVM.profile?.subscriptionStatus
+        return s == "active" || s == "trial"
+    }
+    /// Active on this device but expired in Supabase → members are on (or past)
+    /// the grace countdown even though the owner sees Premium Active.
+    private var householdSyncPending: Bool { authVM.isOwner && isActive && !serverSaysActive }
+
+    private var renewalDateText: String? {
+        storeKit.subscriptionExpirationDate?.formatted(date: .abbreviated, time: .omitted)
+    }
+
     private var statusColor: Color {
         if isTrial  { return Color(hex: "#E67E22") ?? .clear }
         if isActive { return Color(hex: "#2E7D32") ?? .clear }
@@ -59,6 +75,7 @@ struct SubscriptionStatusView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 20) {
                         heroCard          .padding(.horizontal, 20).padding(.top, 20)
+                        if householdSyncPending { syncWarningCard.padding(.horizontal, 20) }
                         if isActive  { planDetailsCard  .padding(.horizontal, 20) }
                         if isTrial   { trialProgressCard.padding(.horizontal, 20) }
                         featuresCard      .padding(.horizontal, 20)
@@ -133,15 +150,72 @@ struct SubscriptionStatusView: View {
             sectionHeader(icon: "star.circle.fill", title: "PLAN DETAILS", color: Color(hex: "#2E7D32") ?? .clear)
             Color.bpDivider.frame(height: 1)
             planRow("Current Plan",  activePlan,                   Color.bpText)
-            Color.bpDivider.frame(height: 1).padding(.leading, 16)
-            planRow("Status",        "Active",                      Color(hex: "#2E7D32") ?? .clear)
+            if let renews = renewalDateText {
+                Color.bpDivider.frame(height: 1).padding(.leading, 16)
+                planRow("Renews On", renews,                        Color.bpText)
+            }
             Color.bpDivider.frame(height: 1).padding(.leading, 16)
             planRow("Billing",       "Auto-renews via App Store",  Color.bpTextSub)
+            if authVM.isOwner {
+                Color.bpDivider.frame(height: 1).padding(.leading, 16)
+                planRow("Household Access",
+                        serverSaysActive ? "Active" : "Not synced",
+                        serverSaysActive ? Color(hex: "#2E7D32") ?? .clear : Color(hex: "#E67E22") ?? .clear)
+            }
         }
         .background(Color.bpSurface)
         .cornerRadius(18)
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.bpDivider, lineWidth: 1))
         .shadow(color: Color.bpText.opacity(0.04), radius: 8, y: 3)
+    }
+
+    // MARK: - Household Sync Warning Card
+    // Shown when this device holds an active StoreKit entitlement but the
+    // Supabase profiles row members read is not 'active'/'trial' — i.e. the
+    // server could not (yet) confirm the purchase with Apple. Members are on
+    // the grace countdown in this state, so make it loud and actionable.
+    private var syncWarningCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(Color(hex: "#E67E22") ?? .clear)
+                Text("Household access needs a sync")
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundColor(Color.bpText)
+                Spacer()
+            }
+            Text("Your subscription is active on this device, but it hasn't been confirmed with the App Store server yet. Until it syncs, household members may see it as expired and lose access.")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(Color.bpTextSub)
+                .fixedSize(horizontal: false, vertical: true)
+            Button { refresh() } label: {
+                HStack(spacing: 8) {
+                    if isRefreshing {
+                        ProgressView().scaleEffect(0.8).tint(.white)
+                    } else {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    Text(isRefreshing ? "Syncing…" : "Sync Now")
+                        .font(.system(size: 14, weight: .bold))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(
+                    LinearGradient(colors: [Color(hex: "#E67E22") ?? .clear, Color(hex: "#F39C12") ?? .clear],
+                                   startPoint: .leading, endPoint: .trailing)
+                )
+                .cornerRadius(12)
+            }
+            .disabled(isRefreshing)
+        }
+        .padding(16)
+        .background(Color.bpSurface)
+        .cornerRadius(18)
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke((Color(hex: "#E67E22") ?? .clear).opacity(0.4), lineWidth: 1))
+        .shadow(color: (Color(hex: "#E67E22") ?? .clear).opacity(0.15), radius: 8, y: 3)
     }
 
     private func planRow(_ label: String, _ value: String, _ color: Color) -> some View {
@@ -344,6 +418,9 @@ struct SubscriptionStatusView: View {
         isRefreshing = true
         Task {
             await authVM.refreshSubscriptionStatus()
+            // Re-pull the profile so the Household Access row reflects what
+            // members actually see, even when verification left the row as-is.
+            await authVM.loadProfile()
             try? await Task.sleep(nanoseconds: 600_000_000)
             isRefreshing = false
         }
