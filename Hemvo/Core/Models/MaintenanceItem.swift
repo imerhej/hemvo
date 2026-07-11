@@ -133,6 +133,7 @@ struct MaintenanceItem: Codable, Identifiable, Equatable {
 
     // MARK: - Frequency
     enum Frequency: String, Codable, CaseIterable, Identifiable {
+        case oneTime   = "One-Time"
         case daily     = "Daily"
         case weekly    = "Weekly"
         case biweekly  = "Bi-Weekly"
@@ -142,8 +143,11 @@ struct MaintenanceItem: Codable, Identifiable, Equatable {
 
         var id: String { rawValue }
 
+        var isRecurring: Bool { self != .oneTime }
+
         var days: Int {
             switch self {
+            case .oneTime:   return 0
             case .daily:     return 1
             case .weekly:    return 7
             case .biweekly:  return 14
@@ -151,6 +155,14 @@ struct MaintenanceItem: Codable, Identifiable, Equatable {
             case .quarterly: return 90
             case .annually:  return 365
             }
+        }
+
+        var intervalLabel: String {
+            isRecurring ? "every \(days)d" : "no repeat"
+        }
+
+        var iconName: String {
+            isRecurring ? "arrow.clockwise" : "checkmark.circle"
         }
     }
 
