@@ -157,11 +157,17 @@ struct HemvoApp: App {
                     // forged token — the form only appears once the server
                     // accepts the recovery token.
                     guard url.scheme == "hemvo", url.host == "reset-password" else { return }
+                    // Must be set BEFORE session(from:) runs: the .signedIn
+                    // event it emits would otherwise start the full post-login
+                    // pipeline underneath ResetPasswordView (see AuthViewModel.
+                    // isHandlingPasswordRecovery).
+                    authVM.isHandlingPasswordRecovery = true
                     Task {
                         do {
                             try await supabase.auth.session(from: url)
                             await MainActor.run { authVM.showResetPassword = true }
                         } catch {
+                            await MainActor.run { authVM.isHandlingPasswordRecovery = false }
                             Logger.deepLink.error("session(from:) failed: \(error.localizedDescription)")
                         }
                     }
@@ -321,7 +327,14 @@ private struct RootView: View {
         ) {
             ResetPasswordView(onComplete: {
                 authVM.showResetPassword = false
-                Task { try? await supabase.auth.signOut() }
+                // Discard the recovery session; the user signs back in with
+                // the new password. Clear the recovery flag only after the
+                // sign-out so the .signedOut event can't be misread as a
+                // user-initiated logout mid-flow.
+                Task {
+                    try? await supabase.auth.signOut()
+                    await MainActor.run { authVM.isHandlingPasswordRecovery = false }
+                }
                 authVM.signOut()
             })
         }

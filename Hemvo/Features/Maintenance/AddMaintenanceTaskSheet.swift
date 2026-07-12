@@ -127,7 +127,7 @@ struct AddMaintenanceTaskSheet: View {
                                                 .font(.system(size: 15, weight: isSel ? .bold : .regular))
                                                 .foregroundColor(isSel ? amber : brown)
                                             Spacer()
-                                            Text("every \(freq.days)d")
+                                            Text(freq.intervalLabel)
                                                 .font(.system(size: 13, weight: .medium))
                                                 .foregroundColor(isSel ? amber : muted)
                                             if isSel {

@@ -333,7 +333,7 @@ struct MaintenanceTaskCard: View {
 
             // Frequency + time + due date row
             HStack(spacing: 12) {
-                Label(item.frequency.rawValue, systemImage: "arrow.clockwise")
+                Label(item.frequency.rawValue, systemImage: item.frequency.iconName)
                     .font(.system(size: 11, weight: .medium)).foregroundColor(mvMuted)
                 Label("\(item.estimatedMinutes) min", systemImage: "clock")
                     .font(.system(size: 11, weight: .medium)).foregroundColor(mvMuted)
@@ -433,7 +433,7 @@ struct MaintenanceTaskDetailSheet: View {
                         VStack(spacing: 0) {
                             detailRow(icon: "calendar", label: "Next Due", value: dateFormatter.string(from: task.nextDue))
                             mvDivider.frame(height: 1).padding(.horizontal, 16)
-                            detailRow(icon: "arrow.clockwise", label: "Frequency", value: task.frequency.rawValue)
+                            detailRow(icon: task.frequency.iconName, label: "Frequency", value: task.frequency.rawValue)
                             mvDivider.frame(height: 1).padding(.horizontal, 16)
                             detailRow(icon: "house.fill", label: "Area", value: task.area.rawValue)
                             mvDivider.frame(height: 1).padding(.horizontal, 16)

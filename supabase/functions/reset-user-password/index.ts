@@ -106,7 +106,22 @@ serve(async (req: Request) => {
     password: newPassword,
   });
   if (updateError) {
-    return jsonError(500, updateError.message);
+    // GoTrue enforces the project's password policy even on admin updates —
+    // including HaveIBeenPwned leaked-password protection (error_code
+    // "weak_password", reasons ["pwned"]). Those are the user's problem to fix,
+    // not a server fault: pass the real status and a clear message through
+    // instead of a blanket 500.
+    if (updateError.code === "weak_password") {
+      return jsonError(
+        422,
+        "This password has appeared in a known data breach and can't be used. Please choose a different, less common password.",
+      );
+    }
+    const status = typeof updateError.status === "number" &&
+        updateError.status >= 400 && updateError.status < 600
+      ? updateError.status
+      : 500;
+    return jsonError(status, updateError.message);
   }
 
   return new Response(JSON.stringify({ success: true }), {

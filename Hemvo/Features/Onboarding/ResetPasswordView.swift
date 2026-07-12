@@ -266,7 +266,7 @@ struct ResetPasswordView: View {
                 .background(Color(hex: "#3D7A52") ?? .clear)
                 .cornerRadius(16)
                 .shadow(
-                    color: Color(hex: "#3D7A52") ?? .clear.opacity(0.4),
+                    color: (Color(hex: "#3D7A52") ?? .clear).opacity(0.4),
                     radius: 10, y: 4
                 )
             }

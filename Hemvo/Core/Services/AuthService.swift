@@ -121,10 +121,24 @@ final class AuthService {
     // nonisolated for the same reason as changePassword above.
     nonisolated func resetPassword(to newPassword: String) async throws {
         struct Payload: Encodable { let newPassword: String }
-        try await supabase.functions.invoke(
-            "reset-user-password",
-            options: FunctionInvokeOptions(body: Payload(newPassword: newPassword))
-        )
+        do {
+            try await supabase.functions.invoke(
+                "reset-user-password",
+                options: FunctionInvokeOptions(body: Payload(newPassword: newPassword))
+            )
+        } catch {
+            // The function returns {"error": "..."} on failure — e.g. GoTrue's
+            // leaked-password (HaveIBeenPwned) rejection. Surface that message;
+            // FunctionsError.httpError's own description is only the useless
+            // "Edge Function returned a non-2xx status code: N".
+            if case let FunctionsError.httpError(_, data) = error {
+                struct Body: Decodable { let error: String? }
+                if let message = (try? JSONDecoder().decode(Body.self, from: data))?.error {
+                    throw AuthError.serverMessage(message)
+                }
+            }
+            throw error
+        }
     }
 
     // MARK: - Delete Account
@@ -402,6 +416,7 @@ enum AuthError: LocalizedError {
     case usernameTaken
     case usernameNotFound
     case rateLimitExceeded
+    case serverMessage(String)
 
     var errorDescription: String? {
         switch self {
@@ -410,6 +425,7 @@ enum AuthError: LocalizedError {
         case .usernameTaken:     return "That username is already taken. Please choose another."
         case .usernameNotFound:  return "No account found with that username. Check your spelling or sign in with your email."
         case .rateLimitExceeded: return "Too many login attempts. Please wait a moment and try again."
+        case .serverMessage(let message): return message
         }
     }
 }

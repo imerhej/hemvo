@@ -58,6 +58,16 @@ final class AuthViewModel: ObservableObject {
     /// Set to true when Supabase fires a .passwordRecovery event (user tapped
     /// the reset-password deep link). RootView presents ResetPasswordView.
     @Published var showResetPassword:    Bool          = false
+    /// True from the moment HemvoApp starts redeeming a reset-password deep
+    /// link until the reset flow finishes (or redemption fails). The recovery
+    /// session that session(from:) establishes emits .signedIn — but it is NOT
+    /// a login: while this flag is set, observeAuthStateChanges must not flip
+    /// isLoggedIn or run the post-login pipeline (profile load, subscription
+    /// refresh/sync, push registration, trial start). Otherwise all of that —
+    /// including server writes like expireSubscriptionStatus() and RootView
+    /// swapping to Paywall/ContentView — races underneath ResetPasswordView
+    /// while the user is typing the new password.
+    var isHandlingPasswordRecovery:      Bool          = false
 
     // MARK: - Dependencies
     private let auth     = AuthService.shared
@@ -148,6 +158,10 @@ final class AuthViewModel: ObservableObject {
     init() {
         migrateSensitiveDefaultsToKeychain()
         isBiometricEnabled = Self.kcBool(KC.biometricEnabled)
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let type = Self.probeBiometricType()
+            await MainActor.run { [weak self] in self?.biometricType = type }
+        }
         Task {
             await checkSession()
             isCheckingSession = false
@@ -163,6 +177,11 @@ final class AuthViewModel: ObservableObject {
             switch event {
             case .passwordRecovery:
                 showResetPassword = true
+            case .signedIn where isHandlingPasswordRecovery:
+                // Recovery-link redemption. The session exists solely so
+                // ResetPasswordView can call the reset-user-password Edge
+                // Function — do not treat it as a login.
+                break
             case .signedIn where !isLoggedIn:
                 isLoggedIn        = true
                 isResolvingAccess = true
@@ -296,7 +315,12 @@ final class AuthViewModel: ObservableObject {
 
     // MARK: - Friendly error messages
     private func friendlyAuthError(_ error: Error) -> String {
-        let raw = error.localizedDescription.lowercased()
+        // Edge Functions return {"error": "..."} with non-2xx codes, but
+        // FunctionsError.httpError's localizedDescription is only
+        // "Edge Function returned a non-2xx status code: N" — the real message
+        // is in the response body, so decode it before keyword matching.
+        let message = Self.edgeFunctionMessage(from: error) ?? error.localizedDescription
+        let raw = message.lowercased()
         if raw.contains("rate limit") || raw.contains("too many") || raw.contains("429")
             || raw.contains("over_email_send_rate_limit") || raw.contains("email rate limit") {
             return "Too many sign-up attempts. Please wait a few minutes and try again."
@@ -327,7 +351,14 @@ final class AuthViewModel: ObservableObject {
         if raw.contains("network") || raw.contains("offline") || raw.contains("connection") {
             return "No internet connection. Please check your network and try again."
         }
-        return error.localizedDescription
+        return message
+    }
+
+    private static func edgeFunctionMessage(from error: Error) -> String? {
+        guard case let FunctionsError.httpError(_, data) = error else { return nil }
+        struct Body: Decodable { let error: String?; let message: String? }
+        guard let body = try? JSONDecoder().decode(Body.self, from: data) else { return nil }
+        return body.error ?? body.message
     }
 
     // MARK: - Login
@@ -442,7 +473,16 @@ final class AuthViewModel: ObservableObject {
             .deviceOwnerAuthenticationWithBiometrics, error: &error)
     }
 
-    var biometricType: LABiometryType {
+    /// Cached at init — LAContext()+canEvaluatePolicy is a synchronous XPC
+    /// round-trip to the LocalAuthentication daemon, and LoginView/the profile
+    /// Security tab read biometricIcon/biometricLabel inside their view bodies,
+    /// which re-evaluate on every keystroke of the password fields. Probing per
+    /// access hammered that daemon from the main thread and could wedge it —
+    /// on device the watchdog then kills the app (crash while typing in the
+    /// change-password form). The biometry hardware never changes mid-run.
+    @Published private(set) var biometricType: LABiometryType = .none
+
+    private nonisolated static func probeBiometricType() -> LABiometryType {
         let ctx = LAContext()
         _ = ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
         return ctx.biometryType
