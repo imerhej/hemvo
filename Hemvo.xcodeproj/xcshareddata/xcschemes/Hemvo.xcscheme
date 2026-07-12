@@ -41,6 +41,16 @@
                ReferencedContainer = "container:Hemvo.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "AB10C0DE0000000000000005"
+               BuildableName = "HemvoUITests.xctest"
+               BlueprintName = "HemvoUITests"
+               ReferencedContainer = "container:Hemvo.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction
@@ -64,7 +74,7 @@
          </BuildableReference>
       </BuildableProductRunnable>
       <StoreKitConfigurationFileReference
-         identifier = "../../../Hemvo.storekit">
+         identifier = "../../Hemvo.storekit">
       </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction

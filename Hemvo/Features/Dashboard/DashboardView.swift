@@ -119,6 +119,7 @@ struct DashboardView: View {
                         }
                     }
                 }
+                .accessibilityLabel("Settings")
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)

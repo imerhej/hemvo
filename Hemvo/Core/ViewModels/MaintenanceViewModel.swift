@@ -127,6 +127,7 @@ final class MaintenanceViewModel: ObservableObject {
     // by one frequency cycle instead of retiring it. Anchored to the due date
     // that was just met (not today) so the cadence stays fixed even if a task
     // is completed early or late.
+    // One-time: logs the completion and retires the task entirely.
     func markComplete(_ item: MaintenanceItem) {
         guard let idx = items.firstIndex(where: { $0.id == item.id }) else { return }
         let completion = CompletedTask(
@@ -144,6 +145,17 @@ final class MaintenanceViewModel: ObservableObject {
         history.insert(completion, at: 0)
         pendingCompletionIDs.insert(completion.id)
         persistPendingCompletionIDs()
+
+        guard item.frequency.isRecurring else {
+            items.remove(at: idx)
+            pendingUploadIDs.remove(item.id)
+            persistPendingUploadIDs()
+            persist()
+            notif.cancelMaintenanceReminder(for: item.id)
+            Task { await supabaseInsertCompletion(completion, taskId: item.id) }
+            Task { await supabaseRetireOneTimeTask(item) }
+            return
+        }
 
         var rolled = item
         rolled.lastCompleted = Date()
@@ -515,6 +527,29 @@ final class MaintenanceViewModel: ObservableObject {
                 .execute()
         } catch {
             Logger.maintenance.error("roll forward house_task error: \(error.localizedDescription)")
+        }
+    }
+
+    // One-time tasks: flips is_complete so the row drops out of every device's
+    // active query (which filters is_complete = false) while staying joined to
+    // its completion log entry. UPDATE — not DELETE — so assignees whose RLS
+    // role can't delete tasks can still complete one.
+    private func supabaseRetireOneTimeTask(_ item: MaintenanceItem) async {
+        struct Retire: Encodable {
+            let isComplete:    Bool
+            let completedDate: Date
+            enum CodingKeys: String, CodingKey {
+                case isComplete    = "is_complete"
+                case completedDate = "completed_date"
+            }
+        }
+        do {
+            try await supabase.from("house_tasks")
+                .update(Retire(isComplete: true, completedDate: Date()))
+                .eq("id", value: item.id.uuidString)
+                .execute()
+        } catch {
+            Logger.maintenance.error("retire one-time house_task error: \(error.localizedDescription)")
         }
     }
 
