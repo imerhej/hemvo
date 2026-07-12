@@ -18,6 +18,7 @@ struct EditExpenseView: View {
     @State private var isPaid      = false
     @State private var notes       = ""
     @State private var scope       = BudgetScope.household
+    @State private var recurrence: RecurrenceRule? = nil
     @FocusState private var amountFocused: Bool
 
     private enum Field { case title, notes }
@@ -87,6 +88,11 @@ struct EditExpenseView: View {
                         .background(Color.bpSurface)
                         .cornerRadius(14)
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.bpDivider, lineWidth: 1))
+
+                        // ── Repeats ──────────────────────────
+                        if isRecurring {
+                            RecurrencePicker(selection: $recurrence)
+                        }
 
                         // ── Scope ─────────────────────────────
                         VStack(alignment: .leading, spacing: 8) {
@@ -222,6 +228,7 @@ struct EditExpenseView: View {
         isPaid      = expense.isPaid
         notes       = expense.notes
         scope       = expense.scope
+        recurrence  = expense.recurrence
     }
 
     private func save() {
@@ -235,6 +242,7 @@ struct EditExpenseView: View {
         updated.isPaid      = isPaid
         updated.notes       = notes
         updated.scope       = vm.canChangeScope(expense) ? scope : expense.scope
+        updated.recurrence  = isRecurring ? recurrence : nil
         vm.updateExpense(updated)
         dismiss()
     }

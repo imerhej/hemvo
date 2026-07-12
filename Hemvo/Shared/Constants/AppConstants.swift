@@ -33,4 +33,12 @@ enum AppConstants {
 
     // MARK: - Maintenance
     static let maintenanceDueSoonDays  = 7   // "due soon" threshold in days
+
+    // MARK: - Recurring Bills
+    /// Periods ahead of a series' anchor we search when resolving the next due date.
+    /// 600 covers ~11 years of a weekly bill — far past any realistic gap.
+    static let recurrenceMaxLookaheadSteps = 600
+    /// Occurrences the catch-up sweep will mint for one series in a single pass, so a
+    /// bill back-dated by years can't spawn hundreds of rows on first sync.
+    static let recurrenceMaxCatchUp        = 24
 }

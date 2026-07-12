@@ -134,7 +134,12 @@ struct BillReminderView: View {
                 }
                 Button("Cancel", role: .cancel) { }
             } message: {
-                Text("Remove \"\(billToDelete?.title ?? "this bill")\"?")
+                let name = billToDelete?.title ?? "this bill"
+                if let bill = billToDelete, let rule = bill.recurrence, vm.deletingEndsSeries(bill) {
+                    Text("Remove \"\(name)\" and stop it repeating \(rule.cadenceDescription)? Bills you've already paid stay in your history.")
+                } else {
+                    Text("Remove \"\(name)\"?")
+                }
             }
         }
     }
@@ -405,6 +410,14 @@ struct BillCard: View {
                     Text(bill.date.formatted(date: .abbreviated, time: .omitted))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(Color.bpTextSub)
+                }
+                if let rule = bill.recurrence {
+                    Label(rule.displayName, systemImage: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color.bpNavy)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.bpNavyLight)
+                        .clipShape(Capsule())
                 }
                 if let name = createdByName {
                     Label("by \(name)", systemImage: "person.circle.fill")

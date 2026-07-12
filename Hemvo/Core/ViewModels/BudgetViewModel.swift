@@ -119,6 +119,13 @@ final class BudgetViewModel: ObservableObject {
             if stamped.paidDate == nil { stamped.paidDate = Date() }
             if stamped.paidBy   == nil { stamped.paidBy   = cachedUserID?.uuidString }
         }
+        // Only a bill can repeat, and a repeating bill is the first occurrence of its own
+        // series: its due date anchors the schedule every later occurrence is computed from.
+        if !stamped.isRecurring { stamped.recurrence = nil }
+        if stamped.recurrence != nil {
+            if stamped.seriesID     == nil { stamped.seriesID     = stamped.id }
+            if stamped.seriesAnchor == nil { stamped.seriesAnchor = stamped.date }
+        }
         expenses.append(stamped)
         if stamped.scope == .household { autoCreateCategory(for: stamped.category) }
         updateCategorySpend()
@@ -143,7 +150,9 @@ final class BudgetViewModel: ObservableObject {
     }
 
     func updateExpense(_ expense: Expense) {
-        var stamped = expense
+        var stamped  = expense
+        let previous = expenses.first(where: { $0.id == stamped.id })
+
         if stamped.isPaid {
             if stamped.paidDate == nil { stamped.paidDate = Date() }
             if stamped.paidBy   == nil { stamped.paidBy   = cachedUserID?.uuidString }
@@ -154,8 +163,24 @@ final class BudgetViewModel: ObservableObject {
             stamped.paidDate = nil
             stamped.paidBy   = nil
         }
+
+        if !stamped.isRecurring { stamped.recurrence = nil }
+        if stamped.recurrence != nil {
+            if stamped.seriesID == nil { stamped.seriesID = stamped.id }
+            // Moving a repeating bill's due date re-anchors the schedule: drag rent from the
+            // 1st to the 5th and every occurrence from here on should land on the 5th.
+            if stamped.seriesAnchor == nil || previous?.date != stamped.date {
+                stamped.seriesAnchor = stamped.date
+            }
+        }
+
         if let idx = expenses.firstIndex(where: { $0.id == stamped.id }) {
             expenses[idx] = stamped
+            // Switching recurrence off has to end the series for every member, not just on
+            // this device — otherwise another member's catch-up sweep keeps minting bills.
+            if previous?.recurrence != nil, stamped.recurrence == nil {
+                stopSeries(stamped)
+            }
             if stamped.scope == .household { autoCreateCategory(for: stamped.category) }
             updateCategorySpend()
             persist()
@@ -171,6 +196,15 @@ final class BudgetViewModel: ObservableObject {
 
     func deleteExpense(_ expense: Expense) {
         guard canDelete(expense) else { return }
+
+        // Deleting the newest occurrence of a series ends the series. Without this the
+        // catch-up sweep would see the now-newest occurrence sitting in the past and mint
+        // the deleted bill straight back. Deleting an *older* occurrence only removes that
+        // row — the schedule keeps running, which is what you want when tidying history.
+        if expense.recurrence != nil, isNewestOccurrence(expense) {
+            stopSeries(expense)
+        }
+
         deletedExpenseIDs.insert(expense.id)
         persistDeletedIDs()
         expenses.removeAll { $0.id == expense.id }
@@ -204,17 +238,131 @@ final class BudgetViewModel: ObservableObject {
             expenses[idx].isPaid   = true
             expenses[idx].paidDate = Date()
             expenses[idx].paidBy   = cachedUserID?.uuidString
+            let paid = expenses[idx]
             updateCategorySpend()
             persist()
             NotificationService.shared.cancelBillReminder(for: expense.id)
             objectWillChange.send()
-            Task { await supabaseMarkPaid(expenses[idx]) }
+            Task { await supabaseMarkPaid(paid) }
+            // Paying the newest bill in a series is what rolls it forward: the next
+            // occurrence appears immediately, already carrying its own reminders.
+            rollSeriesForward(from: paid)
         }
     }
 
     func deleteBills(at offsets: IndexSet) {
         let bills = upcomingBills
         offsets.forEach { deleteExpense(bills[$0]) }
+    }
+
+    // MARK: - Recurring Bill Series
+
+    /// True when no later occurrence of the same series exists. Rolling forward and ending a
+    /// series are both only ever driven by the newest occurrence, so paying (or deleting) a
+    /// back-dated bill can't mint an occurrence that already exists further ahead.
+    private func isNewestOccurrence(_ bill: Expense) -> Bool {
+        guard let sid = bill.seriesID else { return true }
+        return !expenses.contains { $0.seriesID == sid && $0.date > bill.date }
+    }
+
+    /// Whether deleting this bill also ends its repeating schedule — true only for the newest
+    /// occurrence. Lets the delete confirmation say which of the two is about to happen
+    /// instead of guessing.
+    func deletingEndsSeries(_ expense: Expense) -> Bool {
+        expense.recurrence != nil && isNewestOccurrence(expense)
+    }
+
+    /// Creates the occurrence that follows `bill`, if `bill` is the newest one in its series.
+    @discardableResult
+    private func rollSeriesForward(from bill: Expense) -> Expense? {
+        guard bill.recurrence != nil, hasWriteAccess, isNewestOccurrence(bill),
+              let due = bill.nextOccurrenceDate()
+        else { return nil }
+        return materializeOccurrence(of: bill, on: due)
+    }
+
+    /// Clones `bill` onto a later due date, unpaid. Returns nil when that occurrence already
+    /// exists locally or was deleted — both make this a no-op, which is what lets the catch-up
+    /// sweep run on every fetch and on every member's device without ever duplicating a bill.
+    @discardableResult
+    private func materializeOccurrence(of bill: Expense, on due: Date) -> Expense? {
+        let seriesID = bill.seriesID ?? bill.id
+        let id       = Expense.occurrenceID(seriesID: seriesID, due: due)
+
+        guard !deletedExpenseIDs.contains(id),
+              !expenses.contains(where: { $0.id == id })
+        else { return nil }
+
+        let next = Expense(
+            id:          id,
+            title:       bill.title,
+            amount:      bill.amount,
+            category:    bill.category,
+            date:        due,
+            isPaid:      false,
+            paidDate:    nil,
+            isRecurring: true,
+            notes:       bill.notes,
+            scope:       bill.scope,
+            // The member whose device mints the row has to own it: the INSERT policy on
+            // `expenses` checks created_by = auth.uid(), so carrying the original creator
+            // over would make the insert fail for every other member in the household.
+            createdBy:    cachedUserID?.uuidString ?? bill.createdBy,
+            paidBy:       nil,
+            recurrence:   bill.recurrence,
+            seriesID:     seriesID,
+            seriesAnchor: bill.seriesAnchor ?? bill.date
+        )
+
+        expenses.append(next)
+        persist()
+        if UserPreferences.shared.notifBills {
+            NotificationService.shared.scheduleBillReminder(for: next)
+        }
+        objectWillChange.send()
+        Task { await supabaseUpsert(next) }
+        return next
+    }
+
+    /// Mints any occurrences a series has missed, so that every live series always has one
+    /// occurrence due today or later.
+    ///
+    /// Rolling forward on payment alone isn't enough: a bill that goes *unpaid* would never
+    /// advance, and never notifying you about the bill you forgot is the whole failure this
+    /// feature exists to fix. Runs after every fetch. Idempotent — occurrence ids are derived
+    /// from (series, due date), so re-running it, or running it on three phones at once,
+    /// converges on the same rows.
+    private func catchUpRecurringSeries() {
+        guard hasWriteAccess else { return }
+        let cal   = Calendar.current
+        let today = cal.startOfDay(for: Date())
+
+        let series = Dictionary(
+            grouping: expenses.filter { $0.recurrence != nil && $0.seriesID != nil },
+            by: { $0.seriesID! }
+        )
+
+        for (_, occurrences) in series {
+            guard var newest = occurrences.max(by: { $0.date < $1.date }) else { continue }
+            var minted = 0
+            while cal.startOfDay(for: newest.date) < today, minted < AppConstants.recurrenceMaxCatchUp {
+                guard let due  = newest.nextOccurrenceDate(),
+                      let next = materializeOccurrence(of: newest, on: due)
+                else { break }
+                newest  = next
+                minted += 1
+            }
+        }
+    }
+
+    /// Ends a series by clearing `recurrence` on every remaining occurrence, locally and in
+    /// Supabase, so no member's catch-up sweep rolls it forward again.
+    private func stopSeries(_ bill: Expense) {
+        guard let sid = bill.seriesID else { return }
+        for i in expenses.indices where expenses[i].seriesID == sid {
+            expenses[i].recurrence = nil
+        }
+        Task { await supabaseStopSeries(seriesID: sid) }
     }
 
     // MARK: - Auto-create Budget Category
@@ -509,6 +657,9 @@ final class BudgetViewModel: ObservableObject {
                 (local.createdBy == nil || local.createdBy == cachedUserID?.uuidString)
             }
             expenses = merged + pendingLocal
+            // Before scheduling reminders, so a series that rolled over while the app was
+            // closed has its new occurrence in hand and gets notifications for it.
+            catchUpRecurringSeries()
             for e in expenses where e.scope == .household { autoCreateCategory(for: e.category) }
             updateCategorySpend()
             persist()
@@ -572,6 +723,28 @@ final class BudgetViewModel: ObservableObject {
         }
     }
 
+    // Clears `recurrence` on every occurrence of a series in one statement. Uses UPDATE
+    // (allowed for any household member) rather than a per-row upsert, which would trip
+    // the INSERT RLS check on rows created by someone else.
+    private func supabaseStopSeries(seriesID: UUID) async {
+        struct StopFields: Encodable {
+            enum CodingKeys: String, CodingKey { case recurrence }
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encodeNil(forKey: .recurrence)
+            }
+        }
+        do {
+            try await supabase
+                .from("expenses")
+                .update(StopFields())
+                .eq("series_id", value: seriesID.uuidString)
+                .execute()
+        } catch {
+            Logger.budget.error("stop series error: \(error.localizedDescription)")
+        }
+    }
+
     // Full-field UPDATE (not upsert) for edits to existing expenses.
     // Using .update() bypasses the INSERT RLS check (created_by = auth.uid())
     // that a full upsert triggers, so any household member can edit any expense.
@@ -582,27 +755,33 @@ final class BudgetViewModel: ObservableObject {
         guard cachedUserID != nil else { return }
 
         struct EditFields: Encodable {
-            let title:       String
-            let amount:      Double
-            let category:    String
-            let isRecurring: Bool
-            let isBill:      Bool
-            let dueDate:     Date
-            let paidDate:    Date?
-            let paidBy:      UUID?
-            let notes:       String
-            let scope:       String
+            let title:        String
+            let amount:       Double
+            let category:     String
+            let isRecurring:  Bool
+            let isBill:       Bool
+            let dueDate:      Date
+            let paidDate:     Date?
+            let paidBy:       UUID?
+            let notes:        String
+            let scope:        String
+            let recurrence:   String?
+            let seriesID:     UUID?
+            let seriesAnchor: Date?
             enum CodingKeys: String, CodingKey {
                 case title
                 case amount
                 case category
-                case isRecurring = "is_recurring"
-                case isBill      = "is_bill"
-                case dueDate     = "due_date"
-                case paidDate    = "paid_date"
-                case paidBy      = "paid_by"
+                case isRecurring  = "is_recurring"
+                case isBill       = "is_bill"
+                case dueDate      = "due_date"
+                case paidDate     = "paid_date"
+                case paidBy       = "paid_by"
                 case notes
                 case scope
+                case recurrence
+                case seriesID     = "series_id"
+                case seriesAnchor = "series_anchor"
             }
             // Swift's synthesised Encodable uses encodeIfPresent for optionals,
             // which omits nil keys from the JSON body. PostgREST treats omitted
@@ -618,24 +797,33 @@ final class BudgetViewModel: ObservableObject {
                 try c.encode(dueDate,     forKey: .dueDate)
                 try c.encode(notes,       forKey: .notes)
                 try c.encode(scope,       forKey: .scope)
-                if let pd = paidDate { try c.encode(pd, forKey: .paidDate) }
-                else                 { try c.encodeNil(forKey: .paidDate)  }
-                if let pb = paidBy   { try c.encode(pb, forKey: .paidBy)   }
-                else                 { try c.encodeNil(forKey: .paidBy)    }
+                if let pd = paidDate     { try c.encode(pd, forKey: .paidDate) }
+                else                     { try c.encodeNil(forKey: .paidDate)  }
+                if let pb = paidBy       { try c.encode(pb, forKey: .paidBy)   }
+                else                     { try c.encodeNil(forKey: .paidBy)    }
+                if let r  = recurrence   { try c.encode(r,  forKey: .recurrence) }
+                else                     { try c.encodeNil(forKey: .recurrence)  }
+                if let s  = seriesID     { try c.encode(s,  forKey: .seriesID) }
+                else                     { try c.encodeNil(forKey: .seriesID)  }
+                if let a  = seriesAnchor { try c.encode(a,  forKey: .seriesAnchor) }
+                else                     { try c.encodeNil(forKey: .seriesAnchor)  }
             }
         }
 
         let fields = EditFields(
-            title:       expense.title,
-            amount:      expense.amount,
-            category:    expense.category.rawValue,
-            isRecurring: expense.isRecurring,
-            isBill:      expense.isRecurring,
-            dueDate:     Calendar.current.startOfDay(for: expense.date),
-            paidDate:    expense.paidDate.map { Calendar.current.startOfDay(for: $0) },
-            paidBy:      expense.paidBy.flatMap { UUID(uuidString: $0) },
-            notes:       expense.notes,
-            scope:       expense.scope.rawValue
+            title:        expense.title,
+            amount:       expense.amount,
+            category:     expense.category.rawValue,
+            isRecurring:  expense.isRecurring,
+            isBill:       expense.isRecurring,
+            dueDate:      Calendar.current.startOfDay(for: expense.date),
+            paidDate:     expense.paidDate.map { Calendar.current.startOfDay(for: $0) },
+            paidBy:       expense.paidBy.flatMap { UUID(uuidString: $0) },
+            notes:        expense.notes,
+            scope:        expense.scope.rawValue,
+            recurrence:   expense.recurrence?.rawValue,
+            seriesID:     expense.seriesID,
+            seriesAnchor: expense.seriesAnchor.map { Calendar.current.startOfDay(for: $0) }
         )
 
         do {
@@ -937,6 +1125,9 @@ private struct SupabaseExpenseRow: Codable {
     var notes:       String
     var scope:       String
     let createdBy:   UUID
+    var recurrence:   String?
+    var seriesId:     UUID?
+    var seriesAnchor: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -951,7 +1142,10 @@ private struct SupabaseExpenseRow: Codable {
         case paidBy      = "paid_by"
         case notes
         case scope
-        case createdBy   = "created_by"
+        case createdBy    = "created_by"
+        case recurrence
+        case seriesId     = "series_id"
+        case seriesAnchor = "series_anchor"
     }
 
     // Custom Codable decode so that rows fetched before the scope migration was applied
@@ -972,6 +1166,12 @@ private struct SupabaseExpenseRow: Codable {
         notes       = (try? c.decode(String.self, forKey: .notes)) ?? ""
         scope       = (try? c.decode(String.self, forKey: .scope)) ?? "household"
         createdBy   = try  c.decode(UUID.self,   forKey: .createdBy)
+        // Optional like `scope` above: rows fetched before the recurring-series migration
+        // lack these columns entirely, and must decode as a plain one-off bill rather than
+        // throwing keyNotFound and aborting the whole load.
+        recurrence   = try? c.decode(String.self, forKey: .recurrence)
+        seriesId     = try? c.decode(UUID.self,   forKey: .seriesId)
+        seriesAnchor = try? c.decode(Date.self,   forKey: .seriesAnchor)
     }
 
     init(from expense: Expense, userId: UUID, householdId: UUID?) {
@@ -988,22 +1188,28 @@ private struct SupabaseExpenseRow: Codable {
         paidBy           = expense.paidBy.flatMap { UUID(uuidString: $0) }
         notes            = expense.notes
         scope            = expense.scope.rawValue
+        recurrence       = expense.recurrence?.rawValue
+        seriesId         = expense.seriesID
+        seriesAnchor     = expense.seriesAnchor.map { Calendar.current.startOfDay(for: $0) }
     }
 
     func toExpense() -> Expense {
         Expense(
-            id:          id,
-            title:       title,
-            amount:      amount,
-            category:    category.flatMap(Expense.ExpenseCategory.init(rawValue:)) ?? .other,
-            date:        dueDate ?? Date(),
-            isPaid:      paidDate != nil,
-            paidDate:    paidDate,
-            isRecurring: isRecurring || isBill,
-            notes:       notes,
-            scope:       BudgetScope(rawValue: scope) ?? .household,
-            createdBy:   createdBy.uuidString,
-            paidBy:      paidBy?.uuidString
+            id:           id,
+            title:        title,
+            amount:       amount,
+            category:     category.flatMap(Expense.ExpenseCategory.init(rawValue:)) ?? .other,
+            date:         dueDate ?? Date(),
+            isPaid:       paidDate != nil,
+            paidDate:     paidDate,
+            isRecurring:  isRecurring || isBill,
+            notes:        notes,
+            scope:        BudgetScope(rawValue: scope) ?? .household,
+            createdBy:    createdBy.uuidString,
+            paidBy:       paidBy?.uuidString,
+            recurrence:   recurrence.flatMap(RecurrenceRule.init(rawValue:)),
+            seriesID:     seriesId,
+            seriesAnchor: seriesAnchor
         )
     }
 }

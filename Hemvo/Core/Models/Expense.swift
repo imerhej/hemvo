@@ -3,6 +3,44 @@
 
 internal import Foundation
 internal import SwiftUI
+internal import CryptoKit
+
+// MARK: - RecurrenceRule
+/// How often a bill repeats. `nil` on an Expense means it does not repeat — a one-time
+/// bill that is reminded once and then done, which is how every bill behaved before
+/// recurring series existed.
+enum RecurrenceRule: String, Codable, CaseIterable, Identifiable {
+    case weekly  = "weekly"
+    case monthly = "monthly"
+    case yearly  = "yearly"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .weekly:  return "Weekly"
+        case .monthly: return "Monthly"
+        case .yearly:  return "Yearly"
+        }
+    }
+
+    var cadenceDescription: String {
+        switch self {
+        case .weekly:  return "every week"
+        case .monthly: return "every month"
+        case .yearly:  return "every year"
+        }
+    }
+
+    /// Calendar unit one period is measured in.
+    var component: Calendar.Component {
+        switch self {
+        case .weekly:  return .weekOfYear
+        case .monthly: return .month
+        case .yearly:  return .year
+        }
+    }
+}
 
 // MARK: - BudgetScope
 enum BudgetScope: String, Codable, CaseIterable {
@@ -32,6 +70,15 @@ struct Expense: Codable, Identifiable, Equatable {
     var createdBy: String?    // UUID string of the user who created this expense
     var paidBy: String?       // UUID string of the user who marked this bill as paid
 
+    /// How often this bill repeats. `nil` — the value on every bill created before
+    /// series shipped — means it never repeats.
+    var recurrence: RecurrenceRule?
+    /// Groups every occurrence of the same repeating bill.
+    var seriesID: UUID?
+    /// The series' original due date. Future occurrences are computed from this rather
+    /// than from the previous occurrence — see `nextOccurrenceDate()`.
+    var seriesAnchor: Date?
+
     init(
         id: UUID = UUID(),
         title: String,
@@ -44,7 +91,10 @@ struct Expense: Codable, Identifiable, Equatable {
         notes: String = "",
         scope: BudgetScope = .household,
         createdBy: String? = nil,
-        paidBy: String? = nil
+        paidBy: String? = nil,
+        recurrence: RecurrenceRule? = nil,
+        seriesID: UUID? = nil,
+        seriesAnchor: Date? = nil
     ) {
         self.id = id
         self.title = title
@@ -58,6 +108,50 @@ struct Expense: Codable, Identifiable, Equatable {
         self.scope = scope
         self.createdBy = createdBy
         self.paidBy = paidBy
+        self.recurrence = recurrence
+        self.seriesID = seriesID
+        self.seriesAnchor = seriesAnchor
+    }
+
+    // MARK: - Recurrence
+
+    /// The next due date strictly after this occurrence's own date.
+    ///
+    /// Always measured as `anchor + N periods`, never as `self.date + 1 period`. Adding a
+    /// month to Jan 31 gives Feb 28, and adding a month to *that* gives Mar 28 — a monthly
+    /// bill would silently walk off the 31st and never come back. Counting periods from the
+    /// anchor instead puts month N on the 31st whenever the month is long enough.
+    func nextOccurrenceDate() -> Date? {
+        guard let rule = recurrence else { return nil }
+        let cal     = Calendar.current
+        let anchor  = seriesAnchor ?? date
+        let current = cal.startOfDay(for: date)
+
+        for step in 1...AppConstants.recurrenceMaxLookaheadSteps {
+            guard let candidate = cal.date(byAdding: rule.component, value: step, to: anchor)
+            else { return nil }
+            if cal.startOfDay(for: candidate) > current { return candidate }
+        }
+        return nil
+    }
+
+    /// Occurrence IDs are derived from (series, due date) instead of being random, so two
+    /// household members rolling the same series forward at the same moment mint the *same*
+    /// row id and the upsert collapses them into one bill rather than creating duplicate rent.
+    static func occurrenceID(seriesID: UUID, due: Date) -> UUID {
+        let c   = Calendar.current.dateComponents([.year, .month, .day], from: due)
+        let key = "\(seriesID.uuidString)|\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)"
+
+        // MD5 is used purely as a name-to-UUID derivation (RFC 4122 v3), not for security:
+        // it is the one hash that yields exactly the 16 bytes a UUID needs.
+        var bytes = Array(Insecure.MD5.hash(data: Data(key.utf8)))
+        bytes[6] = (bytes[6] & 0x0F) | 0x30   // version 3
+        bytes[8] = (bytes[8] & 0x3F) | 0x80   // RFC 4122 variant
+
+        return UUID(uuid: (bytes[0],  bytes[1],  bytes[2],  bytes[3],
+                           bytes[4],  bytes[5],  bytes[6],  bytes[7],
+                           bytes[8],  bytes[9],  bytes[10], bytes[11],
+                           bytes[12], bytes[13], bytes[14], bytes[15]))
     }
 
     var formattedAmount: String {

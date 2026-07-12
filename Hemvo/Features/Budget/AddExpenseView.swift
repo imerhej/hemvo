@@ -17,6 +17,7 @@ struct AddExpenseView: View {
     @State private var isPaid      = false
     @State private var notes       = ""
     @State private var scope:       BudgetScope = .household
+    @State private var recurrence:  RecurrenceRule? = .monthly
     @FocusState private var amountFocused: Bool
 
     private enum Field { case title, notes }
@@ -88,6 +89,11 @@ struct AddExpenseView: View {
                         .cornerRadius(14)
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.bpDivider, lineWidth: 1))
 
+                        // ── Repeats ──────────────────────────
+                        if isRecurring {
+                            RecurrencePicker(selection: $recurrence)
+                        }
+
                         // ── Scope ─────────────────────────────
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 5) {
@@ -142,7 +148,8 @@ struct AddExpenseView: View {
                                 date: date, isPaid: isPaid,
                                 paidDate: isPaid ? Date() : nil,
                                 isRecurring: isRecurring, notes: notes,
-                                scope: scope
+                                scope: scope,
+                                recurrence: isRecurring ? recurrence : nil
                             ))
                             dismiss()
                         } label: {
@@ -182,6 +189,65 @@ struct AddExpenseView: View {
                         .foregroundColor(.primary)
                 }
             }
+        }
+    }
+}
+
+// MARK: - RecurrencePicker
+/// Frequency selector for a bill, shown only once "Recurring Bill" is on.
+/// A `nil` selection is a bill that is due once and never repeats — the way every bill
+/// behaved before series existed, kept as an explicit choice rather than a silent default.
+struct RecurrencePicker: View {
+    @Binding var selection: RecurrenceRule?
+
+    private struct Choice: Identifiable {
+        let rule: RecurrenceRule?
+        var id:    String { rule?.rawValue    ?? "once" }
+        var label: String { rule?.displayName ?? "One-time" }
+    }
+
+    private var choices: [Choice] {
+        [Choice(rule: nil)] + RecurrenceRule.allCases.map { Choice(rule: $0) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(Color.bpSlate)
+                Text("REPEATS")
+                    .font(.system(size: 9, weight: .heavy))
+                    .kerning(1.4)
+                    .foregroundColor(Color.bpTextSub)
+            }
+
+            HStack(spacing: 6) {
+                ForEach(choices) { choice in
+                    Button { selection = choice.rule } label: {
+                        Text(choice.label)
+                            .font(.system(size: 12, weight: .bold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .foregroundColor(selection == choice.rule ? .white : Color.bpNavy)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .background(selection == choice.rule ? Color.bpNavy : Color.bpSurface)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.bpNavy.opacity(selection == choice.rule ? 0 : 0.3), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .animation(.easeInOut(duration: 0.15), value: selection)
+                }
+            }
+
+            Text(selection.map {
+                "The next bill is created automatically \($0.cadenceDescription) once this one is paid. You're reminded the day before and the day it's due."
+            } ?? "Reminded once, on the due date. This bill won't come back next month.")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(Color.bpTextSub)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
