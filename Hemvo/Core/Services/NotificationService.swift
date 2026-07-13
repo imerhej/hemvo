@@ -332,7 +332,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     func scheduleBillReminder(for expense: Expense) {
         let today  = Calendar.current.startOfDay(for: Date())
         let dueDay = Calendar.current.startOfDay(for: expense.date)
-        guard expense.isRecurring, !expense.isPaid, dueDay >= today else { return }
+        guard expense.isBill, !expense.isPaid, dueDay >= today else { return }
 
         // Day-of at 9am
         let onDueContent       = UNMutableNotificationContent()
@@ -381,7 +381,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             let ids = pending.map { $0.identifier }
                 .filter { $0.hasPrefix(Prefix.billDue) || $0.hasPrefix(Prefix.billEarly) }
             self.center.removePendingNotificationRequests(withIdentifiers: ids)
-            for expense in expenses where expense.isRecurring && !expense.isPaid {
+            for expense in expenses where expense.isBill && !expense.isPaid {
                 self.scheduleBillReminder(for: expense)
             }
         }

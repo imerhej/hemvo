@@ -14,7 +14,7 @@ struct EditExpenseView: View {
     @State private var amountText  = ""
     @State private var category    = Expense.ExpenseCategory.groceries
     @State private var date        = Date()
-    @State private var isRecurring = false
+    @State private var isBill      = false
     @State private var isPaid      = false
     @State private var notes       = ""
     @State private var scope       = BudgetScope.household
@@ -25,7 +25,13 @@ struct EditExpenseView: View {
     @FocusState private var focus: Field?
 
     var amount: Double { Double(amountText) ?? 0 }
-    var isValid: Bool  { !title.trimmingCharacters(in: .whitespaces).isEmpty && amount > 0 }
+
+    /// Same rule as Add: an expense is either owed (a bill) or spent (paid). Enforced here too,
+    /// so an existing row can't be *edited* back into the unfiled state.
+    var isClassified: Bool { isBill || isPaid }
+    var isValid: Bool {
+        !title.trimmingCharacters(in: .whitespaces).isEmpty && amount > 0 && isClassified
+    }
 
     var body: some View {
         NavigationStack {
@@ -72,10 +78,10 @@ struct EditExpenseView: View {
                         // ── Options ──────────────────────────
                         VStack(spacing: 0) {
                             OptionRow(
-                                icon: "repeat.circle.fill",
-                                label: "Recurring Bill",
+                                icon: "calendar.badge.clock",
+                                label: "Bill — pay later",
                                 color: Color.bpSlate,
-                                isOn: $isRecurring
+                                isOn: $isBill
                             )
                             Color.bpDivider.frame(height: 1).padding(.leading, 52)
                             OptionRow(
@@ -89,8 +95,21 @@ struct EditExpenseView: View {
                         .cornerRadius(14)
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.bpDivider, lineWidth: 1))
 
+                        if !isClassified {
+                            HStack(spacing: 7) {
+                                Image(systemName: "info.circle.fill")
+                                    .font(.system(size: 12))
+                                Text("Pick one: a **bill** you still owe, or something **already paid**.")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .foregroundColor(Color.bpTextSub)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 2)
+                        }
+
                         // ── Repeats ──────────────────────────
-                        if isRecurring {
+                        if isBill {
                             RecurrencePicker(selection: $recurrence)
                         }
 
@@ -224,7 +243,7 @@ struct EditExpenseView: View {
         amountText  = String(format: "%.2f", expense.amount)
         category    = expense.category
         date        = expense.date
-        isRecurring = expense.isRecurring
+        isBill      = expense.isBill
         isPaid      = expense.isPaid
         notes       = expense.notes
         scope       = expense.scope
@@ -238,11 +257,11 @@ struct EditExpenseView: View {
         updated.amount      = amount
         updated.category    = category
         updated.date        = date
-        updated.isRecurring = isRecurring
+        updated.isBill      = isBill
         updated.isPaid      = isPaid
         updated.notes       = notes
         updated.scope       = vm.canChangeScope(expense) ? scope : expense.scope
-        updated.recurrence  = isRecurring ? recurrence : nil
+        updated.recurrence  = isBill ? recurrence : nil
         vm.updateExpense(updated)
         dismiss()
     }

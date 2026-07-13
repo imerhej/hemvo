@@ -13,18 +13,27 @@ struct AddExpenseView: View {
     @State private var amountText  = ""
     @State private var category    = Expense.ExpenseCategory.groceries
     @State private var date        = Date()
-    @State private var isRecurring = false
+    @State private var isBill      = false
     @State private var isPaid      = false
     @State private var notes       = ""
     @State private var scope:       BudgetScope = .household
-    @State private var recurrence:  RecurrenceRule? = .monthly
+    /// One-time by default: flipping "Bill" on says nothing about repeating, and a bill that
+    /// quietly comes back every month because of a default is worse than one extra tap.
+    @State private var recurrence:  RecurrenceRule? = nil
     @FocusState private var amountFocused: Bool
 
     private enum Field { case title, notes }
     @FocusState private var focus: Field?
 
     var amount: Double { Double(amountText) ?? 0 }
-    var isValid: Bool  { !title.trimmingCharacters(in: .whitespaces).isEmpty && amount > 0 }
+
+    /// Every expense must be one of the two things the app knows how to file: money you still
+    /// owe (a bill) or money already spent (paid). Neither flag means neither bucket — that
+    /// is the state that used to land unpaid bills in Recent Expenses.
+    var isClassified: Bool { isBill || isPaid }
+    var isValid: Bool {
+        !title.trimmingCharacters(in: .whitespaces).isEmpty && amount > 0 && isClassified
+    }
 
     var body: some View {
         NavigationStack {
@@ -72,10 +81,10 @@ struct AddExpenseView: View {
                         // ── Options ──────────────────────────
                         VStack(spacing: 0) {
                             OptionRow(
-                                icon: "repeat.circle.fill",
-                                label: "Recurring Bill",
+                                icon: "calendar.badge.clock",
+                                label: "Bill — pay later",
                                 color: Color.bpSlate,
-                                isOn: $isRecurring
+                                isOn: $isBill
                             )
                             Color.bpDivider.frame(height: 1).padding(.leading, 52)
                             OptionRow(
@@ -89,8 +98,23 @@ struct AddExpenseView: View {
                         .cornerRadius(14)
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.bpDivider, lineWidth: 1))
 
+                        // A disabled Save button with no explanation is a dead end — say which
+                        // switch is missing and why it matters.
+                        if !isClassified {
+                            HStack(spacing: 7) {
+                                Image(systemName: "info.circle.fill")
+                                    .font(.system(size: 12))
+                                Text("Pick one: a **bill** you still owe, or something **already paid**.")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .foregroundColor(Color.bpTextSub)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 2)
+                        }
+
                         // ── Repeats ──────────────────────────
-                        if isRecurring {
+                        if isBill {
                             RecurrencePicker(selection: $recurrence)
                         }
 
@@ -147,9 +171,9 @@ struct AddExpenseView: View {
                                 amount: amount, category: category,
                                 date: date, isPaid: isPaid,
                                 paidDate: isPaid ? Date() : nil,
-                                isRecurring: isRecurring, notes: notes,
+                                isBill: isBill, notes: notes,
                                 scope: scope,
-                                recurrence: isRecurring ? recurrence : nil
+                                recurrence: isBill ? recurrence : nil
                             ))
                             dismiss()
                         } label: {

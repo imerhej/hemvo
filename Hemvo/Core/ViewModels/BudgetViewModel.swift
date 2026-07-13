@@ -75,22 +75,24 @@ final class BudgetViewModel: ObservableObject {
         return min(totalSpent / budget.monthlyIncome, 1.0)
     }
 
-    var recentExpenses: [Expense] { expenses.filter { !$0.isRecurring || $0.isPaid }.sorted { $0.date > $1.date } }
+    /// Money already spent: everything that isn't a bill, plus bills that have been paid.
+    /// Keyed on `isBill`, not `isRecurring` — a one-time bill you still owe is not an expense.
+    var recentExpenses: [Expense] { expenses.filter { !$0.isBill || $0.isPaid }.sorted { $0.date > $1.date } }
     var upcomingBills:  [Expense] {
         expenses
             .filter {
                 $0.scope == selectedScope &&
-                $0.isRecurring && !$0.isPaid &&
+                $0.isBill && !$0.isPaid &&
                 Calendar.current.isDate($0.date, equalTo: selectedMonth, toGranularity: .month)
             }
             .sorted { $0.date < $1.date }
     }
-    /// Unpaid recurring bills across both scopes for the current user — used by the Dashboard summary tile.
+    /// Unpaid bills across both scopes for the current user — used by the Dashboard summary tile.
     /// Personal bills from other household members are already excluded by the fetch query + RLS.
     var allUpcomingBills: [Expense] {
         expenses
             .filter {
-                $0.isRecurring && !$0.isPaid &&
+                $0.isBill && !$0.isPaid &&
                 ($0.scope == .household || $0.createdBy == cachedUserID?.uuidString) &&
                 Calendar.current.isDate($0.date, equalTo: selectedMonth, toGranularity: .month)
             }
@@ -121,7 +123,7 @@ final class BudgetViewModel: ObservableObject {
         }
         // Only a bill can repeat, and a repeating bill is the first occurrence of its own
         // series: its due date anchors the schedule every later occurrence is computed from.
-        if !stamped.isRecurring { stamped.recurrence = nil }
+        if !stamped.isBill { stamped.recurrence = nil }
         if stamped.recurrence != nil {
             if stamped.seriesID     == nil { stamped.seriesID     = stamped.id }
             if stamped.seriesAnchor == nil { stamped.seriesAnchor = stamped.date }
@@ -130,7 +132,7 @@ final class BudgetViewModel: ObservableObject {
         if stamped.scope == .household { autoCreateCategory(for: stamped.category) }
         updateCategorySpend()
         persist()
-        if stamped.isRecurring && !stamped.isPaid &&
+        if stamped.isBill && !stamped.isPaid &&
            UserPreferences.shared.notifBills {
             NotificationService.shared.scheduleBillReminder(for: stamped)
         }
@@ -139,7 +141,7 @@ final class BudgetViewModel: ObservableObject {
         if stamped.scope == .household {
             Task {
                 let creator = HouseholdService.shared.displayName(forUserID: cachedUserID)
-                let label = stamped.isRecurring ? "💸 \(creator) added a bill" : "💰 \(creator) added an expense"
+                let label = stamped.isBill ? "💸 \(creator) added a bill" : "💰 \(creator) added an expense"
                 await PushNotificationService.shared.notifyHouseholdFiltered(
                     permission: \.receiveExpenseAlerts,
                     title: label,
@@ -164,7 +166,7 @@ final class BudgetViewModel: ObservableObject {
             stamped.paidBy   = nil
         }
 
-        if !stamped.isRecurring { stamped.recurrence = nil }
+        if !stamped.isBill { stamped.recurrence = nil }
         if stamped.recurrence != nil {
             if stamped.seriesID == nil { stamped.seriesID = stamped.id }
             // Moving a repeating bill's due date re-anchors the schedule: drag rent from the
@@ -185,7 +187,7 @@ final class BudgetViewModel: ObservableObject {
             updateCategorySpend()
             persist()
             NotificationService.shared.cancelBillReminder(for: stamped.id)
-            if stamped.isRecurring && !stamped.isPaid &&
+            if stamped.isBill && !stamped.isPaid &&
                UserPreferences.shared.notifBills {
                 NotificationService.shared.scheduleBillReminder(for: stamped)
             }
@@ -301,7 +303,7 @@ final class BudgetViewModel: ObservableObject {
             date:        due,
             isPaid:      false,
             paidDate:    nil,
-            isRecurring: true,
+            isBill:      true,
             notes:       bill.notes,
             scope:       bill.scope,
             // The member whose device mints the row has to own it: the INSERT policy on
@@ -815,7 +817,7 @@ final class BudgetViewModel: ObservableObject {
             amount:       expense.amount,
             category:     expense.category.rawValue,
             isRecurring:  expense.isRecurring,
-            isBill:       expense.isRecurring,
+            isBill:       expense.isBill,
             dueDate:      Calendar.current.startOfDay(for: expense.date),
             paidDate:     expense.paidDate.map { Calendar.current.startOfDay(for: $0) },
             paidBy:       expense.paidBy.flatMap { UUID(uuidString: $0) },
@@ -1181,7 +1183,7 @@ private struct SupabaseExpenseRow: Codable {
         title            = expense.title
         amount           = expense.amount
         category         = expense.category.rawValue
-        isBill           = expense.isRecurring
+        isBill           = expense.isBill
         isRecurring      = expense.isRecurring
         dueDate          = Calendar.current.startOfDay(for: expense.date)
         paidDate         = expense.paidDate.map { Calendar.current.startOfDay(for: $0) }
@@ -1202,7 +1204,10 @@ private struct SupabaseExpenseRow: Codable {
             date:         dueDate ?? Date(),
             isPaid:       paidDate != nil,
             paidDate:     paidDate,
-            isRecurring:  isRecurring || isBill,
+            // Rows written by the old app set is_bill and is_recurring to the same value, so
+            // either one being true means "bill". Whether it actually repeats is decided by
+            // `recurrence` alone — the only column that ever carried a cadence.
+            isBill:       isBill || isRecurring,
             notes:        notes,
             scope:        BudgetScope(rawValue: scope) ?? .household,
             createdBy:    createdBy.uuidString,

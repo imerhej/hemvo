@@ -43,7 +43,7 @@ struct BillHistoryView: View {
     // accessible here after being toggled from paid → unpaid (otherwise they fall off the
     // dashboard's 5-item recent list with no other path to reach them).
     private var timeFilteredBills: [Expense] {
-        let all = vm.expenses.filter { $0.scope == vm.selectedScope && ($0.isPaid || !$0.isRecurring) }
+        let all = vm.expenses.filter { $0.scope == vm.selectedScope && ($0.isPaid || !$0.isBill) }
         switch filter {
         case .week:
             let start = Calendar.current.date(from: Calendar.current.dateComponents(

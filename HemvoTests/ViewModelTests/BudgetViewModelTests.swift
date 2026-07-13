@@ -27,7 +27,7 @@ struct BudgetViewModelTests {
     @Test func unpaidRecurringBillCountsAsCategorySpendImmediately() {
         let bill = Expense(title: "Electricity", amount: 70,
                            category: .utilities, date: Date(),
-                           isRecurring: true)
+                           isBill: true)
         let vm = makeVM(expenses: [bill],
                         categories: [BudgetCategory(name: "Utilities", limit: 500)])
 
@@ -41,7 +41,7 @@ struct BudgetViewModelTests {
     @Test func unpaidBillDoesNotLeakIntoNextMonth() {
         let bill = Expense(title: "Electricity", amount: 70,
                            category: .utilities, date: Date(),
-                           isRecurring: true)
+                           isBill: true)
         let vm = makeVM(expenses: [bill],
                         categories: [BudgetCategory(name: "Utilities", limit: 500)])
 
@@ -54,7 +54,7 @@ struct BudgetViewModelTests {
         let bill = Expense(title: "Electricity", amount: 70,
                            category: .utilities, date: Date(),
                            isPaid: true, paidDate: Date(),
-                           isRecurring: true)
+                           isBill: true)
         let vm = makeVM(expenses: [bill],
                         categories: [BudgetCategory(name: "Utilities", limit: 500)])
 

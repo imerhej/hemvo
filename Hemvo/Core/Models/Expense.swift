@@ -64,20 +64,33 @@ struct Expense: Codable, Identifiable, Equatable {
     var date: Date
     var isPaid: Bool
     var paidDate: Date?
-    var isRecurring: Bool
+
+    /// Whether this is money you still owe: it has a due date and has to be marked paid.
+    /// A bill lives in Upcoming Bills until then; an expense (`false`) is money already
+    /// spent and goes straight to Recent Expenses.
+    ///
+    /// Deliberately independent of `recurrence` — "is this a bill" and "does it repeat" are
+    /// two different questions, and a one-time bill (`isBill`, no `recurrence`) is a perfectly
+    /// ordinary thing that had no way to be expressed while a single flag meant both.
+    var isBill: Bool
+
     var notes: String
     var scope: BudgetScope
     var createdBy: String?    // UUID string of the user who created this expense
     var paidBy: String?       // UUID string of the user who marked this bill as paid
 
-    /// How often this bill repeats. `nil` — the value on every bill created before
-    /// series shipped — means it never repeats.
+    /// How often this bill repeats. `nil` means it never does — it is due once and then done.
     var recurrence: RecurrenceRule?
     /// Groups every occurrence of the same repeating bill.
     var seriesID: UUID?
     /// The series' original due date. Future occurrences are computed from this rather
     /// than from the previous occurrence — see `nextOccurrenceDate()`.
     var seriesAnchor: Date?
+
+    /// Whether paying this bill mints the next occurrence. Purely a function of `recurrence`:
+    /// there is no such thing as a repeating bill with no cadence, so this is derived rather
+    /// than stored — a stored copy could drift out of step with the rule, and used to.
+    var isRecurring: Bool { recurrence != nil }
 
     init(
         id: UUID = UUID(),
@@ -87,7 +100,7 @@ struct Expense: Codable, Identifiable, Equatable {
         date: Date = Date(),
         isPaid: Bool = false,
         paidDate: Date? = nil,
-        isRecurring: Bool = false,
+        isBill: Bool = false,
         notes: String = "",
         scope: BudgetScope = .household,
         createdBy: String? = nil,
@@ -103,7 +116,7 @@ struct Expense: Codable, Identifiable, Equatable {
         self.date = date
         self.isPaid = isPaid
         self.paidDate = paidDate
-        self.isRecurring = isRecurring
+        self.isBill = isBill
         self.notes = notes
         self.scope = scope
         self.createdBy = createdBy
@@ -111,6 +124,44 @@ struct Expense: Codable, Identifiable, Equatable {
         self.recurrence = recurrence
         self.seriesID = seriesID
         self.seriesAnchor = seriesAnchor
+    }
+
+    // MARK: - Codable
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, amount, category, date, isPaid, paidDate
+        case isBill, notes, scope, createdBy, paidBy
+        case recurrence, seriesID, seriesAnchor
+    }
+
+    /// Only `isRecurring` ever existed in cached rows, where it meant *both* "is a bill" and
+    /// "repeats". Read it as the bill flag — that was always its dominant meaning — and let
+    /// `recurrence`, the only field that ever recorded a cadence, decide whether it repeats.
+    private enum LegacyCodingKeys: String, CodingKey { case isRecurring }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id           = try  c.decode(UUID.self,   forKey: .id)
+        title        = try  c.decode(String.self, forKey: .title)
+        amount       = try  c.decode(Double.self, forKey: .amount)
+        category     = (try? c.decode(ExpenseCategory.self, forKey: .category)) ?? .other
+        date         = try  c.decode(Date.self,   forKey: .date)
+        isPaid       = (try? c.decode(Bool.self,   forKey: .isPaid)) ?? false
+        paidDate     = try? c.decode(Date.self,   forKey: .paidDate)
+        notes        = (try? c.decode(String.self, forKey: .notes)) ?? ""
+        scope        = (try? c.decode(BudgetScope.self, forKey: .scope)) ?? .household
+        createdBy    = try? c.decode(String.self, forKey: .createdBy)
+        paidBy       = try? c.decode(String.self, forKey: .paidBy)
+        recurrence   = try? c.decode(RecurrenceRule.self, forKey: .recurrence)
+        seriesID     = try? c.decode(UUID.self,   forKey: .seriesID)
+        seriesAnchor = try? c.decode(Date.self,   forKey: .seriesAnchor)
+
+        if let stored = try? c.decode(Bool.self, forKey: .isBill) {
+            isBill = stored
+        } else {
+            let legacy = try? decoder.container(keyedBy: LegacyCodingKeys.self)
+            isBill = (try? legacy?.decode(Bool.self, forKey: .isRecurring)) ?? false
+        }
     }
 
     // MARK: - Recurrence

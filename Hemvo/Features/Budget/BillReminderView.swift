@@ -36,7 +36,7 @@ struct BillReminderView: View {
     private var monthBills: [Expense] {
         vm.expenses.filter {
             $0.scope == vm.selectedScope &&
-            $0.isRecurring &&
+            $0.isBill &&
             Calendar.current.isDate($0.date, equalTo: vm.selectedMonth, toGranularity: .month)
         }
     }
@@ -56,7 +56,7 @@ struct BillReminderView: View {
                     let allBills = vm.expenses
                         .filter {
                             $0.scope == vm.selectedScope &&
-                            $0.isRecurring &&
+                            $0.isBill &&
                             Calendar.current.isDate($0.date, equalTo: vm.selectedMonth, toGranularity: .month)
                         }
                         .sorted { $0.date < $1.date }

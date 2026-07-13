@@ -204,7 +204,7 @@ struct BudgetDashboardView: View {
                 HStack {
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.up.circle.fill").font(.system(size: 11))
-                        Text("\(vm.monthlyExpenses.filter { !$0.isRecurring || $0.isPaid }.count) transactions this month")
+                        Text("\(vm.monthlyExpenses.filter { !$0.isBill || $0.isPaid }.count) transactions this month")
                             .font(.system(size: 12, weight: .semibold))
                     }
                     .foregroundColor(.white.opacity(0.85))
@@ -223,7 +223,7 @@ struct BudgetDashboardView: View {
                          icon: "arrow.up.circle.fill",
                          iconColor: Color(hex: "#C0392B") ?? .clear)
 
-            WarmStatTile(value: "\(vm.monthlyExpenses.filter { !$0.isRecurring || $0.isPaid }.count)",
+            WarmStatTile(value: "\(vm.monthlyExpenses.filter { !$0.isBill || $0.isPaid }.count)",
                          label: "Transactions",
                          icon: "list.bullet.rectangle.fill",
                          iconColor: Color.wAmber)
@@ -355,7 +355,7 @@ struct BudgetDashboardView: View {
                          icon: "arrow.up.circle.fill",
                          iconColor: Color(hex: "#C0392B") ?? .clear)
 
-            WarmStatTile(value: "\(vm.monthlyExpenses.filter { !$0.isRecurring || $0.isPaid }.count)",
+            WarmStatTile(value: "\(vm.monthlyExpenses.filter { !$0.isBill || $0.isPaid }.count)",
                          label: "Transactions",
                          icon: "list.bullet.rectangle.fill",
                          iconColor: Color.wAmber)
@@ -458,7 +458,7 @@ struct BudgetDashboardView: View {
 
             // Show only non-recurring expenses and paid bills — unpaid recurring bills belong in Upcoming Bills only
             let recent = vm.monthlyExpenses
-                .filter { !$0.isRecurring || $0.isPaid }
+                .filter { !$0.isBill || $0.isPaid }
                 .sorted { $0.date > $1.date }
             if recent.isEmpty {
                 WarmEmptyState(icon: "tray.fill", message: "No expenses this month.")

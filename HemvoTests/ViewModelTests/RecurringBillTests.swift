@@ -24,7 +24,7 @@ struct RecurringBillTests {
                       seriesID: UUID = UUID()) -> Expense {
         Expense(
             title: "Rent", amount: 1200, category: .mortgage, date: due,
-            isRecurring: true, recurrence: rule,
+            isBill: true, recurrence: rule,
             seriesID: seriesID, seriesAnchor: anchor ?? due
         )
     }
@@ -133,18 +133,37 @@ struct RecurringBillTests {
 
     // MARK: - Backward compatibility
 
-    /// Every bill that existed before series shipped decodes with recurrence == nil and must
-    /// keep its old one-shot behaviour rather than silently starting to repeat.
-    @Test("A pre-existing bill decodes as non-repeating")
+    /// Cached rows pre-date `isBill`, when a single `isRecurring` flag meant both "is a bill"
+    /// and "repeats". Such a row must decode as a bill you still owe — so it stays in Upcoming
+    /// Bills — while keeping its old one-shot behaviour rather than silently starting to repeat.
+    @Test("A pre-existing bill decodes as a non-repeating bill")
     func legacyBillDoesNotRepeat() throws {
         let legacy = """
         {"id":"\(UUID().uuidString)","title":"Electric","amount":80,"category":"Utilities",
          "date":768000000,"isPaid":false,"isRecurring":true,"notes":"","scope":"household"}
         """
         let decoded = try JSONDecoder().decode(Expense.self, from: Data(legacy.utf8))
-        #expect(decoded.isRecurring)
+        #expect(decoded.isBill)
+        #expect(!decoded.isRecurring)
         #expect(decoded.recurrence == nil)
         #expect(decoded.seriesID == nil)
         #expect(decoded.nextOccurrenceDate() == nil)
+    }
+
+    /// The bug this split exists to fix: an unpaid one-time bill is a bill, not an expense.
+    /// While one flag meant both things, leaving "Recurring" off was the only way to say
+    /// "doesn't repeat" — and it silently reclassified the bill as money already spent.
+    @MainActor
+    @Test("An unpaid non-repeating bill is upcoming, not a recent expense")
+    func oneTimeBillIsNotAnExpense() {
+        let bill = Expense(title: "New Bill", amount: 70, category: .insurance,
+                           date: Date(), isPaid: false, isBill: true)
+        #expect(bill.isBill)
+        #expect(!bill.isRecurring)
+
+        let vm = BudgetViewModel()
+        vm.expenses = [bill]
+        #expect(vm.upcomingBills.count == 1)
+        #expect(vm.recentExpenses.isEmpty)
     }
 }
