@@ -27,4 +27,5 @@ extension Logger {
     static let meals       = Logger(subsystem: subsystem, category: "Meals")
     static let schedule    = Logger(subsystem: subsystem, category: "Schedule")
     static let maintenance = Logger(subsystem: subsystem, category: "Maintenance")
+    static let security    = Logger(subsystem: subsystem, category: "Security")
 }

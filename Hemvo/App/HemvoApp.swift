@@ -36,7 +36,8 @@ func isDeviceJailbroken() -> Bool {
         "/bin/sh",
         "/private/var/stash",
     ]
-    if jailbreakPaths.contains(where: { FileManager.default.fileExists(atPath: $0) }) {
+    if let hit = jailbreakPaths.first(where: { FileManager.default.fileExists(atPath: $0) }) {
+        Logger.security.error("Jailbreak indicator: filesystem artifact \(hit, privacy: .public)")
         return true
     }
 
@@ -45,6 +46,7 @@ func isDeviceJailbroken() -> Bool {
     do {
         try "probe".write(toFile: probeFile, atomically: true, encoding: .utf8)
         try? FileManager.default.removeItem(atPath: probeFile)
+        Logger.security.error("Jailbreak indicator: sandbox escape — wrote outside the container")
         return true
     } catch { }
 
@@ -59,6 +61,7 @@ func isDeviceJailbroken() -> Bool {
         if let rawName = _dyld_get_image_name(i) {
             let imageName = String(cString: rawName)
             if suspiciousDylibs.contains(where: { imageName.localizedCaseInsensitiveContains($0) }) {
+                Logger.security.error("Jailbreak indicator: loaded dylib \(imageName, privacy: .public)")
                 return true
             }
         }
@@ -77,14 +80,38 @@ func isDeviceJailbroken() -> Bool {
     ]
     for path in protectedPaths {
         if (try? FileManager.default.destinationOfSymbolicLink(atPath: path)) != nil {
+            Logger.security.error("Jailbreak indicator: \(path, privacy: .public) is a symlink")
             return true
         }
     }
 
     // 5. DYLD_INSERT_LIBRARIES present — indicates the dynamic linker injected a
-    //    library into this process before main() ran.
-    if getenv("DYLD_INSERT_LIBRARIES") != nil {
-        return true
+    //    library into this process before main() ran. Xcode and Instruments use
+    //    the same mechanism to load Apple's own diagnostic libraries: running on
+    //    a device with the Main Thread Checker (on by default in the Debug
+    //    scheme), a sanitizer, or malloc guard enabled sets this variable on
+    //    every launch. Treating its mere presence as an injection flags every
+    //    development build on real hardware, so only libraries outside Apple's
+    //    known diagnostic set count.
+    if let rawInserted = getenv("DYLD_INSERT_LIBRARIES") {
+        let appleDiagnosticLibs: Set<String> = [
+            "libMainThreadChecker.dylib",
+            "libViewDebuggerSupport.dylib",
+            "libBacktraceRecording.dylib",
+            "libRPAC.dylib",
+            "libgmalloc.dylib",
+        ]
+        let injected = String(cString: rawInserted)
+            .split(separator: ":")
+            .map { URL(fileURLWithPath: String($0)).lastPathComponent }
+
+        let unexpected = injected.filter { lib in
+            !appleDiagnosticLibs.contains(lib) && !lib.hasPrefix("libclang_rt.")
+        }
+        if !unexpected.isEmpty {
+            Logger.security.error("Jailbreak indicator: injected \(unexpected.joined(separator: ", "), privacy: .public)")
+            return true
+        }
     }
 
     return false
