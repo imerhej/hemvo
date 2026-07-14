@@ -1,10 +1,4 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<!--
-  HomeBase.xcdatamodeld
-  Place this file at: HomeBase/Resources/HomeBase.xcdatamodeld/HomeBase.xcdatamodel/contents
-  In Xcode 26: File > New > File > Data Model, name it "HomeBase"
-  Then replace the generated contents file with this XML.
--->
 <model type="com.apple.IDECoreDataModeler.DataModel"
        documentVersion="1.0"
        lastSavedToolsVersion="21754"
@@ -17,11 +11,11 @@
     <entity name="MealEntity" representedClassName="MealEntity" syncable="YES">
         <attribute name="id"              attributeType="UUID"    usesScalarValueType="NO"/>
         <attribute name="name"            attributeType="String"  defaultValueString=""/>
-        <attribute name="dayRaw"          attributeType="Integer16" defaultValueString="1"/>
+        <attribute name="dayRaw"          attributeType="Integer 16" usesScalarValueType="YES" defaultValueString="1"/>
         <attribute name="mealTypeRaw"     attributeType="String"  defaultValueString="dinner"/>
         <attribute name="notes"           attributeType="String"  defaultValueString=""/>
-        <attribute name="prepTimeMinutes" attributeType="Integer16" defaultValueString="30"/>
-        <attribute name="servings"        attributeType="Integer16" defaultValueString="4"/>
+        <attribute name="prepTimeMinutes" attributeType="Integer 16" usesScalarValueType="YES" defaultValueString="30"/>
+        <attribute name="servings"        attributeType="Integer 16" usesScalarValueType="YES" defaultValueString="4"/>
         <relationship name="ingredients"
                       optional="YES"
                       toMany="YES"
@@ -39,7 +33,7 @@
         <attribute name="unit"          attributeType="String"  defaultValueString=""/>
         <attribute name="categoryRaw"   attributeType="String"  defaultValueString="other"/>
         <attribute name="isChecked"     attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
-        <attribute name="sourceMealID"  attributeType="UUID"    optional="YES" usesScalarValueType="NO"/>
+        <attribute name="sourceMealID"  optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
         <relationship name="meal"
                       optional="YES"
                       maxCount="1"
@@ -66,8 +60,8 @@
         <attribute name="id"            attributeType="UUID"    usesScalarValueType="NO"/>
         <attribute name="title"         attributeType="String"  defaultValueString=""/>
         <attribute name="date"          attributeType="Date"    usesScalarValueType="NO"/>
-        <attribute name="endDate"       attributeType="Date"    optional="YES" usesScalarValueType="NO"/>
-        <attribute name="assignedToID"  attributeType="UUID"    optional="YES" usesScalarValueType="NO"/>
+        <attribute name="endDate"       optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="assignedToID"  optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="isAllDay"      attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
         <attribute name="notes"         attributeType="String"  defaultValueString=""/>
         <attribute name="categoryRaw"   attributeType="String"  defaultValueString="general"/>
@@ -78,12 +72,12 @@
     <entity name="HouseTaskEntity" representedClassName="HouseTaskEntity" syncable="YES">
         <attribute name="id"            attributeType="UUID"    usesScalarValueType="NO"/>
         <attribute name="title"         attributeType="String"  defaultValueString=""/>
-        <attribute name="assignedToID"  attributeType="UUID"    optional="YES" usesScalarValueType="NO"/>
+        <attribute name="assignedToID"  optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="dueDate"       attributeType="Date"    usesScalarValueType="NO"/>
         <attribute name="isComplete"    attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
         <attribute name="priorityRaw"   attributeType="String"  defaultValueString="medium"/>
         <attribute name="notes"         attributeType="String"  defaultValueString=""/>
-        <attribute name="completedDate" attributeType="Date"    optional="YES" usesScalarValueType="NO"/>
+        <attribute name="completedDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
     </entity>
 
     <!-- ═══════════════════ MAINTENANCE ITEM ═══════════════════ -->
@@ -92,10 +86,10 @@
         <attribute name="title"              attributeType="String"   defaultValueString=""/>
         <attribute name="areaRaw"            attributeType="String"   defaultValueString="general"/>
         <attribute name="frequencyRaw"       attributeType="String"   defaultValueString="monthly"/>
-        <attribute name="lastCompleted"      attributeType="Date"     optional="YES" usesScalarValueType="NO"/>
+        <attribute name="lastCompleted"      optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="nextDue"            attributeType="Date"     usesScalarValueType="NO"/>
         <attribute name="notes"              attributeType="String"   defaultValueString=""/>
-        <attribute name="estimatedMinutes"   attributeType="Integer16" defaultValueString="15"/>
+        <attribute name="estimatedMinutes"   attributeType="Integer 16" usesScalarValueType="YES" defaultValueString="15"/>
     </entity>
 
     <!-- ═══════════════════ HOUSEHOLD MEMBER ═══════════════════ -->
