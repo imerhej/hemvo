@@ -131,10 +131,15 @@ struct AmountInputCard: View {
             .padding(.vertical, 18)
             .background(Color.bpSurface)
             .cornerRadius(16)
+            // The border must not animate on `focused`. Losing focus is what dismisses the
+            // keyboard, and an implicit animation running at that moment puts SwiftUI's async
+            // renderer inside CoreAnimation while the main thread is walking the responder
+            // chain back into the view graph to rebuild the keyboard's input views — the two
+            // take those locks in opposite orders and the app deadlocks. Snapping the border
+            // keeps the renderer off that thread when focus changes.
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(focused ? accentColor : Color.bpDivider, lineWidth: focused ? 2 : 1)
-                    .animation(.easeInOut(duration: 0.15), value: focused)
             )
             .shadow(color: focused ? accentColor.opacity(0.12) : .clear, radius: 8, y: 3)
         }

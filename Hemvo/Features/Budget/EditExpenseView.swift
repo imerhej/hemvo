@@ -73,6 +73,12 @@ struct EditExpenseView: View {
                             DatePicker("", selection: $date, displayedComponents: .date)
                                 .labelsHidden()
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                // Same deadlock guard as AddExpenseView: the calendar popover
+                                // must not open on top of a live keyboard.
+                                .simultaneousGesture(TapGesture().onEnded {
+                                    amountFocused = false
+                                    focus = nil
+                                })
                         }
 
                         // ── Options ──────────────────────────
