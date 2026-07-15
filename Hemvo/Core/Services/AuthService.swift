@@ -5,6 +5,7 @@
 
 internal import Foundation
 internal import Supabase
+internal import OSLog
 
 @MainActor
 final class AuthService {
@@ -229,6 +230,17 @@ final class AuthService {
             // unverifiable so the caller leaves the server row untouched — never
             // downgrade a still-entitled owner to `expired` on a transient error,
             // which would strand every household member on the grace popup.
+            //
+            // Log the underlying cause: a swallowed `.unverifiable` is otherwise
+            // opaque, which makes a real failure (bad Apple .p8/issuer id → 502,
+            // transaction bound elsewhere → 409, sandbox-vs-prod 404) impossible
+            // to diagnose from a TestFlight/device run.
+            if case let FunctionsError.httpError(code, data) = error {
+                let body = String(data: data, encoding: .utf8) ?? "<non-utf8 \(data.count) bytes>"
+                Logger.store.error("verify-subscription failed: HTTP \(code) — \(body, privacy: .public)")
+            } else {
+                Logger.store.error("verify-subscription failed: \(error.localizedDescription, privacy: .public)")
+            }
             return .unverifiable
         }
     }
