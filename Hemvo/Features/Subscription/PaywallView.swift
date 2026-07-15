@@ -384,9 +384,26 @@ struct PaywallView: View {
             do {
                 try await storeKit.purchase(productID: selectedPlan)
                 await authVM.refreshSubscriptionStatus()
-                withAnimation(.spring(response: 0.4)) { showSuccess = true }
-                try? await Task.sleep(nanoseconds: 2_200_000_000)
-                dismiss()
+
+                // Only celebrate once the entitlement is actually live. A
+                // `.pending`/deferred purchase (Ask to Buy, SCA, sandbox
+                // deferral) returns from `purchase()` without throwing and
+                // without granting anything, so `isSubscriptionActive` stays
+                // false. Showing the "Welcome" overlay in that case trapped the
+                // user forever: this view is a non-modal RootView branch, so
+                // `dismiss()` is a no-op and the only way off the paywall is the
+                // reactive `isSubscriptionActive → trialExpired` swap — which
+                // never fires without a live entitlement.
+                if authVM.isSubscriptionActive {
+                    withAnimation(.spring(response: 0.4)) { showSuccess = true }
+                    try? await Task.sleep(nanoseconds: 2_200_000_000)
+                    // Reset before dismissing so the overlay can never stick on
+                    // the non-modal presentation if the reactive swap is delayed.
+                    withAnimation { showSuccess = false }
+                    dismiss()
+                } else {
+                    errorMessage = "Your purchase is being processed. It may take a moment to activate — pull down to refresh or reopen the app once it completes."
+                }
             } catch StoreKitError.userCancelled {
                 // silent
             } catch {
