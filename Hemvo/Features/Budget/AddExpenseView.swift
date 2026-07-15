@@ -92,6 +92,11 @@ struct AddExpenseView: View {
                         .background(Color.bpSurface)
                         .cornerRadius(14)
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.bpDivider, lineWidth: 1))
+                        // "Bill — pay later" and "Already Paid" are opposite states (money owed
+                        // vs. money spent). Keep them mutually exclusive so an expense can't be
+                        // filed as both — which would land it in Recent instead of Upcoming Bills.
+                        .onChange(of: isBill) { _, on in if on { isPaid = false } }
+                        .onChange(of: isPaid) { _, on in if on { isBill = false } }
 
                         // A disabled Save button with no explanation is a dead end — say which
                         // switch is missing and why it matters.

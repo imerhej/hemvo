@@ -90,6 +90,10 @@ struct EditExpenseView: View {
                         .background(Color.bpSurface)
                         .cornerRadius(14)
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.bpDivider, lineWidth: 1))
+                        // Mutually exclusive: an expense is either owed (a bill) or already paid,
+                        // never both. Turning one on clears the other.
+                        .onChange(of: isBill) { _, on in if on { isPaid = false } }
+                        .onChange(of: isPaid) { _, on in if on { isBill = false } }
 
                         if !isClassified {
                             HStack(spacing: 7) {
