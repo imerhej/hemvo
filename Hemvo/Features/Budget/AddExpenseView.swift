@@ -71,21 +71,7 @@ struct AddExpenseView: View {
                         }
 
                         // ── Date ─────────────────────────────
-                        FieldCard(label: "Date", icon: "calendar") {
-                            DatePicker("", selection: $date, displayedComponents: .date)
-                                .labelsHidden()
-                                .datePickerStyle(.compact)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                // Give up first responder before the calendar popover opens.
-                                // Presenting it on top of a live keyboard makes UIKit rebuild
-                                // the keyboard's input views mid-presentation, which walks the
-                                // responder chain back into SwiftUI and can deadlock against
-                                // the async renderer.
-                                .simultaneousGesture(TapGesture().onEnded {
-                                    amountFocused = false
-                                    focus = nil
-                                })
-                        }
+                        ExpenseDateField(date: $date)
 
                         // ── Options ──────────────────────────
                         VStack(spacing: 0) {

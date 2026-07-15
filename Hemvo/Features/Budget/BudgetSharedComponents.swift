@@ -176,6 +176,83 @@ struct FieldCard<Content: View>: View {
     }
 }
 
+// MARK: - ExpenseDateField
+/// Date field for the expense forms.
+///
+/// It deliberately does **not** use an inline `.compact`/`.wheel` DatePicker. That style opens
+/// its calendar in a popover, and when the amount keyboard is still up the popover makes UIKit
+/// rebuild the keyboard's input views mid-presentation — which walks the responder chain back
+/// into SwiftUI and deadlocks against the async renderer (frozen app, no crash log). Guarding the
+/// old popover by clearing focus on tap only narrowed the window; a user tapping mid-animation
+/// still hit it.
+///
+/// Instead this is a plain button that resigns the keyboard first, then presents a `.graphical`
+/// picker in its own sheet — the same deadlock-proof pattern the Maintenance "Next Due Date"
+/// field uses. A modal sheet is a clean presentation that never rebuilds the keyboard in place.
+struct ExpenseDateField: View {
+    @Binding var date: Date
+    @State private var showPicker = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(Color.bpSlate)
+                Text("DATE")
+                    .font(.system(size: 9, weight: .heavy))
+                    .kerning(1.4)
+                    .foregroundColor(Color.bpTextSub)
+            }
+
+            Button {
+                // Give up first responder before the sheet animates up, so it never presents
+                // over a live keyboard — the exact condition behind the deadlock.
+                hideKeyboard()
+                showPicker = true
+            } label: {
+                HStack {
+                    Text(date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year()))
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Color.bpText)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color.bpTextSub.opacity(0.5))
+                }
+                .padding(14)
+                .background(Color.bpSurface)
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.bpDivider, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .sheet(isPresented: $showPicker) {
+            NavigationStack {
+                DatePicker("", selection: $date, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .tint(Color.bpNavy)
+                    .labelsHidden()
+                    .padding(.horizontal)
+                    .navigationTitle("Select Date")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showPicker = false }
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(Color.bpNavy)
+                        }
+                    }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+}
+
 // MARK: - CategoryChipGrid
 struct CategoryChipGrid: View {
     @Binding var selected: Expense.ExpenseCategory
