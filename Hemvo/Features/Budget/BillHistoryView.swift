@@ -19,6 +19,16 @@ struct BillHistoryView: View {
         return member.role.canWrite
     }
 
+    /// Resolved once per render and handed to every row, so each row doesn't re-scan the household.
+    private var people: BillPeopleResolver {
+        BillPeopleResolver(
+            members:      householdService.household?.members ?? [],
+            selfID:       authVM.userID?.uuidString,
+            selfName:     authVM.profile?.fullName ?? authVM.profile?.username,
+            selfColorHex: authVM.profile?.avatarColor
+        )
+    }
+
     enum Filter: String, CaseIterable {
         case week  = "This Week"
         case month = "This Month"
@@ -324,6 +334,7 @@ struct BillHistoryView: View {
             ForEach(Array(bills.enumerated()), id: \.element.id) { idx, bill in
                 HistoryBillRow(
                     bill:      bill,
+                    people:    people,
                     canEdit:   canWrite,
                     canDelete: canWrite && vm.canDelete(bill),
                     onEdit:    { billToEdit   = bill },
@@ -390,121 +401,124 @@ struct BillHistoryView: View {
 struct HistoryBillRow: View {
 
     let bill:      Expense
+    var people:    BillPeopleResolver = BillPeopleResolver()
     var canEdit:   Bool = true
     var canDelete: Bool = true
     let onEdit:    () -> Void
     let onDelete:  () -> Void
 
-    private var createdByName: String? {
-        guard let id = bill.createdBy,
-              let member = HouseholdService.shared.household?.members
-                  .first(where: { $0.id == id }) else { return nil }
-        return member.username.components(separatedBy: " ").first ?? member.username
-    }
+    private let amber   = Color(hex: "#C8922A") ?? .clear
+    private let cream   = Color(hex: "#F5E4C3") ?? .clear
+    private let ink     = Color(hex: "#1A1208") ?? .clear
+    private let subInk  = Color(hex: "#7A6A55") ?? .clear
+    private let green   = Color(hex: "#3D7A52") ?? .clear
+    private let unpaid  = Color(hex: "#C0392B") ?? .clear
 
-    private var paidByLabel: String? { bill.formattedPaidDate }
-
-    private var paidByFirstName: String? {
-        guard let paidByID = bill.paidBy,
-              let member = HouseholdService.shared.household?.members
-                  .first(where: { $0.id == paidByID }) else { return nil }
-        return member.username.components(separatedBy: " ").first ?? member.username
-    }
+    private var creator: BillPerson? { people.person(for: bill.createdBy) }
+    private var payer:   BillPerson? { bill.isPaid ? people.person(for: bill.paidBy) : nil }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
                 // Icon — green checkmark when paid, category icon when unpaid
                 ZStack {
-                    RoundedRectangle(cornerRadius: 9)
-                        .fill(bill.isPaid
-                              ? (Color(hex: "#3D7A52") ?? .clear).opacity(0.1)
-                              : bill.category.displayColor.opacity(0.12))
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(bill.isPaid ? green.opacity(0.1) : bill.category.displayColor.opacity(0.12))
                         .frame(width: 38, height: 38)
                     Image(systemName: bill.isPaid ? "checkmark.circle.fill" : bill.category.iconName)
                         .font(.system(size: bill.isPaid ? 18 : 14, weight: .semibold))
-                        .foregroundColor(bill.isPaid ? Color(hex: "#3D7A52") ?? .clear : bill.category.displayColor)
+                        .foregroundColor(bill.isPaid ? green : bill.category.displayColor)
                 }
 
-                // Title
-                Text(bill.title)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(bill.isPaid ? Color(hex: "#7A6A55") ?? .clear : Color(hex: "#1A1208") ?? .clear)
-                    .strikethrough(bill.isPaid, color: Color(hex: "#7A6A55") ?? .clear.opacity(0.5))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                // Amount + category label
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(bill.formattedAmount)
-                        .font(.system(size: 14, weight: .black))
-                        .foregroundColor(bill.isPaid ? Color(hex: "#7A6A55") ?? .clear : Color(hex: "#C0392B") ?? .clear)
-                        .strikethrough(bill.isPaid, color: Color(hex: "#7A6A55") ?? .clear.opacity(0.4))
+                // Title + category
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(bill.title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(bill.isPaid ? subInk : ink)
+                        .strikethrough(bill.isPaid, color: subInk.opacity(0.5))
+                        .lineLimit(1)
                     Text(bill.category.rawValue)
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
+                        .foregroundColor(subInk)
+                        .lineLimit(1)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                // ── Action buttons ───────────────────────────────
-                VStack(spacing: 6) {
-                    if canEdit {
-                        Button { onEdit() } label: {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Color(hex: "#C8922A") ?? .clear)
-                                .frame(width: 28, height: 28)
-                                .background(Color(hex: "#F5E4C3") ?? .clear)
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(.plain)
-                    }
+                // Amount + actions
+                VStack(alignment: .trailing, spacing: 8) {
+                    Text(bill.formattedAmount)
+                        .font(.system(size: 14, weight: .black))
+                        .foregroundColor(bill.isPaid ? subInk : unpaid)
+                        .strikethrough(bill.isPaid, color: subInk.opacity(0.4))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
 
-                    if canDelete {
-                        Button { onDelete() } label: {
-                            Image(systemName: "trash")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.red)
-                                .frame(width: 28, height: 28)
-                                .background(Color.red.opacity(0.08))
-                                .clipShape(Circle())
+                    if canEdit || canDelete {
+                        HStack(spacing: 6) {
+                            if canEdit {
+                                Button { onEdit() } label: {
+                                    iconButton("pencil", tint: amber, fill: cream)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            if canDelete {
+                                Button { onDelete() } label: {
+                                    iconButton("trash", tint: .red, fill: Color.red.opacity(0.08))
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
 
-            // ── Pills row (paid date · people) ───────────
-            HStack(spacing: 6) {
-                if let label = paidByLabel {
-                    Label(label, systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Color(hex: "#3D7A52") ?? .clear)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background((Color(hex: "#3D7A52") ?? .clear).opacity(0.12))
-                        .clipShape(Capsule())
+            // ── Meta pills + byline ──────────────────────
+            // Wrapping layout: an HStack squeezed these until the cadence text broke mid-word.
+            VStack(alignment: .leading, spacing: 8) {
+                FlowLayout(spacing: 6) {
+                    if bill.isPaid {
+                        BillMetaPill(
+                            icon:   "checkmark.circle.fill",
+                            text:   bill.formattedPaidDate ?? "Paid",
+                            tint:   green,
+                            strong: true
+                        )
+                    } else {
+                        BillMetaPill(
+                            icon: "calendar",
+                            text: bill.date.formatted(date: .abbreviated, time: .omitted),
+                            tint: subInk
+                        )
+                    }
+                    if let rule = bill.recurrence {
+                        BillMetaPill(
+                            icon: "arrow.triangle.2.circlepath",
+                            text: rule.displayName,
+                            tint: amber
+                        )
+                    }
                 }
-                if let name = paidByFirstName {
-                    Label("paid by \(name)", systemImage: "person.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(hex: "#3D7A52") ?? .clear)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background((Color(hex: "#3D7A52") ?? .clear).opacity(0.08))
-                        .clipShape(Capsule())
-                }
-                if let name = createdByName {
-                    Label("by \(name)", systemImage: "person.circle.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background((Color(hex: "#7A6A55") ?? .clear).opacity(0.08))
-                        .clipShape(Capsule())
-                }
-                Spacer()
+
+                BillByline(
+                    creator:    creator,
+                    payer:      payer,
+                    labelColor: subInk,
+                    nameColor:  ink
+                )
             }
             .padding(.leading, 50)
-            .padding(.top, 6)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
         .background(Color.white)
+    }
+
+    private func iconButton(_ icon: String, tint: Color, fill: Color) -> some View {
+        Image(systemName: icon)
+            .font(.system(size: 11, weight: .bold))
+            .foregroundColor(tint)
+            .frame(width: 28, height: 28)
+            .background(fill)
+            .clipShape(Circle())
     }
 }
 

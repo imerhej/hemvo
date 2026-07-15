@@ -17,6 +17,135 @@ extension Color {
     static let bpDivider    = Color(hex: "#DDE1EE") ?? .clear
 }
 
+// MARK: - BillPerson
+/// A household member as a bill card shows them: first name + avatar colour.
+struct BillPerson: Equatable {
+    let name:  String
+    let color: Color
+
+    var initial: String { String(name.prefix(1)).uppercased() }
+}
+
+// MARK: - BillPeopleResolver
+/// Turns the user IDs stored on an `Expense` (`createdBy`, `paidBy`) into names.
+///
+/// Built once by the screen that owns the environment objects and passed down, so the cards stay
+/// plain value-driven views. The `self*` fields are the fallback: a personal-scope expense — or any
+/// expense made before the user joined a household — has a creator who is not in `members`, and
+/// those still deserve a byline.
+struct BillPeopleResolver {
+    var members:      [HouseholdMembership] = []
+    var selfID:       String? = nil
+    var selfName:     String? = nil
+    var selfColorHex: String? = nil
+
+    func person(for userID: String?) -> BillPerson? {
+        guard let userID, !userID.isEmpty else { return nil }
+
+        if let member = members.first(where: { $0.id.caseInsensitiveCompare(userID) == .orderedSame }) {
+            return BillPerson(
+                name:  Self.firstName(member.username),
+                color: Color(hex: member.avatarHex) ?? Color.bpSlate
+            )
+        }
+
+        if let selfID, selfID.caseInsensitiveCompare(userID) == .orderedSame, let selfName {
+            return BillPerson(
+                name:  Self.firstName(selfName),
+                color: Color(hex: selfColorHex ?? "") ?? Color.bpSlate
+            )
+        }
+
+        return nil
+    }
+
+    private static func firstName(_ full: String) -> String {
+        let first = full.components(separatedBy: " ").first ?? ""
+        return first.isEmpty ? full : first
+    }
+}
+
+// MARK: - BillMetaPill
+/// One metadata capsule on a bill card (due date, cadence, paid date).
+///
+/// Single-line and intrinsically sized on purpose: these used to sit in an `HStack` that squeezed
+/// them past their ideal width, which broke "Weekly" across two lines inside the capsule.
+struct BillMetaPill: View {
+    var icon:   String? = nil
+    let text:   String
+    let tint:   Color
+    var strong: Bool = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .bold))
+            }
+            Text(text)
+                .font(.system(size: 11, weight: strong ? .heavy : .semibold))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .foregroundColor(tint)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(tint.opacity(0.11)))
+        .overlay(Capsule().stroke(tint.opacity(0.18), lineWidth: 1))
+    }
+}
+
+// MARK: - BillByline
+/// "Created by Issam · Paid by Sam" footer, with each person's avatar colour as a dot.
+struct BillByline: View {
+    var creator:    BillPerson? = nil
+    var payer:      BillPerson? = nil
+    var labelColor: Color = Color.bpTextSub
+    var nameColor:  Color = Color.bpText
+
+    var body: some View {
+        if creator != nil || payer != nil {
+            HStack(spacing: 8) {
+                if let creator {
+                    person(creator, verb: "Created by")
+                }
+                if let payer {
+                    if creator != nil {
+                        Circle()
+                            .fill(labelColor.opacity(0.35))
+                            .frame(width: 3, height: 3)
+                    }
+                    person(payer, verb: "Paid by")
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func person(_ p: BillPerson, verb: String) -> some View {
+        HStack(spacing: 5) {
+            ZStack {
+                Circle()
+                    .fill(p.color)
+                    .frame(width: 16, height: 16)
+                Text(p.initial)
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundColor(.white)
+            }
+            (
+                Text("\(verb) ")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(labelColor)
+                + Text(p.name)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(nameColor)
+            )
+            .lineLimit(1)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
 // MARK: - FieldCard
 /// Labelled container used in expense forms
 struct FieldCard<Content: View>: View {
