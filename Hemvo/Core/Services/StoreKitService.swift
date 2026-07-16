@@ -87,19 +87,16 @@ final class StoreKitService: ObservableObject {
 
     // MARK: - Check Active Subscription
     func hasActiveSubscription() async -> Bool {
-        #if targetEnvironment(simulator)
-        // Simulator has no StoreKit sandbox — bypass paywall for development.
-        // Still load entitlements: with the scheme's StoreKit configuration a
-        // simulated purchase exists, and skipping this left purchasedProductIDs
-        // and subscriptionExpirationDate empty (plan name fell back to
-        // "Hemvo Premium" and the Renews On row never appeared).
-        await updateEntitlements()
-        return true
-        #else
+        // Same path on device and simulator: reflect the real StoreKit
+        // entitlement. The scheme's StoreKit configuration works in the
+        // simulator too, so a simulated purchase reports as active and no
+        // purchase reports as inactive. This keeps trial / active / expired
+        // states — and the paywall itself — testable locally instead of
+        // hardcoding every simulator user to "subscribed". New users are
+        // still un-gated because the 7-day trial sets isSubscriptionActive.
         await updateEntitlements()
         return purchasedProductIDs.contains(StoreIDs.monthly) ||
                purchasedProductIDs.contains(StoreIDs.annual)
-        #endif
     }
 
     // MARK: - Update Entitlements

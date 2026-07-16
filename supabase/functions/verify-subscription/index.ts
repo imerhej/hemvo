@@ -34,8 +34,8 @@ const APPSTORE_PRIVATE_KEY = Deno.env.get("APPSTORE_PRIVATE_KEY")!;
 const APPSTORE_BUNDLE_ID = Deno.env.get("APPSTORE_BUNDLE_ID") ?? "com.issamnmerhej.Hemvo";
 
 const KNOWN_PRODUCT_IDS = new Set([
-  "com.hemvo.app.subscription.monthly",
-  "com.hemvo.app.subscription.annual",
+  "com.hemvo.app.sub.monthly",
+  "com.hemvo.app.sub.annual",
 ]);
 
 const PRODUCTION_HOST = "https://api.storekit.itunes.apple.com";

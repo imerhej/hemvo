@@ -36,7 +36,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.hemvo.app.subscription.monthly",
+          "productID" : "com.hemvo.app.sub.monthly",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Hemvo Monthly",
           "subscriptionGroupID" : "20250101",
@@ -59,7 +59,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.hemvo.app.subscription.annual",
+          "productID" : "com.hemvo.app.sub.annual",
           "recurringSubscriptionPeriod" : "P1Y",
           "referenceName" : "Hemvo Annual",
           "subscriptionGroupID" : "20250101",

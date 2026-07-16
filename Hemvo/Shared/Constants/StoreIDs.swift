@@ -11,10 +11,10 @@ internal import UserNotifications
 
 enum StoreIDs {
     /// $4.99 / month auto-renewing subscription
-    static let monthly = "com.hemvo.app.subscription.monthly"
+    static let monthly = "com.hemvo.app.sub.monthly"
 
     /// $49.99 / year auto-renewing subscription
-    static let annual  = "com.hemvo.app.subscription.annual"
+    static let annual  = "com.hemvo.app.sub.annual"
 
     /// All subscription product IDs (used for Product.products(for:))
     static let all: Set<String> = [monthly, annual]
