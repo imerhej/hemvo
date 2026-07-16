@@ -147,8 +147,12 @@ serve(async (req: Request) => {
   }
 
   let res = await fetchTransactionInfo(PRODUCTION_HOST, transactionId, appleAuthToken);
-  if (res.status === 404) {
+  if (!res.ok) {
     // Sandbox/TestFlight transactions aren't known to the production endpoint.
+    // Apple returns 404 for an unknown transaction — but for a sandbox
+    // transaction id it returns 401 from the production host, so retry sandbox
+    // on any non-2xx (not just 404) before giving up. A genuinely bad auth
+    // token still fails here because sandbox returns non-2xx too.
     res = await fetchTransactionInfo(SANDBOX_HOST, transactionId, appleAuthToken);
   }
 
