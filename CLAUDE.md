@@ -95,7 +95,7 @@ New users get a 7-day free trial (`AppConstants.trialDurationDays`). After trial
 | `HouseholdInviteService` | `Core/Services/` | Invite codes, 7-day expiry, email dispatch |
 | `EmailService` | `Core/Services/` | Transactional email via Resend API (API key stored as Supabase secret `RESEND_API_KEY` server-side — not in the app) |
 | `PasswordResetService` | `Core/Services/` | Legacy token generation/validation — superseded by Supabase Edge Function flow |
-| `CertificatePinner` | `Core/Services/` | SPKI-hash TLS pinning for all Supabase traffic; current hashes expire **2026-07-29** — run `scripts/update-pins.sh` by 2026-07-08 and add new hashes (keep old for overlap); GitHub Actions workflow monitors expiry |
+| `CertificatePinner` | `Core/Services/` | SPKI-hash TLS pinning for all Supabase traffic; live leaf expires **2026-09-26** — run `scripts/update-pins.sh` by ~2026-09-05 and add new hashes (keep old for overlap); GitHub Actions workflow monitors expiry |
 | `KeychainHelper` | `Core/Services/` | Keychain read/write/delete; used by `KeychainAuthStorage` for Supabase session tokens |
 
 ### Supabase Edge Functions
@@ -133,7 +133,7 @@ Deployed under `supabase/functions/`. All are invoked via `supabase.functions.in
 - `HouseholdService.shared` is `@MainActor` — always read it from the main actor (use `await MainActor.run { ... }` from background contexts).
 - `AuthService` methods that call `supabase.auth.session` are `nonisolated` — calling them from the main actor can cause deadlocks on token refresh.
 - SwiftUI previews use `PersistenceService.preview` (in-memory CoreData) and inject mock environment objects.
-- Certificate pins in `CertificatePinner.swift` expire **2026-07-29** — run `scripts/update-pins.sh` by 2026-07-08, add new SPKI hashes (keep old ones for overlap), ship an app update, then remove old hashes in a follow-up release after 2026-07-29.
+- Certificate pins in `CertificatePinner.swift`: the live leaf expires **2026-09-26** (verified 2026-07-16 — the pin for it is already shipped and matches the host). Run `scripts/update-pins.sh` by ~2026-09-05, add new SPKI hashes (keep old ones for overlap), ship an app update, then remove stale hashes in a follow-up release once the new cert is live. The 2026-07-29 leaf is the *previous* cert, no longer served — safe to drop from the pin list after 2026-08-12. Verify against the live host rather than trusting this line: `echo | openssl s_client -connect <ref>.supabase.co:443 2>/dev/null | openssl x509 -noout -dates`.
 - `PrivacyInfo.xcprivacy` declares UserDefaults (`CA92.1`) required-reason API usage and `NSPrivacyCollectedDataTypeDeviceID` as a collected data type — required for App Store submission. DeviceID is **not** a valid `NSPrivacyAccessedAPIType` category (only UserDefaults, FileTimestamp, SystemBootTime, DiskSpace, ActiveKeyboards are); it only belongs under `NSPrivacyCollectedDataTypes`.
 - `HemvoApp.swift` includes jailbreak detection; returns `false` in simulator to allow development.
 - `Hemvo/Features/Onboarding/EmailValidator.swift` validates disposable email domains (hardcoded blocklist) and MX records via Cloudflare DNS; uses `URLSession.shared` (intentionally unpinned — no credentials sent).
