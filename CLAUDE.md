@@ -74,9 +74,9 @@ Managed by `AuthViewModel` + `AuthService`. All paths ultimately resolve to a Su
 
 ### Subscriptions
 
-StoreKit 2 via `StoreKitService`. Two products:
-- `com.hemvo.app.subscription.monthly` — $4.99/mo
-- `com.hemvo.app.subscription.annual` — $49.99/yr
+StoreKit 2 via `StoreKitService`. Two products (auto-renewable; IDs defined in `StoreIDs.swift`):
+- `com.hemvo.app.sub.monthly` — $4.99/mo
+- `com.hemvo.app.sub.annual` — $49.99/yr
 
 New users get a 7-day free trial (`AppConstants.trialDurationDays`). After trial, `PaywallView` gates access until a purchase is verified. Subscription status is mirrored to Supabase `profiles.subscription_status` so household members on other devices can read it without StoreKit access.
 
