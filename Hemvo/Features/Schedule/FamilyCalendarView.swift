@@ -1547,13 +1547,19 @@ struct NativeAddEventSheet: View {
 
                 // MARK: Scope — required; appears directly under title
                 Section {
-                    Picker("Event Type", selection: $eventScope) {
+                    Picker("Event Type", selection: $eventScope.animation()) {
                         ForEach(CalendarEvent.EventScope.allCases, id: \.self) { s in
                             Label(s.rawValue, systemImage: s.iconName).tag(s)
                         }
                     }
                     .pickerStyle(.segmented)
                     .padding(.vertical, 4)
+                    .onChange(of: eventScope) { _, newScope in
+                        // Household events are shared with every member, so
+                        // per-person invitees don't apply — drop any selection
+                        // rather than saving stale, hidden invitee state.
+                        if newScope == .household { inviteeIDs.removeAll() }
+                    }
                 }
 
                 // MARK: Time
@@ -1764,9 +1770,10 @@ struct NativeAddEventSheet: View {
                     }
                 }
 
-                // MARK: Invitees
+                // MARK: Invitees — only for Personal events; Household events
+                // are shared with all members, so invitees are implicit.
                 let members = HouseholdService.shared.household?.members ?? []
-                if !members.isEmpty {
+                if eventScope == .personal && !members.isEmpty {
                     Section("Invitees") {
                         ForEach(members) { member in
                             let memberUUID = UUID(uuidString: member.id)
@@ -2005,13 +2012,19 @@ struct EditCalendarEventSheet: View {
                 }
 
                 Section {
-                    Picker("Event Type", selection: $eventScope) {
+                    Picker("Event Type", selection: $eventScope.animation()) {
                         ForEach(CalendarEvent.EventScope.allCases, id: \.self) { s in
                             Label(s.rawValue, systemImage: s.iconName).tag(s)
                         }
                     }
                     .pickerStyle(.segmented)
                     .padding(.vertical, 4)
+                    .onChange(of: eventScope) { _, newScope in
+                        // Household events are shared with every member, so
+                        // per-person invitees don't apply — drop any selection
+                        // rather than saving stale, hidden invitee state.
+                        if newScope == .household { inviteeIDs.removeAll() }
+                    }
                 }
 
                 Section {
@@ -2275,9 +2288,10 @@ struct EditCalendarEventSheet: View {
                     }
                 }
 
-                // MARK: Invitees
+                // MARK: Invitees — only for Personal events; Household events
+                // are shared with all members, so invitees are implicit.
                 let editMembers = HouseholdService.shared.household?.members ?? []
-                if !editMembers.isEmpty {
+                if eventScope == .personal && !editMembers.isEmpty {
                     Section("Invitees") {
                         ForEach(editMembers) { member in
                             let memberUUID = UUID(uuidString: member.id)
