@@ -108,9 +108,16 @@ final class StoreKitService: ObservableObject {
         for await result in Transaction.currentEntitlements {
             if let tx = try? verify(result), tx.revocationDate == nil {
                 active.insert(tx.productID)
-                if StoreIDs.all.contains(tx.productID) {
+                // Track the entitlement that expires *latest*, not whichever
+                // one happens to be iterated last. With a single subscription
+                // group there's only ever one, but if a second group is added
+                // (e.g. a lifetime/add-on product) this keeps "Renews On" and
+                // the verified transaction pointing at the furthest-out entitlement.
+                if StoreIDs.all.contains(tx.productID),
+                   let expiration = tx.expirationDate,
+                   expiration > (latestExpiration ?? .distantPast) {
                     latestTransactionID = tx.id
-                    latestExpiration    = tx.expirationDate
+                    latestExpiration    = expiration
                 }
             }
         }
