@@ -497,6 +497,11 @@ final class BudgetViewModel: ObservableObject {
     private let budgetKey           = "hemvo_budget"
     private let deletedExpenseIDsKey  = "hemvo_deletedExpenseIDs"
     private let deletedCategoryIDsKey = "hemvo_deletedCategoryIDs"
+    // Set once this device has either seen remote budget categories or seeded them
+    // from the legacy local cache. Guards migrateBudgetToSupabase() so a legitimately
+    // empty remote list (every category deleted) is never re-populated from a stale
+    // local copy — which used to resurrect deleted categories across the household.
+    private let budgetMigratedKey     = "hemvo_budgetMigratedToSupabase"
 
     init() {
         loadDeletedIDs()
@@ -953,18 +958,32 @@ final class BudgetViewModel: ObservableObject {
             for row in staleCategories { Task { await supabaseDeleteCategory(id: row.id) } }
 
             let liveCategories = remoteCategories.filter { !deletedCategoryIDs.contains($0.id) }
-            if !liveCategories.isEmpty {
+            let budgetSynced   = UserDefaults.standard.bool(forKey: budgetMigratedKey)
+            if !remoteCategories.isEmpty {
                 // Remote is authoritative; carry over in-memory spent amounts so the
                 // progress bars don't flicker before updateCategorySpend() runs.
+                // Replacing the whole array also drops any local category another member
+                // deleted (now absent from remote).
                 let spentByName = budget.categories.reduce(into: [String: Double]()) {
                     $0[$1.name.lowercased()] = $1.spent
                 }
                 budget.categories = liveCategories.map { row in
                     row.toBudgetCategory(spent: spentByName[row.name.lowercased()] ?? 0)
                 }
-            } else if remoteCategories.isEmpty && !budget.categories.isEmpty {
-                // Nothing in Supabase yet — push the local UserDefaults cache up.
+                UserDefaults.standard.set(true, forKey: budgetMigratedKey)
+            } else if !budgetSynced && !budget.categories.isEmpty {
+                // True first launch after the Supabase-budget feature shipped: seed the
+                // remote from the legacy local UserDefaults cache, exactly once. The flag
+                // is set inside migrateBudgetToSupabase() only on success, so a failed
+                // migrate is retried on the next load rather than clearing unsynced data.
                 await migrateBudgetToSupabase()
+            } else {
+                // Remote is legitimately empty — every category was deleted (by any
+                // member). Clear the stale local copies to match instead of re-uploading
+                // them, which used to resurrect deleted categories on other devices.
+                // Categories still backing an expense are re-created by the
+                // autoCreateCategory sweep that runs after the expense fetch below.
+                budget.categories.removeAll()
             }
         } catch {
             Logger.budget.error("loadBudget error: \(error.localizedDescription)")
@@ -992,6 +1011,9 @@ final class BudgetViewModel: ObservableObject {
                     .upsert(rows, onConflict: "id")
                     .execute()
             }
+            // Only now that the seed landed — a failed migrate leaves the flag unset so
+            // the next load retries instead of clearing the still-unsynced local data.
+            UserDefaults.standard.set(true, forKey: budgetMigratedKey)
             Logger.budget.debug("budget migrated from UserDefaults")
         } catch {
             Logger.budget.error("migrateBudget error: \(error.localizedDescription)")
