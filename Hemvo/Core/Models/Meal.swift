@@ -76,7 +76,8 @@ struct Meal: Identifiable, Equatable {
         }
 
         /// Returns the start-of-day date for this weekday in the current calendar week.
-        func dateInCurrentWeek() -> Date {
+        /// `nonisolated` (pure calendar math) so `Meal.init(from:)` can call it while decoding.
+        nonisolated func dateInCurrentWeek() -> Date {
             let cal = Calendar.current
             let today = Date()
             // rawValue: Mon=1...Sun=7 → Calendar weekday: Mon=2...Sun=1
@@ -123,7 +124,9 @@ extension Meal: Codable {
         case legacyDay = "day"   // old format stored weekday rawValue as Int
     }
 
-    init(from decoder: Decoder) throws {
+    // `nonisolated` so the Decodable conformance stays usable from nonisolated contexts under
+    // Swift 6 (the app target defaults to @MainActor isolation).
+    nonisolated init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id              = try c.decode(UUID.self,      forKey: .id)
         name            = try c.decode(String.self,    forKey: .name)

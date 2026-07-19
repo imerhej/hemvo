@@ -24,7 +24,8 @@ struct MemberPermissions: Codable, Equatable {
     var receiveCalendarAlerts:    Bool
     var receiveMaintenanceAlerts: Bool
 
-    static func defaults(for role: HouseholdRole) -> MemberPermissions {
+    // `nonisolated` (a pure switch on role) so `HouseholdMembership.init(from:)` can call it while decoding.
+    nonisolated static func defaults(for role: HouseholdRole) -> MemberPermissions {
         switch role {
         case .owner, .adult:
             return MemberPermissions(receiveExpenseAlerts: true,  receiveMealAlerts: true,
@@ -63,7 +64,9 @@ struct HouseholdMembership: Codable, Identifiable {
 
     // Backward-compatible decode: existing cached memberships without permissions
     // or isDisabled fall back to safe defaults so no data is lost on upgrade.
-    init(from decoder: Decoder) throws {
+    // `nonisolated` so the Decodable conformance stays usable from nonisolated contexts under
+    // Swift 6 (the app target defaults to @MainActor isolation).
+    nonisolated init(from decoder: Decoder) throws {
         let c        = try decoder.container(keyedBy: CodingKeys.self)
         id           = try c.decode(String.self,         forKey: .id)
         username     = try c.decode(String.self,         forKey: .username)
@@ -156,7 +159,9 @@ struct HouseholdInvite: Codable, Identifiable {
         case inviteeEmail, role, permissions, createdAt, acceptedAt
     }
 
-    init(from decoder: Decoder) throws {
+    // `nonisolated` so the Decodable conformance stays usable from nonisolated contexts under
+    // Swift 6 (the app target defaults to @MainActor isolation).
+    nonisolated init(from decoder: Decoder) throws {
         let c         = try decoder.container(keyedBy: CodingKeys.self)
         id            = try c.decode(String.self,                      forKey: .id)
         supabaseID    = try c.decodeIfPresent(String.self,             forKey: .supabaseID)

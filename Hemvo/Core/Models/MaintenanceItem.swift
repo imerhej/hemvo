@@ -46,7 +46,9 @@ struct MaintenanceItem: Codable, Identifiable, Equatable {
     }
 
     // Migrates old single-ID UserDefaults cache to the new array field.
-    init(from decoder: Decoder) throws {
+    // `nonisolated` so the Decodable conformance stays usable from nonisolated contexts under
+    // Swift 6 (the app target defaults to @MainActor isolation).
+    nonisolated init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id               = try c.decode(UUID.self,     forKey: .id)
         title            = try c.decode(String.self,   forKey: .title)

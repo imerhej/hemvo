@@ -139,7 +139,12 @@ struct Expense: Codable, Identifiable, Equatable {
     /// `recurrence`, the only field that ever recorded a cadence, decide whether it repeats.
     private enum LegacyCodingKeys: String, CodingKey { case isRecurring }
 
-    init(from decoder: Decoder) throws {
+    // `nonisolated` because the app target defaults to `@MainActor` isolation
+    // (SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor); without it this hand-written witness
+    // makes the whole `Decodable` conformance main-actor-isolated, so decoding an Expense
+    // from any nonisolated context (e.g. the test target) is a Swift 6 error. The model
+    // touches no main-actor state, so a nonisolated conformance is correct.
+    nonisolated init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id           = try  c.decode(UUID.self,   forKey: .id)
         title        = try  c.decode(String.self, forKey: .title)
@@ -292,7 +297,9 @@ struct BudgetCategory: Codable, Identifiable, Equatable {
 
     // `spent` defaults to 0 so older UserDefaults data that pre-dates this field
     // decodes successfully instead of throwing and wiping the whole saved budget.
-    init(from decoder: Decoder) throws {
+    // `nonisolated` for the same reason as `Expense.init(from:)` above — keeps the
+    // Decodable conformance usable from nonisolated contexts under Swift 6.
+    nonisolated init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id    = try c.decode(UUID.self,   forKey: .id)
         name  = try c.decode(String.self, forKey: .name)
