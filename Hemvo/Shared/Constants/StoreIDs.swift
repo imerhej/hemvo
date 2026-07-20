@@ -11,7 +11,10 @@ internal import UserNotifications
 
 enum StoreIDs {
     /// $4.99 / month auto-renewing subscription
-    static let monthly = "com.hemvo.app.sub.monthly"
+    /// Note: the original `com.hemvo.app.sub.monthly` was deleted in App Store
+    /// Connect and its product ID is permanently reserved by Apple, so this new
+    /// ID replaces it. Must match the recreated subscription in ASC exactly.
+    static let monthly = "com.hemvo.app.sub.monthly1"
 
     /// $49.99 / year auto-renewing subscription
     static let annual  = "com.hemvo.app.sub.annual"
