@@ -33,7 +33,15 @@ const APPSTORE_KEY_ID = Deno.env.get("APPSTORE_KEY_ID")!;
 const APPSTORE_PRIVATE_KEY = Deno.env.get("APPSTORE_PRIVATE_KEY")!;
 const APPSTORE_BUNDLE_ID = Deno.env.get("APPSTORE_BUNDLE_ID") ?? "com.issamnmerhej.Hemvo";
 
+// MUST stay in sync with StoreIDs.swift — a product id the app can sell but this
+// set doesn't know is verified as `active:false`, which the client reads as
+// "Apple says invalid" and downgrades the owner to `expired` (2026-07-31 bug:
+// every monthly subscriber verified as inactive and members lost access).
+// `com.hemvo.app.sub.monthly` is the original monthly id, deleted in App Store
+// Connect and replaced by `...monthly1`; it stays here for anyone still holding
+// an entitlement issued under it.
 const KNOWN_PRODUCT_IDS = new Set([
+  "com.hemvo.app.sub.monthly1",
   "com.hemvo.app.sub.monthly",
   "com.hemvo.app.sub.annual",
 ]);
@@ -183,6 +191,16 @@ serve(async (req: Request) => {
     transaction.expiresDate > Date.now();
 
   if (!isValidPurchase) {
+    // Say *why*. `active:false` is a definitive verdict to the client — it
+    // downgrades the owner and starts the household grace clock — so a rejection
+    // caused by config drift (unknown product id, wrong bundle id) must be
+    // distinguishable in the logs from a genuinely expired/revoked purchase.
+    console.error(
+      `verify-subscription: rejecting transaction ${transactionId} — ` +
+      `bundleId=${transaction.bundleId} productId=${transaction.productId} ` +
+      `known=${KNOWN_PRODUCT_IDS.has(transaction.productId)} ` +
+      `revoked=${!!transaction.revocationDate} expiresDate=${transaction.expiresDate}`,
+    );
     return new Response(JSON.stringify({ active: false }), {
       headers: { "Content-Type": "application/json" },
     });

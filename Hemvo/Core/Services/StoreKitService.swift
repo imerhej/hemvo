@@ -26,10 +26,33 @@ final class StoreKitService: ObservableObject {
     /// Expiration (= next renewal) date of the active subscription entitlement.
     @Published var subscriptionExpirationDate: Date?
 
+    // MARK: - Last-known entitlement (persisted)
+    //
+    // `Transaction.currentEntitlements` yields nothing both when the user truly
+    // has no subscription AND when StoreKit can't reach the App Store yet (cold
+    // launch, offline, Apple ID not loaded). The two are indistinguishable in the
+    // moment, so an empty read is not proof a subscription ended. Remembering the
+    // last entitlement this device actually saw lets the owner-side reconciliation
+    // ask Apple about that transaction instead of downgrading the household on a
+    // transient blip. Only ever used to *ask* — never to grant: verify-subscription
+    // is still the sole authority on whether the server row goes active.
+    private enum Cache {
+        static let transactionID = "hemvo_lastEntitlementTransactionID"
+        static let expiration    = "hemvo_lastEntitlementExpiration"
+    }
+
+    private(set) var lastKnownTransactionID: UInt64?
+    private(set) var lastKnownExpiration: Date?
+
     // MARK: - Transaction Listener
     private var transactionListener: Task<Void, Error>?
 
     private init() {
+        let defaults = UserDefaults.standard
+        lastKnownTransactionID = defaults.string(forKey: Cache.transactionID).flatMap(UInt64.init)
+        if let stamp = defaults.object(forKey: Cache.expiration) as? Double {
+            lastKnownExpiration = Date(timeIntervalSince1970: stamp)
+        }
         transactionListener = startTransactionListener()
         Task { await loadProducts() }
     }
@@ -124,7 +147,25 @@ final class StoreKitService: ObservableObject {
         purchasedProductIDs = active
         currentTransactionID = latestTransactionID
         subscriptionExpirationDate = latestExpiration
+        // Only ever overwritten by a *positive* read — an empty entitlement list
+        // leaves the previous value in place, which is the whole point of it.
+        if let latestTransactionID, let latestExpiration {
+            lastKnownTransactionID = latestTransactionID
+            lastKnownExpiration    = latestExpiration
+            UserDefaults.standard.set(String(latestTransactionID), forKey: Cache.transactionID)
+            UserDefaults.standard.set(latestExpiration.timeIntervalSince1970, forKey: Cache.expiration)
+        }
         return active
+    }
+
+    /// Drops the remembered entitlement. Called once Apple has confirmed the
+    /// transaction is genuinely invalid (revoked/expired), so later refreshes stop
+    /// re-asking about a dead transaction and expire the row directly.
+    func forgetLastKnownEntitlement() {
+        lastKnownTransactionID = nil
+        lastKnownExpiration    = nil
+        UserDefaults.standard.removeObject(forKey: Cache.transactionID)
+        UserDefaults.standard.removeObject(forKey: Cache.expiration)
     }
 
     // MARK: - Verify Transaction

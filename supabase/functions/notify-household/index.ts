@@ -76,6 +76,12 @@ async function makeAPNsJWT(): Promise<string> {
 
 // ── APNs delivery ────────────────────────────────────────────────────────────
 
+// Never throws: the caller fans these out with Promise.all, so a transport-level
+// failure on ONE device (APNs connection reset — seen as a bare TypeError from
+// fetch) would otherwise reject the whole batch, 500 the request, and skip the
+// stale-token cleanup and delivery logging for every other recipient.
+// A transport failure is reported as status 0 so it can never look like an APNs
+// 400 BadDeviceToken and get a live token deleted.
 async function sendAPNs(
   token: string,
   title: string,
@@ -83,21 +89,32 @@ async function sendAPNs(
   jwt: string,
   host: string = APNS_HOST_PROD
 ): Promise<{ ok: boolean; status: number; reason: string }> {
-  const res = await fetch(`${host}/3/device/${token}`, {
-    method: "POST",
-    headers: {
-      authorization:    `bearer ${jwt}`,
-      "apns-topic":     BUNDLE_ID,
-      "apns-push-type": "alert",
-      "apns-priority":  "10",
-      "content-type":   "application/json",
-    },
-    body: JSON.stringify({
-      aps: { alert: { title, body }, sound: "default" },
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${host}/3/device/${token}`, {
+      method: "POST",
+      headers: {
+        authorization:    `bearer ${jwt}`,
+        "apns-topic":     BUNDLE_ID,
+        "apns-push-type": "alert",
+        "apns-priority":  "10",
+        "content-type":   "application/json",
+      },
+      body: JSON.stringify({
+        aps: { alert: { title, body }, sound: "default" },
+      }),
+    });
+  } catch (err) {
+    console.error(`APNs request failed for token …${token.slice(-8)}: ${err}`);
+    return { ok: false, status: 0, reason: `transport error: ${err}` };
+  }
 
-  const text = await res.text();
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (err) {
+    text = `<unreadable body: ${err}>`;
+  }
   if (!res.ok) {
     console.error(`APNs ${res.status} for token …${token.slice(-8)}: ${text}`);
   }
