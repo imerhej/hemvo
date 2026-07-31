@@ -571,7 +571,9 @@ final class AuthViewModel: ObservableObject {
             switch SubscriptionDecision.ownerServerSync(
                 hasSub: hasSub,
                 transactionID: storeKit.currentTransactionID,
-                isTrialActive: isTrialActive
+                isTrialActive: isTrialActive,
+                lastKnownTransactionID: storeKit.lastKnownTransactionID,
+                lastKnownExpiration: storeKit.lastKnownExpiration
             ) {
             case .verifyTransaction(let transactionID):
                 switch SubscriptionDecision.followUp(for: await auth.verifySubscription(transactionID: transactionID)) {
@@ -580,6 +582,9 @@ final class AuthViewModel: ObservableObject {
                         await loadProfile()
                     }
                 case .downgrade:
+                    // Apple's definitive "not valid" — stop re-asking about this
+                    // transaction on later refreshes.
+                    storeKit.forgetLastKnownEntitlement()
                     await auth.expireSubscriptionStatus()
                     await loadProfile()
                 case .leaveUnchanged:
@@ -749,12 +754,35 @@ nonisolated enum SubscriptionDecision {
         case expire
     }
 
+    /// - Parameters:
+    ///   - lastKnownTransactionID/lastKnownExpiration: the last entitlement this
+    ///     device actually observed (`StoreKitService`, persisted). Used only when
+    ///     the current read comes back empty — see below.
     static func ownerServerSync(
-        hasSub: Bool, transactionID: UInt64?, isTrialActive: Bool
+        hasSub: Bool,
+        transactionID: UInt64?,
+        isTrialActive: Bool,
+        lastKnownTransactionID: UInt64? = nil,
+        lastKnownExpiration: Date? = nil,
+        now: Date = Date()
     ) -> OwnerServerSync {
-        guard hasSub else { return isTrialActive ? .activateTrial : .expire }
-        if let transactionID { return .verifyTransaction(transactionID) }
-        return .leaveUnchanged
+        if hasSub {
+            if let transactionID { return .verifyTransaction(transactionID) }
+            return .leaveUnchanged
+        }
+        if isTrialActive { return .activateTrial }
+        // No entitlement — but an empty `Transaction.currentEntitlements` read is
+        // not proof of cancellation: StoreKit returns the same nothing when it
+        // can't reach the App Store (cold launch, offline, Apple ID not loaded).
+        // Expiring here downgrades a paying owner and starts every household
+        // member's grace clock off a blip. If the last entitlement we saw hasn't
+        // even reached its expiration date yet, let Apple settle it: verifying
+        // returns .invalid for a genuinely revoked purchase (→ expire) and
+        // .unverifiable when we simply couldn't ask (→ leave the row alone).
+        if let lastKnownTransactionID, let lastKnownExpiration, lastKnownExpiration > now {
+            return .verifyTransaction(lastKnownTransactionID)
+        }
+        return .expire
     }
 
     /// What to do with the server row + local profile after Apple verification.

@@ -32,7 +32,7 @@ struct BudgetViewModelTests {
                         categories: [BudgetCategory(name: "Utilities", limit: 500)])
 
         #expect(vm.budgetCategories.first?.spent == 70)
-        #expect(vm.totalSpent == 70)
+        #expect(vm.totalCommitted == 70)
         #expect(vm.upcomingBills.count == 1)
     }
 
@@ -47,7 +47,7 @@ struct BudgetViewModelTests {
 
         vm.nextMonth()
         #expect(vm.budgetCategories.first?.spent == 0)
-        #expect(vm.totalSpent == 0)
+        #expect(vm.totalCommitted == 0)
     }
 
     @Test func paidRecurringBillCountsAsCategorySpend() {
@@ -59,7 +59,7 @@ struct BudgetViewModelTests {
                         categories: [BudgetCategory(name: "Utilities", limit: 500)])
 
         #expect(vm.budgetCategories.first?.spent == 70)
-        #expect(vm.totalSpent == 70)
+        #expect(vm.totalCommitted == 70)
         #expect(vm.upcomingBills.isEmpty)
     }
 
@@ -70,7 +70,7 @@ struct BudgetViewModelTests {
                         categories: [BudgetCategory(name: "Groceries", limit: 500)])
 
         #expect(vm.budgetCategories.first?.spent == 120)
-        #expect(vm.totalSpent == 120)
+        #expect(vm.totalCommitted == 120)
     }
 
     // Each month has its own category spend — last month's expenses must not
@@ -84,11 +84,11 @@ struct BudgetViewModelTests {
 
         vm.nextMonth()
         #expect(vm.budgetCategories.first?.spent == 0)
-        #expect(vm.totalSpent == 0)
+        #expect(vm.totalCommitted == 0)
 
         vm.previousMonth()
         #expect(vm.budgetCategories.first?.spent == 120)
-        #expect(vm.totalSpent == 120)
+        #expect(vm.totalCommitted == 120)
     }
 
     // The budget editor shows a fresh slate each month: categories used only in

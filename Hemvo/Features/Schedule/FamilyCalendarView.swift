@@ -131,6 +131,10 @@ struct FamilyCalendarView: View {
         return member.role.canWrite
     }
 
+    /// Height of one hour row on the day timeline. The hour lines, the event blocks and the
+    /// current-time line all derive their positions from it, so they have to share one value.
+    static let hourHeight: CGFloat = 52
+
     // Navigation state
     enum CalMode { case year, month, week }
     @State private var mode:          CalMode = .month
@@ -1143,16 +1147,15 @@ struct FamilyCalendarView: View {
                                         .frame(height: 0.5)
                                 }
                                 .id(hour)
-                                .frame(height: 52)
+                                .frame(height: Self.hourHeight)
                             }
                         }
 
-                        // Timed events overlay
-                        ForEach(timedEvs, id: \.eventIdentifier) { ev in
-                            timedEventBlock(ev)
-                        }
-                        ForEach(hbEvs.filter { !$0.isAllDay }, id: \.id) { ev in
-                            hbEventBlock(ev)
+                        // Timed events overlay. Laid out in clusters so events sharing a time
+                        // slot sit side by side instead of painting on top of each other.
+                        ForEach(timelineClusters(ek: timedEvs,
+                                                 hb: hbEvs.filter { !$0.isAllDay })) { cluster in
+                            clusterBlock(cluster)
                         }
 
                         // Current time line
@@ -1189,76 +1192,150 @@ struct FamilyCalendarView: View {
         .cornerRadius(6)
     }
 
-    private func timedEventBlock(_ ev: EKEvent) -> some View {
-        let color    = Color(cgColor: ev.calendar.cgColor)
-        let startMin = minuteOfDay(ev.startDate)
-        let durMin   = max(minuteOfDay(ev.endDate) - startMin, 30)
-        let top      = CGFloat(startMin) / 60.0 * 52.0
-        let height   = CGFloat(durMin)  / 60.0 * 52.0
+    // MARK: - Day timeline layout
+    //
+    // Every block used to be laid out full-width at `.offset(y: top)` inside the same ZStack, so
+    // two events in the same slot got identical frames and their titles painted over each other.
+    // Overlapping events are now grouped into clusters and packed into columns, the way a real
+    // day view does it: a cluster is a run of events that transitively overlap, and each column
+    // holds events that don't overlap one another, so an HStack can split the width evenly.
 
-        return HStack(spacing: 0) {
-            Spacer().frame(width: 60)
-            RoundedRectangle(cornerRadius: 4)
-                .fill(color.opacity(0.2))
-                .overlay(
-                    HStack(alignment: .top) {
-                        Rectangle().fill(color).frame(width: 3)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(ev.title ?? "")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(color)
-                                .lineLimit(2)
-                            Text(ev.startDate.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits)))
-                                .font(.system(size: 10))
-                                .foregroundColor(color.opacity(0.8))
-                        }
-                        .padding(4)
-                        Spacer()
-                    }
-                )
-                .frame(height: max(height, 30))
-                .padding(.trailing, 8)
-        }
-        .offset(y: top)
-        .frame(height: max(height, 30))
-        .contentShape(Rectangle())
-        .onTapGesture { nativeEventToView = IdentifiableEvent(event: ev) }
+    /// One event on the day timeline, from either source, reduced to what layout needs.
+    private struct TimelineItem: Identifiable {
+        let id:        String
+        let startMin:  Int
+        let endMin:    Int
+        let title:     String
+        let timeLabel: String
+        let color:     Color
+        /// Non-nil for EventKit events, which are the only ones that open a detail sheet.
+        let ekEvent:   EKEvent?
     }
 
-    private func hbEventBlock(_ ev: CalendarEvent) -> some View {
-        let color    = Color(hex: ev.colorHex) ?? .purple
-        let startMin = minuteOfDay(ev.date)
-        let endMin   = ev.endDate.map { minuteOfDay($0) } ?? (startMin + 60)
-        let durMin   = max(endMin - startMin, 30)
-        let top      = CGFloat(startMin) / 60.0 * 52.0
-        let height   = CGFloat(durMin)  / 60.0 * 52.0
+    /// A run of transitively overlapping events, already packed into non-overlapping columns.
+    private struct TimelineCluster: Identifiable {
+        let id:       Int
+        let startMin: Int
+        let endMin:   Int
+        let columns:  [[TimelineItem]]
+    }
+
+    private func timelineClusters(ek: [EKEvent], hb: [CalendarEvent]) -> [TimelineCluster] {
+        var items: [TimelineItem] = []
+
+        for ev in ek {
+            let start = minuteOfDay(ev.startDate)
+            items.append(TimelineItem(
+                id:        ev.eventIdentifier ?? UUID().uuidString,
+                startMin:  start,
+                endMin:    max(minuteOfDay(ev.endDate), start + 30),
+                title:     ev.title ?? "",
+                timeLabel: ev.startDate.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits)),
+                color:     Color(cgColor: ev.calendar.cgColor),
+                ekEvent:   ev))
+        }
+
+        for ev in hb {
+            let start = minuteOfDay(ev.date)
+            items.append(TimelineItem(
+                id:        ev.id.uuidString,
+                startMin:  start,
+                endMin:    max(ev.endDate.map { minuteOfDay($0) } ?? (start + 60), start + 30),
+                title:     ev.title,
+                timeLabel: ev.formattedTime,
+                color:     Color(hex: ev.colorHex) ?? .purple,
+                ekEvent:   nil))
+        }
+
+        items.sort { $0.startMin == $1.startMin ? $0.endMin < $1.endMin : $0.startMin < $1.startMin }
+
+        var clusters:   [TimelineCluster] = []
+        var current:    [TimelineItem]    = []
+        var currentEnd: Int               = .min
+
+        func flush() {
+            guard let first = current.first else { return }
+            // Greedy packing: reuse the first column whose last event has already ended.
+            var columns: [[TimelineItem]] = []
+            for item in current {
+                if let idx = columns.firstIndex(where: { ($0.last?.endMin ?? .max) <= item.startMin }) {
+                    columns[idx].append(item)
+                } else {
+                    columns.append([item])
+                }
+            }
+            clusters.append(TimelineCluster(id:       clusters.count,
+                                            startMin: first.startMin,
+                                            endMin:   currentEnd,
+                                            columns:  columns))
+            current    = []
+            currentEnd = .min
+        }
+
+        for item in items {
+            // A gap with nothing running closes the cluster.
+            if !current.isEmpty && item.startMin >= currentEnd { flush() }
+            current.append(item)
+            currentEnd = max(currentEnd, item.endMin)
+        }
+        flush()
+
+        return clusters
+    }
+
+    private func clusterBlock(_ cluster: TimelineCluster) -> some View {
+        let top    = CGFloat(cluster.startMin) / 60.0 * Self.hourHeight
+        let height = max(CGFloat(cluster.endMin - cluster.startMin) / 60.0 * Self.hourHeight, 30)
 
         return HStack(spacing: 0) {
             Spacer().frame(width: 60)
-            RoundedRectangle(cornerRadius: 4)
-                .fill(color.opacity(0.15))
-                .overlay(
-                    HStack(alignment: .top) {
-                        Rectangle().fill(color).frame(width: 3)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(ev.title)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(color)
-                                .lineLimit(2)
-                            Text(ev.formattedTime)
-                                .font(.system(size: 10))
-                                .foregroundColor(color.opacity(0.8))
+            HStack(alignment: .top, spacing: 3) {
+                ForEach(Array(cluster.columns.enumerated()), id: \.offset) { _, column in
+                    ZStack(alignment: .topLeading) {
+                        Color.clear
+                        ForEach(column) { item in
+                            timelineBlock(item)
+                                .frame(height: max(CGFloat(item.endMin - item.startMin) / 60.0 * Self.hourHeight, 30))
+                                .offset(y: CGFloat(item.startMin - cluster.startMin) / 60.0 * Self.hourHeight)
                         }
-                        .padding(4)
-                        Spacer()
                     }
-                )
-                .frame(height: max(height, 30))
-                .padding(.trailing, 8)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+            }
+            .frame(height: height, alignment: .top)
+            .padding(.trailing, 8)
         }
         .offset(y: top)
-        .frame(height: max(height, 30))
-        .allowsHitTesting(false)
+        .frame(height: height, alignment: .top)
+    }
+
+    private func timelineBlock(_ item: TimelineItem) -> some View {
+        let isNative = item.ekEvent != nil
+
+        return RoundedRectangle(cornerRadius: 4)
+            .fill(item.color.opacity(isNative ? 0.2 : 0.15))
+            .overlay(
+                HStack(alignment: .top, spacing: 0) {
+                    Rectangle().fill(item.color).frame(width: 3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.title)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(item.color)
+                            .lineLimit(2)
+                        Text(item.timeLabel)
+                            .font(.system(size: 10))
+                            .foregroundColor(item.color.opacity(0.8))
+                    }
+                    .padding(4)
+                    Spacer(minLength: 0)
+                }
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if let ev = item.ekEvent { nativeEventToView = IdentifiableEvent(event: ev) }
+            }
+            // Hemvo's own events have no detail sheet here, so they stay pass-through as before.
+            .allowsHitTesting(isNative)
     }
 
     private var currentTimeLine: some View {
@@ -1272,7 +1349,7 @@ struct FamilyCalendarView: View {
             Circle().fill(Color.systemRed).frame(width: 10, height: 10)
             Rectangle().fill(Color.systemRed).frame(height: 1)
         }
-        .offset(y: CGFloat(now) / 60.0 * 52.0 - 5)
+        .offset(y: CGFloat(now) / 60.0 * Self.hourHeight - 5)
         .allowsHitTesting(false)
     }
 

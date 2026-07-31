@@ -186,7 +186,7 @@ struct BudgetDashboardView: View {
                         Text("Personal Spending")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.white.opacity(0.8))
-                        Text("$\(Int(vm.totalSpent))")
+                        Text("$\(Int(vm.totalCommitted))")
                             .font(.system(size: 36, weight: .black))
                             .foregroundColor(.white)
                     }
@@ -218,8 +218,10 @@ struct BudgetDashboardView: View {
     // MARK: - Personal Stats Row
     private var personalStatsRow: some View {
         HStack(spacing: 10) {
-            WarmStatTile(value: "$\(Int(vm.totalSpent))",
-                         label: "Spent",
+            // "Committed", not "Spent": this total includes bills that are still owed, whereas
+            // the Transactions tile beside it counts only money that actually moved.
+            WarmStatTile(value: "$\(Int(vm.totalCommitted))",
+                         label: "Committed",
                          icon: "arrow.up.circle.fill",
                          iconColor: Color(hex: "#C0392B") ?? .clear)
 
@@ -315,13 +317,13 @@ struct BudgetDashboardView: View {
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color.white.opacity(0.22)).frame(height: 10)
                             Capsule()
-                                .fill(vm.spentPercent > 0.9
+                                .fill(vm.committedPercent > 0.9
                                       ? LinearGradient(colors: [Color(hex: "#FF6B6B") ?? .clear, .orange],
                                                        startPoint: .leading, endPoint: .trailing)
                                       : LinearGradient(colors: [.white, .white.opacity(0.75)],
                                                        startPoint: .leading, endPoint: .trailing))
-                                .frame(width: geo.size.width * vm.spentPercent, height: 10)
-                                .animation(.spring(response: 0.6), value: vm.spentPercent)
+                                .frame(width: geo.size.width * vm.committedPercent, height: 10)
+                                .animation(.spring(response: 0.6), value: vm.committedPercent)
                         }
                     }
                     .frame(height: 10)
@@ -330,12 +332,12 @@ struct BudgetDashboardView: View {
                         HStack(spacing: 5) {
                             Image(systemName: "arrow.up.circle.fill")
                                 .font(.system(size: 11))
-                            Text("$\(Int(vm.totalSpent)) spent")
+                            Text("$\(Int(vm.totalCommitted)) committed")
                                 .font(.system(size: 12, weight: .semibold))
                         }
                         .foregroundColor(.white.opacity(0.85))
                         Spacer()
-                        Text("\(Int(vm.spentPercent * 100))% of budget used")
+                        Text("\(Int(vm.committedPercent * 100))% of budget used")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundColor(.white)
                     }
@@ -350,8 +352,9 @@ struct BudgetDashboardView: View {
     // MARK: - Stats Row
     private var statsRow: some View {
         HStack(spacing: 10) {
-            WarmStatTile(value: "$\(Int(vm.totalSpent))",
-                         label: "Spent",
+            // See personalStatsRow — "Committed" covers owed bills as well as paid expenses.
+            WarmStatTile(value: "$\(Int(vm.totalCommitted))",
+                         label: "Committed",
                          icon: "arrow.up.circle.fill",
                          iconColor: Color(hex: "#C0392B") ?? .clear)
 

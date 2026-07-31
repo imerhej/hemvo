@@ -64,6 +64,38 @@ struct SubscriptionDecisionTests {
         #expect(result == .expire)
     }
 
+    // MARK: - Empty entitlement read ≠ cancelled
+    //
+    // StoreKit returns an empty currentEntitlements list both for a genuinely
+    // unsubscribed user and when it can't reach the App Store. Expiring on the
+    // latter downgrades a paying owner and starts every member's grace clock.
+
+    @Test func emptyReadWithLiveRememberedEntitlementVerifiesInsteadOfExpiring() {
+        let result = SubscriptionDecision.ownerServerSync(
+            hasSub: false, transactionID: nil, isTrialActive: false,
+            lastKnownTransactionID: 99,
+            lastKnownExpiration: Date().addingTimeInterval(7 * 86_400))
+        #expect(result == .verifyTransaction(99))
+    }
+
+    @Test func emptyReadWithLapsedRememberedEntitlementExpires() {
+        // The remembered entitlement is genuinely past its paid-through date —
+        // nothing left to ask Apple about.
+        let result = SubscriptionDecision.ownerServerSync(
+            hasSub: false, transactionID: nil, isTrialActive: false,
+            lastKnownTransactionID: 99,
+            lastKnownExpiration: Date().addingTimeInterval(-86_400))
+        #expect(result == .expire)
+    }
+
+    @Test func liveTrialWinsOverRememberedEntitlement() {
+        let result = SubscriptionDecision.ownerServerSync(
+            hasSub: false, transactionID: nil, isTrialActive: true,
+            lastKnownTransactionID: 99,
+            lastKnownExpiration: Date().addingTimeInterval(7 * 86_400))
+        #expect(result == .activateTrial)
+    }
+
     @Test func entitlementTakesPrecedenceOverExpiredTrial() {
         // A live entitlement wins even if the trial flag is false: we verify,
         // never expire.

@@ -65,14 +65,19 @@ final class BudgetViewModel: ObservableObject {
             .sorted { $0.date > $1.date }
     }
 
-    /// Every expense counts the moment it's created — including unpaid bills, which
-    /// count toward the month of their due date. Month scoping (not paid status) is
-    /// what keeps each month's numbers separate.
-    var totalSpent: Double { monthlyExpenses.reduce(0) { $0 + $1.amount } }
-    var remainingBudget: Double { budget.monthlyIncome - totalSpent }
-    var spentPercent: Double    {
+    /// Money this month has already claimed: every expense counts the moment it's created,
+    /// **including unpaid bills**, which count toward the month of their due date. Month
+    /// scoping (not paid status) is what keeps each month's numbers separate.
+    ///
+    /// Deliberately not called "spent" — a bill you still owe has not been paid, and calling
+    /// this total "Spent" next to a `recentExpenses`-derived transaction count made the two
+    /// disagree about what an unpaid bill is. Keeping bills in the total is what stops
+    /// `remainingBudget` from inviting you to spend money that's already owed.
+    var totalCommitted: Double { monthlyExpenses.reduce(0) { $0 + $1.amount } }
+    var remainingBudget: Double { budget.monthlyIncome - totalCommitted }
+    var committedPercent: Double {
         guard budget.monthlyIncome > 0 else { return 0 }
-        return min(totalSpent / budget.monthlyIncome, 1.0)
+        return min(totalCommitted / budget.monthlyIncome, 1.0)
     }
 
     /// Money already spent: everything that isn't a bill, plus bills that have been paid.
