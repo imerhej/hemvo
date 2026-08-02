@@ -454,24 +454,7 @@ struct SettingsView: View {
             SettingsLinkRow(icon: "questionmark.circle.fill", color: Color(hex: "#6A1B9A") ?? .clear, label: "Support & Help",   url: AppConstants.supportURL)
             SettingsDivider()
 
-            Button {
-                if let url = URL(string: "https://apps.apple.com/app/hemvo") {
-                    UIApplication.shared.open(url)
-                }
-            } label: {
-                HStack(spacing: 14) {
-                    SettingsIconBox(icon: "star.fill", color: Color(hex: "#E67E22") ?? .clear)
-                    Text("Rate Hemvo")
-                        .font(.system(size: 14, weight: .semibold)).foregroundColor(Color.bpText)
-                    Spacer()
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color.bpTextSub.opacity(0.5))
-                }
-                .padding(.horizontal, 16).padding(.vertical, 14)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+            SettingsLinkRow(icon: "star.fill",                color: Color(hex: "#E67E22") ?? .clear, label: "Rate Hemvo",      url: AppConstants.appStoreReviewURL)
         }
     }
 

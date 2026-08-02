@@ -24,6 +24,12 @@ enum AppConstants {
     static let termsOfServiceURL  = URL(string: "https://hemvo.app/terms.html")!
     static let supportURL         = URL(string: "https://hemvo.app/contact.html")!
 
+    /// App Store Connect Apple ID for Hemvo.
+    static let appStoreID         = "6764900837"
+    static let appStoreURL        = URL(string: "https://apps.apple.com/app/id\(appStoreID)")!
+    /// Opens the App Store listing with the "Write a Review" sheet already presented.
+    static let appStoreReviewURL  = URL(string: "https://apps.apple.com/app/id\(appStoreID)?action=write-review")!
+
     // MARK: - Dashboard
     static let dashboardPreviewCount = 3     // rows shown in dashboard section cards
 
