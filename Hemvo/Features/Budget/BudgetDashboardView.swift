@@ -39,6 +39,17 @@ struct BudgetDashboardView: View {
 
     private var isRestricted: Bool { !canWrite }
 
+    /// Resolved once per render and handed to every row — same resolver the History sheet uses,
+    /// so a name/avatar resolves identically in both places.
+    private var people: BillPeopleResolver {
+        BillPeopleResolver(
+            members:      householdService.household?.members ?? [],
+            selfID:       authVM.userID?.uuidString,
+            selfName:     authVM.profile?.fullName ?? authVM.profile?.username,
+            selfColorHex: authVM.profile?.avatarColor
+        )
+    }
+
     var body: some View {
         Group {
             if isRestricted {
@@ -470,6 +481,7 @@ struct BudgetDashboardView: View {
                     ForEach(Array(recent.prefix(3).enumerated()), id: \.element.id) { idx, expense in
                         ExpenseRow(
                             expense:   expense,
+                            people:    people,
                             canEdit:   canWrite,
                             canDelete: canWrite && vm.canDelete(expense),
                             onEdit:    { expenseToEdit = expense },
@@ -799,8 +811,11 @@ struct WarmEmptyState: View {
 }
 
 // MARK: - ExpenseRow (warm-styled)
+/// Deliberately laid out to match `HistoryBillRow` — the dashboard's Recent Expenses list and the
+/// History sheet show the same expenses, so they use the same card shape, meta pills and byline.
 struct ExpenseRow: View {
     let expense:   Expense
+    var people:    BillPeopleResolver = BillPeopleResolver()
     var canEdit:   Bool = true
     var canDelete: Bool = true
     let onEdit:    () -> Void
@@ -810,119 +825,114 @@ struct ExpenseRow: View {
 
     private var isPaid: Bool { expense.isPaid }
 
-    private var createdByName: String? {
-        guard let id = expense.createdBy,
-              let member = HouseholdService.shared.household?.members
-                  .first(where: { $0.id == id }) else { return nil }
-        return member.username.components(separatedBy: " ").first ?? member.username
-    }
+    private let green  = Color(hex: "#3D7A52") ?? .clear
+    private let unpaid = Color(hex: "#C0392B") ?? .clear
 
-    private var paidByFirstName: String? {
-        guard let paidByID = expense.paidBy,
-              let member = HouseholdService.shared.household?.members
-                  .first(where: { $0.id == paidByID }) else { return nil }
-        return member.username.components(separatedBy: " ").first ?? member.username
-    }
+    private var creator: BillPerson? { people.person(for: expense.createdBy) }
+    private var payer:   BillPerson? { isPaid ? people.person(for: expense.paidBy) : nil }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                // Category icon — dimmed when paid
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                // Icon — green checkmark when paid, category icon when unpaid
                 ZStack {
-                    RoundedRectangle(cornerRadius: 9)
-                        .fill(isPaid
-                              ? (Color(hex: "#3D7A52") ?? .clear).opacity(0.1)
-                              : expense.category.displayColor.opacity(0.12))
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(isPaid ? green.opacity(0.1) : expense.category.displayColor.opacity(0.12))
                         .frame(width: 38, height: 38)
                     Image(systemName: isPaid ? "checkmark.circle.fill" : expense.category.iconName)
-                        .foregroundColor(isPaid ? Color(hex: "#3D7A52") ?? .clear : expense.category.displayColor)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: isPaid ? 18 : 14, weight: .semibold))
+                        .foregroundColor(isPaid ? green : expense.category.displayColor)
                 }
 
-                Text(expense.title)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(isPaid ? Color.wMuted : Color.wBrown)
-                    .strikethrough(isPaid, color: Color.wMuted)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                // Amount + category label
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(expense.formattedAmount)
-                        .font(.system(size: 14, weight: .black))
-                        .foregroundColor(isPaid ? Color(hex: "#3D7A52") ?? .clear : Color(hex: "#C0392B") ?? .clear)
-                        .strikethrough(isPaid, color: Color.wMuted)
+                // Title + category
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(expense.title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(isPaid ? Color.wMuted : Color.wBrown)
+                        .lineLimit(1)
                     Text(expense.category.rawValue)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(Color.wMuted)
+                        .lineLimit(1)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                if canEdit {
-                    Button { onEdit() } label: {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color.wAmber)
-                            .frame(width: 26, height: 26)
-                            .background(Color.wAmberSoft)
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                }
+                // Amount + actions
+                VStack(alignment: .trailing, spacing: 8) {
+                    Text(expense.formattedAmount)
+                        .font(.system(size: 14, weight: .black))
+                        .foregroundColor(isPaid ? Color.wMuted : unpaid)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
 
-                if canDelete {
-                    Button { showDeleteAlert = true } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.red)
-                            .frame(width: 26, height: 26)
-                            .background(Color.red.opacity(0.08))
-                            .clipShape(Circle())
+                    if canEdit || canDelete {
+                        HStack(spacing: 6) {
+                            if canEdit {
+                                Button { onEdit() } label: {
+                                    iconButton("pencil", tint: Color.wAmber, fill: Color.wAmberSoft)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            if canDelete {
+                                Button { showDeleteAlert = true } label: {
+                                    iconButton("trash", tint: .red, fill: Color.red.opacity(0.08))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
                 }
             }
 
-            // ── Pills row (date · paid status · people) ──
-            HStack(spacing: 6) {
-                if isPaid {
-                    if let label = expense.formattedPaidDate {
-                        Label(label, systemImage: "checkmark.circle.fill")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color(hex: "#2E7D32") ?? .clear)
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background((Color(hex: "#2E7D32") ?? .clear).opacity(0.12))
-                            .clipShape(Capsule())
+            // ── Meta pills + byline ──────────────────────
+            VStack(alignment: .leading, spacing: 8) {
+                FlowLayout(spacing: 6) {
+                    if isPaid {
+                        BillMetaPill(
+                            icon:   "checkmark.circle.fill",
+                            text:   expense.formattedPaidDate ?? "Paid",
+                            tint:   green,
+                            strong: true
+                        )
+                    } else {
+                        BillMetaPill(
+                            icon: "calendar",
+                            text: expense.date.formatted(date: .abbreviated, time: .omitted),
+                            tint: Color.wMuted
+                        )
                     }
-                    if let name = paidByFirstName {
-                        Label("paid by \(name)", systemImage: "person.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color(hex: "#2E7D32") ?? .clear)
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background((Color(hex: "#2E7D32") ?? .clear).opacity(0.08))
-                            .clipShape(Capsule())
+                    if let rule = expense.recurrence {
+                        BillMetaPill(
+                            icon: "arrow.triangle.2.circlepath",
+                            text: rule.repeatsLabel,
+                            tint: Color.wAmber
+                        )
                     }
-                } else {
-                    Text(expense.date.shortDisplayDate)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Color.wMuted)
                 }
-                if let name = createdByName {
-                    Label("by \(name)", systemImage: "person.circle.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color.wMuted)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color.wMuted.opacity(0.08))
-                        .clipShape(Capsule())
-                }
-                Spacer()
+
+                BillByline(
+                    creator:    creator,
+                    payer:      payer,
+                    labelColor: Color.wMuted,
+                    nameColor:  Color.wBrown
+                )
             }
             .padding(.leading, 50)
-            .padding(.top, 6)
         }
-        .padding(.vertical, 9)
+        .padding(.vertical, 12)
         .alert("Delete Expense", isPresented: $showDeleteAlert) {
             Button("Delete", role: .destructive) { onDelete() }
             Button("Cancel", role: .cancel) { }
         } message: { Text("Remove \"\(expense.title)\"?") }
+    }
+
+    private func iconButton(_ icon: String, tint: Color, fill: Color) -> some View {
+        Image(systemName: icon)
+            .font(.system(size: 11, weight: .bold))
+            .foregroundColor(tint)
+            .frame(width: 28, height: 28)
+            .background(fill)
+            .clipShape(Circle())
     }
 }
 

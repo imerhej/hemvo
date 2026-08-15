@@ -380,7 +380,6 @@ struct BillCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(bill.title)
                         .font(.system(size: 15, weight: .bold))
-                        .strikethrough(bill.isPaid, color: Color.bpTextSub)
                         .foregroundColor(bill.isPaid ? Color.bpTextSub : Color.bpText)
                         .lineLimit(1)
                     Text(bill.category.rawValue)
@@ -393,7 +392,6 @@ struct BillCard: View {
                 // Amount
                 Text(bill.formattedAmount)
                     .font(.system(size: 18, weight: .black))
-                    .strikethrough(bill.isPaid, color: Color.bpTextSub)
                     .foregroundColor(bill.isPaid ? Color.bpTextSub : Color.bpText)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
@@ -424,7 +422,7 @@ struct BillCard: View {
                 if let rule = bill.recurrence {
                     BillMetaPill(
                         icon: "arrow.triangle.2.circlepath",
-                        text: rule.displayName,
+                        text: rule.repeatsLabel,
                         tint: Color.bpNavy
                     )
                 }

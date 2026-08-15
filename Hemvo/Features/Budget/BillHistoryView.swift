@@ -435,7 +435,6 @@ struct HistoryBillRow: View {
                     Text(bill.title)
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(bill.isPaid ? subInk : ink)
-                        .strikethrough(bill.isPaid, color: subInk.opacity(0.5))
                         .lineLimit(1)
                     Text(bill.category.rawValue)
                         .font(.system(size: 10, weight: .medium))
@@ -449,7 +448,6 @@ struct HistoryBillRow: View {
                     Text(bill.formattedAmount)
                         .font(.system(size: 14, weight: .black))
                         .foregroundColor(bill.isPaid ? subInk : unpaid)
-                        .strikethrough(bill.isPaid, color: subInk.opacity(0.4))
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
 
@@ -493,7 +491,7 @@ struct HistoryBillRow: View {
                     if let rule = bill.recurrence {
                         BillMetaPill(
                             icon: "arrow.triangle.2.circlepath",
-                            text: rule.displayName,
+                            text: rule.repeatsLabel,
                             tint: amber
                         )
                     }
