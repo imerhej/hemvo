@@ -84,8 +84,16 @@ serve(async (req: Request) => {
   if (password.length < 8) return jsonError(400, "Password must be at least 8 characters");
   if (!/[A-Z]/.test(password)) return jsonError(400, "Password must contain at least one uppercase letter");
   if (!/[0-9]/.test(password)) return jsonError(400, "Password must contain at least one number");
-  if (fullName && fullName.length > 100) return jsonError(400, "Name is too long");
-  if (username && username.length > 30) return jsonError(400, "Username is too long");
+  // Name / username minimums mirror AppConstants.minNameLength / .minUsernameLength
+  // in the app — enforced here too so a modified client can't bypass them.
+  const trimmedName = (fullName ?? "").trim();
+  const trimmedUsername = (username ?? "").trim();
+  if (trimmedName.length < 3) return jsonError(400, "Name must be at least 3 characters");
+  if (trimmedName.length > 100) return jsonError(400, "Name is too long");
+  if (!/^[\p{L} '-]+$/u.test(trimmedName)) return jsonError(400, "Name can only contain letters, spaces, hyphens and apostrophes");
+  if (trimmedUsername.length < 3) return jsonError(400, "Username must be at least 3 characters");
+  if (trimmedUsername.length > 30) return jsonError(400, "Username is too long");
+  if (!/^[A-Za-z0-9_]+$/.test(trimmedUsername)) return jsonError(400, "Username can only contain letters, numbers and underscores");
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -111,8 +119,8 @@ serve(async (req: Request) => {
     password,
     email_confirm: false,
     user_metadata: {
-      full_name: fullName ?? "",
-      username:  (username ?? "").toLowerCase().trim(),
+      full_name: trimmedName,
+      username:  trimmedUsername.toLowerCase(),
     },
   });
 

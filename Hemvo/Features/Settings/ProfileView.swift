@@ -241,6 +241,11 @@ struct WarmPersonalSection: View {
         selectedColor != (authVM.profile?.avatarColor ?? "#C8922A")
     }
 
+    // Same rules as sign-up — see ProfileValidator.
+    var isNameValid:     Bool { ProfileValidator.isValidName(name) }
+    var isUsernameValid: Bool { ProfileValidator.isValidUsername(username) }
+    var canSave: Bool { isDirty && isNameValid && isUsernameValid }
+
     var body: some View {
         VStack(spacing: 18) {
             warmLabel(icon: "person.fill", text: "ACCOUNT DETAILS")
@@ -258,6 +263,11 @@ struct WarmPersonalSection: View {
                     submitLabelType: .next,
                     onSubmitAction: { focused = .username }
                 )
+                // Also shown while empty once the form is dirty, so a legacy
+                // profile with a blank field explains its disabled Save button.
+                if !isNameValid && (!name.isEmpty || isDirty) {
+                    fieldHint(ProfileValidator.nameHint)
+                }
                 divider.frame(height: 1).padding(.leading, 52)
 
                 // Editable username field
@@ -272,6 +282,9 @@ struct WarmPersonalSection: View {
                     submitLabelType: .done,
                     onSubmitAction: { focused = nil }
                 )
+                if !isUsernameValid && (!username.isEmpty || isDirty) {
+                    fieldHint(ProfileValidator.usernameHint)
+                }
                 divider.frame(height: 1).padding(.leading, 52)
 
                 // Email — read-only
@@ -341,11 +354,11 @@ struct WarmPersonalSection: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 17)
-                .background(isDirty ? amber : Color(.systemGray4))
+                .background(canSave ? amber : Color(.systemGray4))
                 .cornerRadius(16)
-                .animation(.easeInOut(duration: 0.15), value: isDirty)
+                .animation(.easeInOut(duration: 0.15), value: canSave)
             }
-            .disabled(!isDirty || isSaving)
+            .disabled(!canSave || isSaving)
 
             if showToast {
                 HStack(spacing: 10) {
@@ -415,6 +428,18 @@ struct WarmPersonalSection: View {
         .animation(.easeInOut(duration: 0.15), value: focused == field)
     }
 
+    private func fieldHint(_ text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 12, weight: .bold))
+            Text(text)
+                .font(.system(size: 12, weight: .semibold))
+        }
+        .foregroundColor(.red)
+        .padding(.leading, 62).padding(.trailing, 16).padding(.bottom, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func infoRow(label: String, value: String) -> some View {
         HStack {
             Text(label).font(.system(size: 14, weight: .medium)).foregroundColor(muted)
@@ -435,8 +460,11 @@ struct WarmPersonalSection: View {
 
     // MARK: - Save to Supabase
     private func save() {
-        let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmedName.isEmpty else { withAnimation { shake += 1 }; return }
+        let trimmedName     = name.trimmingCharacters(in: .whitespaces)
+        let trimmedUsername = username.trimmingCharacters(in: .whitespaces)
+
+        guard isNameValid else { rejectSave(ProfileValidator.nameHint); return }
+        guard isUsernameValid else { rejectSave(ProfileValidator.usernameHint); return }
 
         focused  = nil
         isSaving = true
@@ -445,7 +473,7 @@ struct WarmPersonalSection: View {
             do {
                 try await AuthService.shared.updateProfile(
                     fullName: trimmedName,
-                    username: username,
+                    username: trimmedUsername,
                     avatarColor: selectedColor
                 )
                 // Refresh local profile
@@ -465,6 +493,18 @@ struct WarmPersonalSection: View {
                     withAnimation { shake += 1 }
                 }
             }
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            await MainActor.run { withAnimation { showToast = false } }
+        }
+    }
+
+    /// Surfaces a validation failure without touching Supabase.
+    private func rejectSave(_ message: String) {
+        toastMsg   = message
+        toastError = true
+        withAnimation(.spring()) { showToast = true }
+        withAnimation { shake += 1 }
+        Task {
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             await MainActor.run { withAnimation { showToast = false } }
         }
