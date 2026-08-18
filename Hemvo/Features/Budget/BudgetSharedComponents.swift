@@ -17,6 +17,89 @@ extension Color {
     static let bpDivider    = Color(hex: "#DDE1EE") ?? .clear
 }
 
+// MARK: - ScopeBadge
+/// "HOUSEHOLD" / "PERSONAL" tag for the sheets opened from the budget dashboard.
+///
+/// Those sheets inherit `vm.selectedScope` silently and show nothing to say so, which makes a
+/// personal-only list look like it's the whole household's money — or like the two have been
+/// mixed together, since a household total and a personal total never agree.
+struct ScopeBadge: View {
+    let scope: BudgetScope
+    var tint:  Color = Color.bpNavy
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: scope == .household ? "house.fill" : "person.fill")
+                .font(.system(size: 8, weight: .bold))
+            Text(scope.displayName.uppercased())
+                .font(.system(size: 9, weight: .heavy))
+                .kerning(0.8)
+        }
+        .foregroundColor(tint)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(tint.opacity(0.12)))
+    }
+}
+
+// MARK: - MoneyText
+/// A currency total with the cents set smaller than the dollars — "$4,253.<small>50</small>".
+///
+/// The summary numbers used to render as `Int(total)`, which *truncates* rather than rounds: a
+/// $64.25 total read as "$64", and a -$0.50 remaining balance read as "$0" with no minus sign.
+/// Every list the summaries sit above (rows, History) has always shown exact amounts, so the two
+/// quietly disagreed. Shrinking the cents keeps the hero number scannable while it stays exact.
+///
+/// The whole amount is formatted once and the string split, never formatted as two numbers:
+/// rounding the dollars and cents separately turns $9.999 into "$9" + ".00".
+struct MoneyText: View {
+    let amount:     Double
+    var size:       CGFloat
+    var weight:     Font.Weight = .black
+    /// Cents size as a fraction of `size` — small enough to recede, large enough to still read.
+    var centsScale: CGFloat = 0.58
+    var color:      Color = Color.bpText
+
+    private static let formatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle            = .decimal
+        f.usesGroupingSeparator  = true
+        f.minimumFractionDigits  = 2
+        f.maximumFractionDigits  = 2
+        return f
+    }()
+
+    /// Negative only once rounded — a -$0.001 rounding crumb must not render as "-$0.00".
+    private var isNegative: Bool { (amount * 100).rounded() < 0 }
+
+    private var parts: (dollars: String, cents: String) {
+        let magnitude = abs(amount)
+        let text = Self.formatter.string(from: NSNumber(value: magnitude))
+                   ?? String(format: "%.2f", magnitude)
+        let separator = Self.formatter.decimalSeparator ?? "."
+        guard let range = text.range(of: separator, options: .backwards) else { return (text, "") }
+        return (String(text[..<range.lowerBound]), String(text[range.lowerBound...]))
+    }
+
+    var body: some View {
+        let (dollars, cents) = parts
+        let sign = isNegative ? "-$" : "$"
+
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            Text(sign + dollars)
+                .font(.system(size: size, weight: weight))
+            if !cents.isEmpty {
+                Text(cents)
+                    .font(.system(size: max(size * centsScale, 9), weight: weight))
+            }
+        }
+        .foregroundColor(color)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 // MARK: - BillPerson
 /// A household member as a bill card shows them: first name + avatar colour.
 struct BillPerson: Equatable {

@@ -197,9 +197,7 @@ struct BudgetDashboardView: View {
                         Text("Personal Spending")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.white.opacity(0.8))
-                        Text("$\(Int(vm.totalCommitted))")
-                            .font(.system(size: 36, weight: .black))
-                            .foregroundColor(.white)
+                        MoneyText(amount: vm.totalCommitted, size: 36, color: .white)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 4) {
@@ -231,7 +229,7 @@ struct BudgetDashboardView: View {
         HStack(spacing: 10) {
             // "Committed", not "Spent": this total includes bills that are still owed, whereas
             // the Transactions tile beside it counts only money that actually moved.
-            WarmStatTile(value: "$\(Int(vm.totalCommitted))",
+            WarmStatTile(amount: vm.totalCommitted,
                          label: "Committed",
                          icon: "arrow.up.circle.fill",
                          iconColor: Color(hex: "#C0392B") ?? .clear)
@@ -300,7 +298,9 @@ struct BudgetDashboardView: View {
                         Text("Monthly Budget")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.white.opacity(0.8))
-                        Text("$\(Int(vm.budget.monthlyIncome))")
+                        // Whole dollars by design — cents on a number this large read as clutter.
+                        // Rounded, not truncated: `Int(9.99)` would show $9.
+                        Text("$\(Int(vm.budget.monthlyIncome.rounded()))")
                             .font(.system(size: 36, weight: .black))
                             .foregroundColor(.white)
                     }
@@ -310,8 +310,8 @@ struct BudgetDashboardView: View {
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.white.opacity(0.8))
                         Text(vm.remainingBudget < 0
-                             ? "-$\(Int(abs(vm.remainingBudget)))"
-                             : "$\(Int(vm.remainingBudget))")
+                             ? "-$\(Int(abs(vm.remainingBudget).rounded()))"
+                             : "$\(Int(vm.remainingBudget.rounded()))")
                             .font(.system(size: 22, weight: .bold))
                             .foregroundColor(vm.remainingBudget < 0
                                              ? Color(hex: "#FF6B6B") ?? .clear : .white)
@@ -343,7 +343,7 @@ struct BudgetDashboardView: View {
                         HStack(spacing: 5) {
                             Image(systemName: "arrow.up.circle.fill")
                                 .font(.system(size: 11))
-                            Text("$\(Int(vm.totalCommitted)) committed")
+                            Text("$\(Int(vm.totalCommitted.rounded())) committed")
                                 .font(.system(size: 12, weight: .semibold))
                         }
                         .foregroundColor(.white.opacity(0.85))
@@ -364,7 +364,9 @@ struct BudgetDashboardView: View {
     private var statsRow: some View {
         HStack(spacing: 10) {
             // See personalStatsRow — "Committed" covers owed bills as well as paid expenses.
-            WarmStatTile(value: "$\(Int(vm.totalCommitted))",
+            // Whole dollars here, cents in the personal row: each tile has to match the hero
+            // card above it, and the household card shows round numbers.
+            WarmStatTile(value: "$\(Int(vm.totalCommitted.rounded()))",
                          label: "Committed",
                          icon: "arrow.up.circle.fill",
                          iconColor: Color(hex: "#C0392B") ?? .clear)
@@ -551,10 +553,24 @@ private extension View {
 
 // MARK: - WarmStatTile
 struct WarmStatTile: View {
-    let value:     String
-    let label:     String
-    let icon:      String
-    let iconColor: Color
+    private let value:     String
+    /// Set by the currency initialiser. A money tile sits directly under the hero total it
+    /// summarises, so it has to round the same way that total does — a plain `Text` of
+    /// `Int(amount)` next to a `MoneyText` shows two different numbers for one figure.
+    private let amount:    Double?
+    private let label:     String
+    private let icon:      String
+    private let iconColor: Color
+
+    init(value: String, label: String, icon: String, iconColor: Color) {
+        self.value = value; self.amount = nil
+        self.label = label; self.icon = icon; self.iconColor = iconColor
+    }
+
+    init(amount: Double, label: String, icon: String, iconColor: Color) {
+        self.value = ""; self.amount = amount
+        self.label = label; self.icon = icon; self.iconColor = iconColor
+    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -562,7 +578,13 @@ struct WarmStatTile: View {
                 Circle().fill(iconColor.opacity(0.1)).frame(width: 34, height: 34)
                 Image(systemName: icon).font(.system(size: 13, weight: .bold)).foregroundColor(iconColor)
             }
-            Text(value).font(.system(size: 15, weight: .black)).foregroundColor(Color.wBrown)
+            if let amount {
+                // Cents kept proportionally larger than on the hero cards — at 15pt the default
+                // ratio drops them under 9pt, which reads as noise rather than as a number.
+                MoneyText(amount: amount, size: 15, centsScale: 0.72, color: Color.wBrown)
+            } else {
+                Text(value).font(.system(size: 15, weight: .black)).foregroundColor(Color.wBrown)
+            }
             Text(label).font(.system(size: 9, weight: .heavy)).kerning(0.5).foregroundColor(Color.wMuted)
         }
         .frame(maxWidth: .infinity)
