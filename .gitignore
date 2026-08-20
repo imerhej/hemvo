@@ -32,3 +32,6 @@ Packages/
 supabase/.env
 supabase/.branches/
 supabase/.temp/
+
+# App Store screenshot captures (regenerate via HemvoUITests/AppStoreScreenshotUITests)
+AppStore-Screenshots/
