@@ -8,10 +8,12 @@ internal import SwiftUI
 private enum BillSheet: Identifiable {
     case add
     case edit(Expense)
+    case history
     var id: String {
         switch self {
         case .add:           return "add"
         case .edit(let e):   return e.id.uuidString
+        case .history:       return "history"
         }
     }
 }
@@ -54,9 +56,21 @@ struct BillReminderView: View {
             Calendar.current.isDate($0.date, equalTo: vm.selectedMonth, toGranularity: .month)
         }
     }
-    var totalDue: Double { monthBills.filter { !$0.isPaid }.reduce(0) { $0 + $1.amount } }
+    /// The list this sheet actually shows. A reminder is only a reminder while the bill is
+    /// still owed — paid bills move to `BillHistoryView`, which is also where they can be
+    /// edited or deleted. Same predicate as `vm.upcomingBills`, so the dashboard's
+    /// "Upcoming Bills" card and this sheet can never disagree about what's outstanding.
+    private var unpaidBills: [Expense] {
+        monthBills.filter { !$0.isPaid }.sorted { $0.date < $1.date }
+    }
+    var totalDue: Double { unpaidBills.reduce(0) { $0 + $1.amount } }
     var paidCount: Int   { monthBills.filter {  $0.isPaid }.count }
-    var unpaidCount: Int { monthBills.filter { !$0.isPaid }.count }
+    var unpaidCount: Int { unpaidBills.count }
+
+    private var headerTitle: String {
+        if unpaidCount > 0 { return "\(unpaidCount) unpaid" }
+        return paidCount > 0 ? "All caught up" : "No bills"
+    }
 
     var body: some View {
         NavigationStack {
@@ -67,15 +81,7 @@ struct BillReminderView: View {
                     // ── Header ──────────────────────────────
                     billHeader
 
-                    let allBills = vm.expenses
-                        .filter {
-                            $0.scope == vm.selectedScope &&
-                            $0.isBill &&
-                            Calendar.current.isDate($0.date, equalTo: vm.selectedMonth, toGranularity: .month)
-                        }
-                        .sorted { $0.date < $1.date }
-
-                    if allBills.isEmpty {
+                    if monthBills.isEmpty {
                         emptyState
                     } else {
 
@@ -86,30 +92,13 @@ struct BillReminderView: View {
                                     .padding(.horizontal, 20)
 
                                 // ── Unpaid ───────────────────
-                                let unpaid = allBills.filter { !$0.isPaid }
-                                if !unpaid.isEmpty {
-                                    sectionLabel("UNPAID · \(unpaid.count)", color: Color.bpNavy)
+                                if unpaidBills.isEmpty {
+                                    allPaidState
                                         .padding(.horizontal, 20)
-                                    ForEach(unpaid) { bill in
-                                        BillCard(
-                                            bill:      bill,
-                                            people:    people,
-                                            canDelete: vm.canDelete(bill),
-                                            canEdit:   canWrite,
-                                            onPay:     { vm.markBillPaid(bill) },
-                                            onEdit:    { activeSheet  = .edit(bill) },
-                                            onDelete:  { billToDelete = bill; showDeleteAlert = true }
-                                        )
+                                } else {
+                                    sectionLabel("UNPAID · \(unpaidBills.count)", color: Color.bpNavy)
                                         .padding(.horizontal, 20)
-                                    }
-                                }
-
-                                // ── Paid ─────────────────────
-                                let paid = allBills.filter { $0.isPaid }
-                                if !paid.isEmpty {
-                                    sectionLabel("PAID · \(paid.count)", color: Color(hex: "#2E7D32") ?? .clear)
-                                        .padding(.horizontal, 20)
-                                    ForEach(paid) { bill in
+                                    ForEach(unpaidBills) { bill in
                                         BillCard(
                                             bill:      bill,
                                             people:    people,
@@ -151,6 +140,8 @@ struct BillReminderView: View {
                     AddExpenseView(vm: vm)
                 case .edit(let bill):
                     EditExpenseView(vm: vm, expense: bill)
+                case .history:
+                    BillHistoryView(vm: vm, initialMonth: vm.selectedMonth)
                 }
             }
             .alert("Delete Bill", isPresented: $showDeleteAlert) {
@@ -175,11 +166,14 @@ struct BillReminderView: View {
             Color.bpSurface
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("BILL REMINDERS")
-                        .font(.system(size: 10, weight: .heavy))
-                        .kerning(3)
-                        .foregroundColor(Color.bpNavy)
-                    Text("\(monthBills.count) bill\(monthBills.count == 1 ? "" : "s")")
+                    HStack(spacing: 8) {
+                        Text("BILL REMINDERS")
+                            .font(.system(size: 10, weight: .heavy))
+                            .kerning(3)
+                            .foregroundColor(Color.bpNavy)
+                        ScopeBadge(scope: vm.selectedScope)
+                    }
+                    Text(headerTitle)
                         .font(.system(size: 24, weight: .black))
                         .foregroundColor(Color.bpText)
                 }
@@ -252,6 +246,52 @@ struct BillReminderView: View {
         .cornerRadius(16)
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.bpDivider, lineWidth: 1))
         .shadow(color: Color.bpText.opacity(0.04), radius: 8, y: 3)
+    }
+
+    // MARK: - All Paid State
+    /// Shown when every bill in the month is settled. Paid bills aren't listed here — they'd
+    /// read as outstanding next to the dashboard card that just said there are none — so this
+    /// says where they went and links straight to it.
+    private var allPaidState: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill((Color(hex: "#2E7D32") ?? .clear).opacity(0.1))
+                    .frame(width: 72, height: 72)
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 30))
+                    .foregroundColor(Color(hex: "#2E7D32") ?? .clear)
+            }
+            VStack(spacing: 6) {
+                Text("All bills paid")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(Color.bpText)
+                // Says "bills due in <month>" rather than promising history holds these N items —
+                // history counts one-time expenses too, so its total is normally the larger one.
+                Text("All \(paidCount) bill\(paidCount == 1 ? "" : "s") due in \(vm.selectedMonth.monthYearDisplay) \(paidCount == 1 ? "is" : "are") paid.\nHistory also lists your one-time expenses.")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color.bpTextSub)
+                    .multilineTextAlignment(.center)
+            }
+            Button { activeSheet = .history } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 12, weight: .bold))
+                    Text("View History")
+                        .font(.system(size: 13, weight: .bold))
+                }
+                .foregroundColor(Color.bpNavy)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .background(Capsule().fill(Color.bpNavyLight))
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 28)
+        .background(Color.bpSurface)
+        .cornerRadius(18)
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.bpDivider, lineWidth: 1))
     }
 
     // MARK: - Section Label
@@ -380,7 +420,6 @@ struct BillCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(bill.title)
                         .font(.system(size: 15, weight: .bold))
-                        .strikethrough(bill.isPaid, color: Color.bpTextSub)
                         .foregroundColor(bill.isPaid ? Color.bpTextSub : Color.bpText)
                         .lineLimit(1)
                     Text(bill.category.rawValue)
@@ -393,7 +432,6 @@ struct BillCard: View {
                 // Amount
                 Text(bill.formattedAmount)
                     .font(.system(size: 18, weight: .black))
-                    .strikethrough(bill.isPaid, color: Color.bpTextSub)
                     .foregroundColor(bill.isPaid ? Color.bpTextSub : Color.bpText)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
@@ -424,7 +462,7 @@ struct BillCard: View {
                 if let rule = bill.recurrence {
                     BillMetaPill(
                         icon: "arrow.triangle.2.circlepath",
-                        text: rule.displayName,
+                        text: rule.repeatsLabel,
                         tint: Color.bpNavy
                     )
                 }
