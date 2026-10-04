@@ -38,10 +38,11 @@ xcodebuild -project "Hemvo.xcodeproj" -scheme "Hemvo" -destination "platform=iOS
 |--------|------|-------|
 | `HemvoTests` | `ViewModelTests/{Auth,Budget,MealPlan}ViewModelTests`, `RecurringBillTests`, `SubscriptionDecisionTests` | Swift Testing |
 | `HemvoUITests` | `BillCardLayoutUITests`, `BillClassificationUITests`, `InviteeScopeUITests`, `ChangePasswordFlowUITests`, `ResetPasswordFlowUITests` | XCTest |
+| `HemvoUITests` | `DashboardRowTapTargetUITests` | Env-gated on `SHOT_EMAIL`/`SHOT_PASSWORD`; read-only. Taps the empty middle of an Upcoming Events row and asserts it both leaves the Dashboard and opens the event's detail sheet |
 | `HemvoUITests` | `AppStoreScreenshotUITests` | Env-gated on `SHOT_EMAIL`/`SHOT_PASSWORD`; read-only; captures per-tab screenshots as XCTAttachments (export with `xcrun xcresulttool export attachments`) |
 | `HemvoUITests` | `DemoDataSeedUITests` | Env-gated on `SEED_DEMO=1` (+ optional `SEED_PHASES`); **writes real rows** through the app's own add flows — seed a household once, re-running duplicates data |
 
-The gated tests read unprefixed names (`SHOT_EMAIL`, `SHOT_PASSWORD`, `SEED_DEMO`), so they skip on a normal ⌘U pass. Pass them on the `xcodebuild` command line, or as `TEST_RUNNER_`-prefixed **environment variables** (not build settings) when launching from Xcode — the prefix is stripped on the way into the runner.
+The gated tests read unprefixed names (`SHOT_EMAIL`, `SHOT_PASSWORD`, `SEED_DEMO`), so they skip on a normal ⌘U pass. Always pass them as `TEST_RUNNER_`-prefixed **environment variables** — `TEST_RUNNER_SHOT_EMAIL=… xcodebuild … test` from the CLI, or the same names under Xcode's scheme environment. The prefix is stripped on the way into the runner. Do **not** write them bare on the `xcodebuild` command line (`xcodebuild … SHOT_EMAIL=… test`): that makes them *build settings*, they never reach the runner process, the test skips, and the run still reports `** TEST SUCCEEDED **` — which reads exactly like a pass.
 
 ## Architecture
 
@@ -152,6 +153,14 @@ Deployed under `supabase/functions/`. All are invoked via `supabase.functions.in
 - `BudgetSharedComponents.swift` holds the pieces shared by the dashboard, reminders and history sheets: `ScopeBadge` (HOUSEHOLD/PERSONAL), `MoneyText`, `BillMetaPill`, `BillByline`, and `BillPeopleResolver`. Views take a `BillPeopleResolver` rather than reading `HouseholdService` directly.
 - Bill Reminders lists **unpaid** bills only (matching `vm.upcomingBills` and the dashboard's Upcoming Bills card); paid bills live in History, reachable from the "All bills paid" state.
 - The budget total is `totalCommitted` (not `totalSpent`) — it includes scheduled-but-unpaid bills, so "spent" was misleading.
+
+### Dashboard
+
+- The four summary tiles and the Upcoming Events / Grocery / Maintenance rows live in `Features/Dashboard/DashboardView.swift`. Every tappable row is a `Button` whose label is an `HStack` with a `Spacer`, so each one **must** carry `.contentShape(Rectangle())` — without it SwiftUI hit-tests only the drawn text and the gap before the chevron swallows taps. `DashboardRowTapTargetUITests` guards this.
+- `WarmBillsStatCard` counts household and personal unpaid bills separately (`BudgetViewModel.householdUpcomingBills` / `.personalUpcomingBills`) and gives each its own tap target, because the Budget tab shows one scope at a time — a single cross-scope count can't say which scope to open. It collapses back to the plain single-count tile when there are no personal bills.
+- All four tiles share `warmStatCardMinHeight`; `LazyVGrid` sizes rows independently, so changing one tile's height without the others leaves the two rows uneven.
+- **Dashboard and the Budget/Schedule tabs each own a separate view model instance**, so the Dashboard cannot set state on the tab it's navigating to. Cross-tab navigation state travels through `ContentView` as a one-shot binding, consumed and cleared by the destination in `onAppear` (tab created fresh) **and** `onChange` (tab already alive): `scheduleJumpDate`, `scheduleJumpEvent` → `FamilyCalendarView`, `budgetJumpScope` → `BudgetDashboardView`. Follow that pattern for any new cross-tab jump.
+- `FamilyCalendarView.present(_:)` delays 350 ms before setting `eventToView`. A sheet presented in the same frame the tab is created in is dropped by SwiftUI, and the delay also lets the tab-switch spring settle.
 
 ### Profile & Sign-up Validation
 
