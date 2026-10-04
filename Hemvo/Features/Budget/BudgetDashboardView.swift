@@ -24,6 +24,15 @@ struct BudgetDashboardView: View {
     @EnvironmentObject private var authVM: AuthViewModel
     @EnvironmentObject private var householdService: HouseholdService
 
+    /// Scope to open on, set by the Dashboard's Upcoming Bills tile so tapping the
+    /// household or personal count lands on that half of the scope picker. Consumed
+    /// once and cleared, the same way `FamilyCalendarView` handles `jumpToDate`.
+    @Binding var jumpToScope: BudgetScope?
+
+    init(jumpToScope: Binding<BudgetScope?> = .constant(nil)) {
+        self._jumpToScope = jumpToScope
+    }
+
     @State private var showAddExpense    = false
     @State private var showBillReminder  = false
     @State private var showBudgetEditor  = false
@@ -100,6 +109,20 @@ struct BudgetDashboardView: View {
             await householdService.refreshMembers()
             guard !isRestricted else { return }
             await vm.loadFromSupabase()
+        }
+        // The tab is rebuilt from ContentView's switch, so a scope set before the tab
+        // was active arrives already populated — onAppear covers that, onChange covers
+        // a second tap while the tab is still alive.
+        .onAppear {
+            if let scope = jumpToScope {
+                vm.setScope(scope)
+                jumpToScope = nil
+            }
+        }
+        .onChange(of: jumpToScope) { _, newScope in
+            guard let scope = newScope else { return }
+            withAnimation(.easeInOut(duration: 0.18)) { vm.setScope(scope) }
+            jumpToScope = nil
         }
     }
 

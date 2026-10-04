@@ -16,6 +16,14 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab:      Tab  = .dashboard
     @State private var scheduleJumpDate: Date? = nil
+    /// Event the Dashboard asked the Schedule tab to open. Set instead of
+    /// `scheduleJumpDate` — the event carries its own date, and setting both would make
+    /// the calendar jump twice.
+    @State private var scheduleJumpEvent: CalendarEvent? = nil
+    /// Scope the Budget tab should open on, set by the Dashboard's Upcoming Bills tile.
+    /// Dashboard and Budget each own a separate `BudgetViewModel`, so the scope has to
+    /// travel through here rather than being set on the Dashboard's copy.
+    @State private var budgetJumpScope: BudgetScope? = nil
     @State private var showGracePopup   = false
 
     private var currentRole: HouseholdRole? {
@@ -76,13 +84,18 @@ struct ContentView: View {
                                 selectedTab = .meals
                             }
                         },
-                        onSwitchToBudget: {
+                        onSwitchToBudget: { scope in
+                            budgetJumpScope = scope
                             withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
                                 selectedTab = .budget
                             }
                         },
-                        onSwitchToSchedule: { date in
-                            scheduleJumpDate = date
+                        onSwitchToSchedule: { date, event in
+                            if let event {
+                                scheduleJumpEvent = event
+                            } else {
+                                scheduleJumpDate = date
+                            }
                             withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
                                 selectedTab = .schedule
                             }
@@ -94,8 +107,9 @@ struct ContentView: View {
                         }
                     )
                 case .meals:       MealPlannerView()
-                case .budget:      BudgetDashboardView()
-                case .schedule:    FamilyCalendarView(jumpToDate: $scheduleJumpDate)
+                case .budget:      BudgetDashboardView(jumpToScope: $budgetJumpScope)
+                case .schedule:    FamilyCalendarView(jumpToDate: $scheduleJumpDate,
+                                                      jumpToEvent: $scheduleJumpEvent)
                 case .maintenance: MaintenanceView()
                 }
             }

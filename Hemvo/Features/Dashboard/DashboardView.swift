@@ -20,8 +20,10 @@ struct DashboardView: View {
 
     /// Tab-switching callbacks injected by ContentView
     var onSwitchToMeals:       (() -> Void)?     = nil
-    var onSwitchToBudget:      (() -> Void)?     = nil
-    var onSwitchToSchedule:    ((Date) -> Void)? = nil
+    var onSwitchToBudget:      ((BudgetScope?) -> Void)? = nil
+    /// Date to land on, plus the event to open on arrival when the tap was on an
+    /// Upcoming Events row rather than a day or the Full Calendar button.
+    var onSwitchToSchedule:    ((Date, CalendarEvent?) -> Void)? = nil
     var onSwitchToMaintenance: (() -> Void)?     = nil
 
     @State private var showMenu    = false
@@ -137,7 +139,7 @@ struct DashboardView: View {
                 WarmMiniCalendarStrip(
                     scheduleVM: scheduleVM,
                     onDayTap: { date, _ in
-                        onSwitchToSchedule?(date)
+                        onSwitchToSchedule?(date, nil)
                     }
                 )
                 .padding(.bottom, 12)
@@ -189,19 +191,18 @@ struct DashboardView: View {
                 color: Color(hex: "#E67E22") ?? .clear,
                 action: { onSwitchToMeals?() }
             )
-            WarmStatCard(
-                value: "\(budgetVM.allUpcomingBills.count) bills",
-                label: "Upcoming Bills",
-                icon: "calendar.badge.exclamationmark",
-                color: Color(hex: "#3949AB") ?? .clear,
-                action: { onSwitchToBudget?() }
+            WarmBillsStatCard(
+                householdCount: budgetVM.householdUpcomingBills.count,
+                personalCount:  budgetVM.personalUpcomingBills.count,
+                color:          Color(hex: "#3949AB") ?? .clear,
+                onSelectScope:  { onSwitchToBudget?($0) }
             )
             WarmStatCard(
                 value: "\(scheduleVM.events(on: Date()).count) today",
                 label: "Events Today",
                 icon: "calendar",
                 color: Color(hex: "#9C27B0") ?? .clear,
-                action: { onSwitchToSchedule?(Date()) }
+                action: { onSwitchToSchedule?(Date(), nil) }
             )
             WarmStatCard(
                 value: "\(maintenanceVM.dueSoonItems.count) due",
@@ -220,14 +221,14 @@ struct DashboardView: View {
             icon: "calendar",
             iconColor: Color(hex: "#9C27B0") ?? .clear,
             actionLabel: "Full Calendar",
-            action: { onSwitchToSchedule?(Date()) }
+            action: { onSwitchToSchedule?(Date(), nil) }
         ) {
             if scheduleVM.upcomingEvents.isEmpty {
                 WarmEmptyRow(icon: "calendar.badge.plus", message: "No upcoming events")
             } else {
                 VStack(spacing: 0) {
                     ForEach(scheduleVM.upcomingEvents.prefix(4)) { event in
-                        Button { onSwitchToSchedule?(event.date) } label: {
+                        Button { onSwitchToSchedule?(event.date, event) } label: {
                             WarmEventRow(event: event)
                         }
                         .buttonStyle(.plain)
@@ -373,6 +374,105 @@ struct WarmMiniCalendarStrip: View {
     }
 }
 
+// MARK: - Stat card metrics
+/// Shared by every summary tile so the two grid rows stay the same height — the bills
+/// tile is the tallest of them when it splits in two, and `LazyVGrid` sizes each row
+/// to its tallest cell independently. 170 is what the split tile needs at its natural
+/// size: 14 + 40 icon + 10 + 34 value/label + 10 + 4 + 44 buttons + 14.
+private let warmStatCardMinHeight: CGFloat = 170
+
+// MARK: - Upcoming Bills Stat Card
+/// The Upcoming Bills tile, split by scope. Household and personal bills are counted
+/// separately and each count is its own tap target, so the number you tap and the scope
+/// the Budget tab opens on always agree — a single cross-scope count can't say which.
+///
+/// The split only appears when there are personal bills to show: a user who never files
+/// a personal bill would otherwise stare at a permanent "0 Personal" on the home screen,
+/// so that case collapses back to the plain single-count tile.
+struct WarmBillsStatCard: View {
+    let householdCount: Int
+    let personalCount:  Int
+    let color:          Color
+    let onSelectScope:  (BudgetScope) -> Void
+
+    private var total: Int { householdCount + personalCount }
+
+    private var singleValue: String {
+        guard total > 0 else { return "All paid" }
+        return "\(total) bill\(total == 1 ? "" : "s")"
+    }
+
+    var body: some View {
+        if personalCount == 0 {
+            // Nothing personal outstanding — indistinguishable from the sibling tiles.
+            WarmStatCard(
+                value:  singleValue,
+                label:  "Upcoming Bills",
+                icon:   "calendar.badge.exclamationmark",
+                color:  color,
+                action: { onSelectScope(.household) }
+            )
+        } else {
+            splitCard
+        }
+    }
+
+    private var splitCard: some View {
+        VStack(alignment: .center, spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(color.opacity(0.12)).frame(width: 40, height: 40)
+                Image(systemName: "calendar.badge.exclamationmark")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(color)
+            }
+            // Same value-over-label pair as the sibling tiles, in the same fonts: without
+            // the headline total this card led with its small grey label while its
+            // neighbours led with a bold number, and the row's baselines stopped lining up.
+            VStack(alignment: .center, spacing: 2) {
+                Text(singleValue)
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundColor(Color(hex: "#1A1208") ?? .clear)
+                Text("Upcoming Bills")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
+            }
+            .multilineTextAlignment(.center)
+            Spacer(minLength: 4)
+            HStack(spacing: 8) {
+                scopeButton(.household, count: householdCount)
+                scopeButton(.personal,  count: personalCount)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: warmStatCardMinHeight, alignment: .center)
+        .background(Color.white)
+        .cornerRadius(18)
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(hex: "#E6DDD0") ?? .clear, lineWidth: 1))
+    }
+
+    private func scopeButton(_ scope: BudgetScope, count: Int) -> some View {
+        Button { onSelectScope(scope) } label: {
+            VStack(spacing: 1) {
+                Text("\(count)")
+                    .font(.system(size: 17, weight: .black))
+                Text(scope.displayName)
+                    .font(.system(size: 9, weight: .bold))
+                    .lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .foregroundColor(color)
+            // 44pt keeps each half at Apple's minimum tap target now that the tile
+            // carries two of them instead of one full-card button.
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(color.opacity(0.1))
+            .cornerRadius(10)
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(count) \(scope.displayName.lowercased()) bill\(count == 1 ? "" : "s")")
+    }
+}
+
 // MARK: - Warm Stat Card
 struct WarmStatCard: View {
     let value:  String
@@ -383,7 +483,7 @@ struct WarmStatCard: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .center, spacing: 10) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(color.opacity(0.12)).frame(width: 40, height: 40)
@@ -391,7 +491,7 @@ struct WarmStatCard: View {
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(color)
                 }
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .center, spacing: 2) {
                     Text(value)
                         .font(.system(size: 16, weight: .black))
                         .foregroundColor(Color(hex: "#1A1208") ?? .clear)
@@ -399,6 +499,7 @@ struct WarmStatCard: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(Color(hex: "#7A6A55") ?? .clear)
                 }
+                .multilineTextAlignment(.center)
                 Spacer(minLength: 4)
                 HStack(spacing: 3) {
                     Text("View").font(.system(size: 10, weight: .bold))
@@ -409,7 +510,7 @@ struct WarmStatCard: View {
                 .background(color.opacity(0.1)).cornerRadius(8)
             }
             .padding(14)
-            .frame(maxWidth: .infinity, minHeight: 130, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: warmStatCardMinHeight, alignment: .center)
             .background(Color.white)
             .cornerRadius(18)
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(hex: "#E6DDD0") ?? .clear, lineWidth: 1))
@@ -497,6 +598,7 @@ struct WarmEventRow: View {
                 .font(.system(size: 11)).foregroundColor(Color(hex: "#C5C0B8") ?? .clear)
         }
         .padding(.vertical, 6)
+        .contentShape(Rectangle())
     }
 }
 
@@ -518,6 +620,7 @@ struct WarmGroceryRow: View {
                 .font(.system(size: 10)).foregroundColor(Color(hex: "#C5C0B8") ?? .clear)
         }
         .padding(.vertical, 6)
+        .contentShape(Rectangle())
     }
 }
 
@@ -542,6 +645,7 @@ struct WarmMaintenanceRow: View {
                 .font(.system(size: 10)).foregroundColor(Color(hex: "#C5C0B8") ?? .clear)
         }
         .padding(.vertical, 6)
+        .contentShape(Rectangle())
     }
 }
 
