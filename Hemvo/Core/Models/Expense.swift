@@ -10,35 +10,55 @@ internal import CryptoKit
 /// bill that is reminded once and then done, which is how every bill behaved before
 /// recurring series existed.
 enum RecurrenceRule: String, Codable, CaseIterable, Identifiable {
-    case weekly  = "weekly"
-    case monthly = "monthly"
-    case yearly  = "yearly"
+    case weekly   = "weekly"
+    case biweekly = "biweekly"
+    case monthly  = "monthly"
+    case yearly   = "yearly"
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .weekly:  return "Weekly"
-        case .monthly: return "Monthly"
-        case .yearly:  return "Yearly"
+        case .weekly:   return "Weekly"
+        case .biweekly: return "Bi-weekly"
+        case .monthly:  return "Monthly"
+        case .yearly:   return "Yearly"
         }
     }
 
     var cadenceDescription: String {
         switch self {
-        case .weekly:  return "every week"
-        case .monthly: return "every month"
-        case .yearly:  return "every year"
+        case .weekly:   return "every week"
+        case .biweekly: return "every 2 weeks"
+        case .monthly:  return "every month"
+        case .yearly:   return "every year"
+        }
+    }
+
+    /// Reads as a complete statement on its own, for the meta pill on a bill card where
+    /// "Monthly" beside a paid date is ambiguous about whether the bill still repeats.
+    var repeatsLabel: String {
+        switch self {
+        case .weekly:   return "Repeats weekly"
+        case .biweekly: return "Repeats bi-weekly"
+        case .monthly:  return "Repeats monthly"
+        case .yearly:   return "Repeats yearly"
         }
     }
 
     /// Calendar unit one period is measured in.
     var component: Calendar.Component {
         switch self {
-        case .weekly:  return .weekOfYear
-        case .monthly: return .month
-        case .yearly:  return .year
+        case .weekly, .biweekly: return .weekOfYear
+        case .monthly:           return .month
+        case .yearly:            return .year
         }
+    }
+
+    /// How many `component` units make up one period. Bi-weekly is the only rule whose
+    /// period isn't a single unit of its own calendar component.
+    var unitsPerPeriod: Int {
+        self == .biweekly ? 2 : 1
     }
 }
 
@@ -179,7 +199,9 @@ struct Expense: Codable, Identifiable, Equatable {
         let current = cal.startOfDay(for: date)
 
         for step in 1...AppConstants.recurrenceMaxLookaheadSteps {
-            guard let candidate = cal.date(byAdding: rule.component, value: step, to: anchor)
+            guard let candidate = cal.date(byAdding: rule.component,
+                                           value: step * rule.unitsPerPeriod,
+                                           to: anchor)
             else { return nil }
             if cal.startOfDay(for: candidate) > current { return candidate }
         }

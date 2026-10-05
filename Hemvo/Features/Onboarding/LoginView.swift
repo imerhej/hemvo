@@ -86,12 +86,8 @@ struct LoginView: View {
     var isSignUp: Bool { mode == .signUp }
 
     // MARK: - Validation
-    var isUsernameValid: Bool {
-        let trimmed = username.trimmingCharacters(in: .whitespaces)
-        guard trimmed.count >= 3 else { return false }
-        let allowed = CharacterSet.alphanumerics.union(.init(charactersIn: "_"))
-        return trimmed.unicodeScalars.allSatisfy { allowed.contains($0) }
-    }
+    var isUsernameValid: Bool { ProfileValidator.isValidUsername(username) }
+    var isNameValid:     Bool { ProfileValidator.isValidName(name) }
 
     var isFormValid: Bool {
         if isSignUp {
@@ -99,7 +95,7 @@ struct LoginView: View {
             case .invalid, .alreadyRegistered: return false
             default: break
             }
-            return !name.isEmpty
+            return isNameValid
                 && !emailOrUsername.isEmpty
                 && isUsernameValid
                 && password.count >= 8
@@ -301,6 +297,21 @@ struct LoginView: View {
                         onSubmitAction: { setFocus(.username) },
                         externalFocus: $focusName
                     )
+                    // Full name hint
+                    Group {
+                        if !name.isEmpty && !isNameValid {
+                            HStack(spacing: 6) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 12, weight: .bold))
+                                Text(ProfileValidator.nameHint)
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .foregroundColor(.red)
+                            .padding(.horizontal, 16).padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.2), value: name)
                     fieldDivider
                     LoginField(
                         label:   "Username",
@@ -330,7 +341,7 @@ struct LoginView: View {
                                 HStack(spacing: 6) {
                                     Image(systemName: "xmark.circle.fill")
                                         .font(.system(size: 12, weight: .bold))
-                                    Text("Min 3 characters, letters, numbers and _ only")
+                                    Text(ProfileValidator.usernameHint)
                                         .font(.system(size: 12, weight: .semibold))
                                 }
                                 .foregroundColor(.red)
@@ -890,7 +901,7 @@ struct LoginView: View {
             Task {
                 let email = emailOrUsername
                 let success = await authVM.signUp(
-                    name:     name,
+                    name:     name.trimmingCharacters(in: .whitespaces),
                     email:    email,
                     username: username.lowercased().trimmingCharacters(in: .whitespaces),
                     password: password

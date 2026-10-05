@@ -173,9 +173,12 @@ struct BillHistoryView: View {
             Color.white
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("EXPENSE HISTORY")
-                        .font(.system(size: 10, weight: .heavy)).kerning(3)
-                        .foregroundColor(Color(hex: "#C8922A") ?? .clear)
+                    HStack(spacing: 8) {
+                        Text("EXPENSE HISTORY")
+                            .font(.system(size: 10, weight: .heavy)).kerning(3)
+                            .foregroundColor(Color(hex: "#C8922A") ?? .clear)
+                        ScopeBadge(scope: vm.selectedScope, tint: Color(hex: "#C8922A") ?? .clear)
+                    }
                     Text("History")
                         .font(.system(size: 26, weight: .black))
                         .foregroundColor(Color(hex: "#1A1208") ?? .clear)
@@ -302,9 +305,11 @@ struct BillHistoryView: View {
     // MARK: - Summary Strip
     private var summaryStrip: some View {
         HStack(spacing: 10) {
+            // "expenses", not "bills paid": this list is one-time expenses *and* paid bills, so
+            // calling the count bills made it contradict the bill counts on the reminders sheet.
             summaryChip(
                 icon:  "checkmark.circle.fill",
-                label: "\(paidBills.count) bills paid",
+                label: "\(paidBills.count) expense\(paidBills.count == 1 ? "" : "s")",
                 color: Color(hex: "#3D7A52") ?? .clear
             )
             summaryChip(
@@ -435,7 +440,6 @@ struct HistoryBillRow: View {
                     Text(bill.title)
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(bill.isPaid ? subInk : ink)
-                        .strikethrough(bill.isPaid, color: subInk.opacity(0.5))
                         .lineLimit(1)
                     Text(bill.category.rawValue)
                         .font(.system(size: 10, weight: .medium))
@@ -449,7 +453,6 @@ struct HistoryBillRow: View {
                     Text(bill.formattedAmount)
                         .font(.system(size: 14, weight: .black))
                         .foregroundColor(bill.isPaid ? subInk : unpaid)
-                        .strikethrough(bill.isPaid, color: subInk.opacity(0.4))
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
 
@@ -493,7 +496,7 @@ struct HistoryBillRow: View {
                     if let rule = bill.recurrence {
                         BillMetaPill(
                             icon: "arrow.triangle.2.circlepath",
-                            text: rule.displayName,
+                            text: rule.repeatsLabel,
                             tint: amber
                         )
                     }

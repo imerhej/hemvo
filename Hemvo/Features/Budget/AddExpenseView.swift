@@ -234,6 +234,14 @@ struct RecurrencePicker: View {
         [Choice(rule: nil)] + RecurrenceRule.allCases.map { Choice(rule: $0) }
     }
 
+    /// Three columns, not one row of five. Five equal chips leave ~62pt each on a 375pt-wide
+    /// phone, which is narrower than "Bi-weekly" renders at this weight — the labels would
+    /// shrink to fit and touch the chip edges.
+    private let columns = Array(
+        repeating: GridItem(.flexible(), spacing: 6),
+        count: 3
+    )
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 5) {
@@ -246,7 +254,7 @@ struct RecurrencePicker: View {
                     .foregroundColor(Color.bpTextSub)
             }
 
-            HStack(spacing: 6) {
+            LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(choices) { choice in
                     Button { selection = choice.rule } label: {
                         Text(choice.label)

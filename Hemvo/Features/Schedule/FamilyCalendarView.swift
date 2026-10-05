@@ -115,8 +115,15 @@ struct FamilyCalendarView: View {
 
     @Binding var jumpToDate: Date?
 
-    init(jumpToDate: Binding<Date?> = .constant(nil)) {
-        self._jumpToDate = jumpToDate
+    /// An event tapped on the Dashboard's Upcoming Events list. Jumping to its date and
+    /// opening its detail sheet is one action, so it travels as one value rather than as
+    /// a date plus a separate "and also open this" flag.
+    @Binding var jumpToEvent: CalendarEvent?
+
+    init(jumpToDate:  Binding<Date?>          = .constant(nil),
+         jumpToEvent: Binding<CalendarEvent?> = .constant(nil)) {
+        self._jumpToDate  = jumpToDate
+        self._jumpToEvent = jumpToEvent
     }
 
     @StateObject private var vm     = ScheduleViewModel()
@@ -207,27 +214,28 @@ struct FamilyCalendarView: View {
             }
             .task { calSvc.checkExistingAccess() }
             .onAppear {
-                // Handle the case where jumpToDate is already set when the view is first created
+                // Handle the case where a jump is already set when the view is first created
                 // (e.g. tapping an event from the dashboard before the schedule tab is active)
                 if let d = jumpToDate {
-                    let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: d))
-                    selectedDate   = d
-                    displayedMonth = monthStart ?? d
-                    monthScrollID  = monthStart
-                    mode           = .month
-                    jumpToDate     = nil
+                    jump(to: d, animated: false)
+                    jumpToDate = nil
+                }
+                if let ev = jumpToEvent {
+                    jump(to: ev.date, animated: false)
+                    present(ev)
+                    jumpToEvent = nil
                 }
             }
             .onChange(of: jumpToDate) { _, newDate in
                 guard let d = newDate else { return }
-                let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: d))
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    selectedDate   = d
-                    displayedMonth = monthStart ?? d
-                    monthScrollID  = monthStart
-                    mode           = .month
-                }
+                jump(to: d, animated: true)
                 jumpToDate = nil
+            }
+            .onChange(of: jumpToEvent) { _, newEvent in
+                guard let ev = newEvent else { return }
+                jump(to: ev.date, animated: true)
+                present(ev)
+                jumpToEvent = nil
             }
             .sheet(isPresented: $showAddEvent) {
                 NativeAddEventSheet(store: calSvc, preselectedDate: selectedDate) { event, cat, repeatRule, travelTime, alertOption, colorHex, location, inviteeIDs, scope in
@@ -276,6 +284,32 @@ struct FamilyCalendarView: View {
             } message: {
                 Text("Remove \"\(eventToDelete?.title ?? "this event")\"?")
             }
+        }
+    }
+
+    // MARK: - Dashboard jumps
+    /// Move the calendar to `date` in month mode. Shared by the dashboard's day-strip
+    /// jumps and its event-row jumps so both land identically.
+    private func jump(to date: Date, animated: Bool) {
+        let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: date))
+        let apply = {
+            selectedDate   = date
+            displayedMonth = monthStart ?? date
+            monthScrollID  = monthStart
+            mode           = .month
+        }
+        if animated { withAnimation(.easeInOut(duration: 0.25)) { apply() } } else { apply() }
+    }
+
+    /// Open an event's detail sheet, preferring this view model's copy over the one the
+    /// Dashboard handed us so edit and delete act on current data.
+    ///
+    /// The delay lets the tab-switch spring and the calendar jump settle first: a sheet
+    /// presented in the same frame the tab is created in gets dropped by SwiftUI.
+    private func present(_ event: CalendarEvent) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            eventToView = vm.events.first { $0.id == event.id } ?? event
         }
     }
 
