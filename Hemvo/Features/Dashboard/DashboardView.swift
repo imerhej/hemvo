@@ -375,10 +375,15 @@ struct WarmMiniCalendarStrip: View {
 }
 
 // MARK: - Stat card metrics
-/// Shared by every summary tile so the two grid rows stay the same height — the bills
-/// tile is the tallest of them when it splits in two, and `LazyVGrid` sizes each row
-/// to its tallest cell independently. 170 is what the split tile needs at its natural
-/// size: 14 + 40 icon + 10 + 34 value/label + 10 + 4 + 44 buttons + 14.
+/// Shared by every summary tile so both grid rows stay the same height.
+///
+/// All four tiles end in the same 44pt full-width action strip — the plain tiles' "View"
+/// button and the bills tile's two scope buttons. That is what keeps them the same
+/// natural height: an earlier version ended the plain tiles in a small 22pt pill, so
+/// stretching them to the bills tile's height left ~40pt of dead space above it that
+/// they had nothing to fill with. `LazyVGrid` stretches a cell to its row's height and
+/// the layout's Spacer absorbs it, so a shorter floor does not avoid this — matching the
+/// action strips does.
 private let warmStatCardMinHeight: CGFloat = 170
 
 // MARK: - Upcoming Bills Stat Card
@@ -502,12 +507,13 @@ struct WarmStatCard: View {
                 .multilineTextAlignment(.center)
                 Spacer(minLength: 4)
                 HStack(spacing: 3) {
-                    Text("View").font(.system(size: 10, weight: .bold))
-                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold))
+                    Text("View").font(.system(size: 11, weight: .bold))
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
                 }
                 .foregroundColor(color)
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(color.opacity(0.1)).cornerRadius(8)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(color.opacity(0.1))
+                .cornerRadius(10)
             }
             .padding(14)
             .frame(maxWidth: .infinity, minHeight: warmStatCardMinHeight, alignment: .center)
