@@ -172,41 +172,46 @@ final class PushNotificationService {
     }
 
     /// Sends a push notification only to household members whose permissions
-    /// include the given flag. Falls back to notifyHousehold when no member
-    /// list is available (e.g. solo user without a household).
+    /// include the given flag. Recipients are resolved from Supabase `profiles`
+    /// (the authoritative membership list) rather than `HouseholdService`'s
+    /// in-memory cache, so a member who joined after the sender last synced is
+    /// still notified. Falls back to notifyHousehold when no household is set
+    /// (e.g. solo user without a household).
     func notifyHouseholdFiltered(
         permission: KeyPath<MemberPermissions, Bool>,
         title: String, body: String
     ) async {
-        let members = await MainActor.run { HouseholdService.shared.household?.members ?? [] }
-        guard !members.isEmpty else {
+        let householdID: String? = await MainActor.run { HouseholdService.shared.household?.id }
+        guard let householdID else {
             await notifyHousehold(title: title, body: body)
             return
         }
-        let targetIDs = members
-            .filter { $0.permissions[keyPath: permission] }
-            .compactMap { UUID(uuidString: $0.id) }
-        guard !targetIDs.isEmpty else { return }
-        await notifyUsers(targetIDs, title: title, body: body)
+        let creatorID = await AuthService.shared.currentUserID()?.uuidString
+        await notifyHouseholdFiltered(
+            householdID: householdID, creatorID: creatorID,
+            permission: permission, title: title, body: body
+        )
     }
 
     /// Sends a push to household members who have the given permission enabled,
     /// excluding the specified user IDs (e.g. invitees who already got a personalised push).
+    /// Like `notifyHouseholdFiltered`, membership is resolved from Supabase
+    /// `profiles` so recently-joined members aren't missed.
     func notifyHouseholdExcludingFiltered(
         userIDs: [UUID], permission: KeyPath<MemberPermissions, Bool>,
         title: String, body: String
     ) async {
-        let members = await MainActor.run { HouseholdService.shared.household?.members ?? [] }
-        guard !members.isEmpty else {
+        let householdID: String? = await MainActor.run { HouseholdService.shared.household?.id }
+        guard let householdID else {
             await notifyHouseholdExcluding(userIDs: userIDs, title: title, body: body)
             return
         }
-        let excludeSet = Set(userIDs.map { $0.uuidString.lowercased() })
-        let targetIDs = members
-            .filter { !excludeSet.contains($0.id.lowercased()) && $0.permissions[keyPath: permission] }
-            .compactMap { UUID(uuidString: $0.id) }
-        guard !targetIDs.isEmpty else { return }
-        await notifyUsers(targetIDs, title: title, body: body)
+        let creatorID = await AuthService.shared.currentUserID()?.uuidString
+        await notifyHouseholdFiltered(
+            householdID: householdID, creatorID: creatorID,
+            permission: permission, excludeUserIDs: userIDs,
+            title: title, body: body
+        )
     }
 
     /// Sends a push to household members who have the given permission enabled,
@@ -218,6 +223,7 @@ final class PushNotificationService {
     func notifyHouseholdFiltered(
         householdID: String, creatorID: String?,
         permission: KeyPath<MemberPermissions, Bool>,
+        excludeUserIDs: [UUID] = [],
         title: String, body: String
     ) async {
         struct ProfileRow: Decodable {
@@ -232,8 +238,10 @@ final class PushNotificationService {
                 .eq("household_id", value: householdID)
                 .execute()
                 .value
+            let excludeSet = Set(excludeUserIDs.map { $0.uuidString.lowercased() })
             let targetIDs = profiles.compactMap { row -> UUID? in
                 if row.id.uuidString == creatorID { return nil }
+                if excludeSet.contains(row.id.uuidString.lowercased()) { return nil }
                 let role  = HouseholdRole(rawValue: row.role ?? "") ?? .adult
                 let perms = row.permissions ?? .defaults(for: role)
                 return perms[keyPath: permission] ? row.id : nil
