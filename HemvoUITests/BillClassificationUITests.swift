@@ -2,7 +2,7 @@
 // HemvoUITests
 //
 // Drives the Budget tab and proves the isBill split: an expense saved with
-// "Bill — pay later" ON is an unpaid bill and must appear under Upcoming Bills,
+// "Bill Pay" ON is an unpaid bill and must appear under Upcoming Bills,
 // not Recent Expenses — the bug where leaving "Recurring" off silently
 // reclassified a bill as money already spent.
 //
@@ -74,7 +74,7 @@ final class BillClassificationUITests: XCTestCase {
                        "Save was enabled with neither Bill nor Already Paid set")
 
         // OptionRow uses Toggle("", isOn:) — no label — so index it.
-        // 0 = "Bill — pay later", 1 = "Already Paid". Leave Already Paid OFF: unpaid is the point.
+        // 0 = "Bill Pay", 1 = "Already Paid". Leave Already Paid OFF: unpaid is the point.
         let billToggle = app.switches.element(boundBy: 0)
         XCTAssertTrue(billToggle.waitForExistence(timeout: 5), "Bill toggle missing")
         billToggle.tap()

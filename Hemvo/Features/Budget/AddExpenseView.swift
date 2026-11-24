@@ -77,7 +77,7 @@ struct AddExpenseView: View {
                         VStack(spacing: 0) {
                             OptionRow(
                                 icon: "calendar.badge.clock",
-                                label: "Bill — pay later",
+                                label: "Bill Pay",
                                 color: Color.bpSlate,
                                 isOn: $isBill
                             )
@@ -92,7 +92,7 @@ struct AddExpenseView: View {
                         .background(Color.bpSurface)
                         .cornerRadius(14)
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.bpDivider, lineWidth: 1))
-                        // "Bill — pay later" and "Already Paid" are opposite states (money owed
+                        // "Bill Pay" and "Already Paid" are opposite states (money owed
                         // vs. money spent). Keep them mutually exclusive so an expense can't be
                         // filed as both — which would land it in Recent instead of Upcoming Bills.
                         .onChange(of: isBill) { _, on in if on { isPaid = false } }

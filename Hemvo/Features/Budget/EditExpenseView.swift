@@ -75,7 +75,7 @@ struct EditExpenseView: View {
                         VStack(spacing: 0) {
                             OptionRow(
                                 icon: "calendar.badge.clock",
-                                label: "Bill — pay later",
+                                label: "Bill Pay",
                                 color: Color.bpSlate,
                                 isOn: $isBill
                             )
