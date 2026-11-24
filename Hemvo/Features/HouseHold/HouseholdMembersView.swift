@@ -24,6 +24,8 @@ struct HouseholdMembersView: View {
     @State private var memberToDelete:          HouseholdMembership? = nil
     @State private var memberToToggleDisabled:  HouseholdMembership? = nil
     @State private var memberToEditPermissions: HouseholdMembership? = nil
+    @State private var actionError:             String? = nil
+    @State private var isLeaving                = false
 
     private let amber   = Color(red: 0.784, green: 0.573, blue: 0.165)
     private let bg      = Color(red: 0.980, green: 0.969, blue: 0.949)
@@ -52,16 +54,31 @@ struct HouseholdMembersView: View {
 
     // MARK: - Body
 
+    // Split from `body`: the full modifier chain in one expression exceeded
+    // the type-checker's time limit.
+    private var screen: some View {
+        ZStack {
+            bg.ignoresSafeArea()
+            if household == nil {
+                noHouseholdState
+            } else {
+                householdContent
+            }
+        }
+        .alert(
+            "Something Went Wrong",
+            isPresented: Binding(get: { actionError != nil },
+                                 set: { if !$0 { actionError = nil } })
+        ) {
+            Button("OK", role: .cancel) { actionError = nil }
+        } message: {
+            Text(actionError ?? "")
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            ZStack {
-                bg.ignoresSafeArea()
-                if household == nil {
-                    noHouseholdState
-                } else {
-                    householdContent
-                }
-            }
+            screen
             .navigationTitle("Household")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.light, for: .navigationBar)
@@ -410,8 +427,12 @@ struct HouseholdMembersView: View {
     private var dangerSection: some View {
         Button { showLeaveConfirm = true } label: {
             HStack {
-                Image(systemName: "rectangle.portrait.and.arrow.right")
-                Text("Leave Household").font(.system(size: 15, weight: .semibold))
+                if isLeaving {
+                    ProgressView().tint(.red)
+                } else {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                    Text("Leave Household").font(.system(size: 15, weight: .semibold))
+                }
             }
             .foregroundStyle(.red)
             .frame(maxWidth: .infinity)
@@ -419,25 +440,35 @@ struct HouseholdMembersView: View {
             .background(Color.red.opacity(0.07))
             .cornerRadius(12)
         }
+        .disabled(isLeaving)
         .padding(.top, 8)
     }
 
     // MARK: - Actions
 
     private func doRename() {
-        let trimmed = newHouseholdName.trimmingCharacters(in: .whitespaces)
+        let trimmed = newHouseholdName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        try? householdService.renameHousehold(trimmed, requestingUserID: currentUserID)
+        Task {
+            do {
+                try await householdService.renameHousehold(trimmed, requestingUserID: currentUserID)
+            } catch {
+                actionError = error.localizedDescription
+            }
+        }
     }
 
     private func doRemoveMember(_ memberID: String) {
-        do {
-            try householdService.removeMember(
-                memberID: memberID,
-                requestingUserID: currentUserID
-            )
-        } catch {
-            Logger.household.error("removeMember error: \(error.localizedDescription)")
+        Task {
+            do {
+                try await householdService.removeMember(
+                    memberID: memberID,
+                    requestingUserID: currentUserID
+                )
+            } catch {
+                Logger.household.error("removeMember error: \(error.localizedDescription)")
+                actionError = error.localizedDescription
+            }
         }
     }
 
@@ -446,7 +477,15 @@ struct HouseholdMembersView: View {
     }
 
     private func doLeave() {
-        householdService.leaveHousehold(userID: currentUserID)
+        isLeaving = true
+        Task {
+            do {
+                try await householdService.leaveHousehold()
+            } catch {
+                actionError = error.localizedDescription
+            }
+            isLeaving = false
+        }
     }
 }
 
@@ -463,6 +502,11 @@ struct HouseholdInviteSheet: View {
     @State private var permissions:   MemberPermissions = .defaults(for: .adult)
     @State private var errorMessage:  String?
     @State private var didSend        = false
+    @State private var isSending      = false
+    /// Set when the invite saved but the email didn't go out — the owner must
+    /// share this code by hand, so the success screen has to show it.
+    @State private var undeliveredCode: String?
+    @State private var codeCopied     = false
     @FocusState private var emailFocused: Bool
 
     private let amber   = Color(red: 0.784, green: 0.573, blue: 0.165)
@@ -476,8 +520,14 @@ struct HouseholdInviteSheet: View {
     private var inviterName: String {
         authVM.profile?.fullName ?? "A Hemvo member"
     }
+    // Same fallback as HouseholdMembersView / HouseholdSetupView: the session
+    // userID is available before the profiles round-trip finishes.
     private var inviterID: String {
-        authVM.profile?.id.uuidString ?? ""
+        authVM.profile?.id.uuidString ?? authVM.userID?.uuidString ?? ""
+    }
+
+    private var trimmedEmail: String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var body: some View {
@@ -515,7 +565,9 @@ struct HouseholdInviteSheet: View {
                 Text("EMAIL ADDRESS")
                     .font(.system(size: 10, weight: .heavy)).kerning(1.4)
                     .foregroundStyle(muted)
-                TextField("family@example.com", text: $email)
+                TextField("", text: $email,
+                          prompt: Text("family@example.com").foregroundStyle(muted.opacity(0.7)))
+                    .foregroundStyle(brown)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -562,18 +614,21 @@ struct HouseholdInviteSheet: View {
             }
 
             Button(action: sendInvite) {
-                Label("Send Invite", systemImage: "envelope.fill")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(
-                        email.trimmingCharacters(in: .whitespaces).isEmpty
-                            ? amber.opacity(0.5) : amber
-                    )
-                    .cornerRadius(14)
+                Group {
+                    if isSending {
+                        ProgressView().tint(.white)
+                    } else {
+                        Label("Send Invite", systemImage: "envelope.fill")
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(trimmedEmail.isEmpty || isSending ? amber.opacity(0.5) : amber)
+                .cornerRadius(14)
             }
-            .disabled(email.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(trimmedEmail.isEmpty || isSending)
         }
     }
 
@@ -581,16 +636,47 @@ struct HouseholdInviteSheet: View {
 
     private var successView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 60))
-                .foregroundStyle(green)
-            Text("Invite Sent!")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(brown)
-            Text("An invitation email has been sent to \(email). Once they enter the code in Hemvo they'll join your household automatically.")
-                .font(.system(size: 14))
-                .foregroundStyle(muted)
-                .multilineTextAlignment(.center)
+            if let code = undeliveredCode {
+                Image(systemName: "envelope.badge.fill")
+                    .font(.system(size: 56))
+                    .foregroundStyle(amber)
+                Text("Invite Created")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(brown)
+                Text("We couldn't deliver the email to \(trimmedEmail). Share this code with them — they enter it under Join a Household.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(muted)
+                    .multilineTextAlignment(.center)
+                Text(code)
+                    .font(.system(size: 28, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(brown)
+                    .textSelection(.enabled)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.white)
+                    .cornerRadius(12)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(divider, lineWidth: 1))
+                Button {
+                    UIPasteboard.general.string = code
+                    codeCopied = true
+                } label: {
+                    Label(codeCopied ? "Copied" : "Copy Code",
+                          systemImage: codeCopied ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(amber)
+                }
+            } else {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 60))
+                    .foregroundStyle(green)
+                Text("Invite Sent!")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(brown)
+                Text("An invitation email has been sent to \(trimmedEmail). Once they enter the code in Hemvo they'll join your household automatically.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(muted)
+                    .multilineTextAlignment(.center)
+            }
             Button("Done") { dismiss() }
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(.white)
@@ -610,12 +696,15 @@ struct HouseholdInviteSheet: View {
             errorMessage = "Could not identify your account. Please try again."
             return
         }
+        guard !isSending else { return }
         errorMessage = nil
+        isSending    = true
 
         Task {
+            defer { isSending = false }
             do {
                 try await householdService.inviteMember(
-                    email:         email.trimmingCharacters(in: .whitespaces),
+                    email:         trimmedEmail,
                     role:          role,
                     permissions:   permissions,
                     inviterName:   inviterName,
@@ -623,10 +712,10 @@ struct HouseholdInviteSheet: View {
                 )
                 withAnimation { didSend = true }
             } catch HouseholdError.emailFailed(let code) {
-                // Invite was saved — show success but surface the code so
-                // the owner can share it manually if email didn't arrive.
+                // Invite was saved but the email didn't go out — the success
+                // screen shows the code so the owner can share it by hand.
+                undeliveredCode = code
                 withAnimation { didSend = true }
-                errorMessage = "Email delivery failed. Share this code with \(email): \(code)"
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -677,6 +766,7 @@ struct PermissionsToggleSection: View {
                     .frame(width: 24)
                 Text(label)
                     .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color(red: 0.102, green: 0.071, blue: 0.031))
             }
         }
         .toggleStyle(SwitchToggleStyle(tint: amber))
