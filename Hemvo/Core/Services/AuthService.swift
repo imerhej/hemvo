@@ -143,26 +143,20 @@ final class AuthService {
     }
 
     // MARK: - Delete Account
-    // The delete_my_account RPC (SECURITY DEFINER) deletes the auth.users row.
-    // Migration 20260626120000 added ON DELETE CASCADE on every FK referencing
-    // auth.users(id), so the DB atomically removes all user-owned rows:
-    //   households (owner_id CASCADE) → events, house_tasks, notification_schedule
-    //   expenses, meals, grocery_items, shopping_lists, shopping_items, device_tokens
-    //   profiles (id CASCADE, household_id SET NULL for remaining members)
-    // If this user owns a household we delete it first via their own JWT so the
-    // RLS policy (owner_id = auth.uid()) is satisfied before the auth row is gone.
+    // The delete_my_account RPC (SECURITY DEFINER) does the whole thing in one
+    // transaction (migrations 20261124120000 + 20261124130000):
+    //   1. leave_household_safely() — a member detaches; an owner with other
+    //      members hands ownership to a successor; a last member deletes the
+    //      household.
+    //   2. The caller's SHARED rows in that household (meals, groceries,
+    //      maintenance, shopping lists, household-scope expenses/events) are
+    //      reassigned to whoever stays in charge, so they survive.
+    //   3. DELETE auth.users — cascades the profile and the caller's PERSONAL rows.
+    // Don't delete the household from the client first: for an owner with
+    // members that would wipe everyone's shared data (and the profile guard
+    // trigger rejects it anyway).
     func deleteAccount() async throws {
-        guard let uid = await currentUserID() else { throw AuthError.notLoggedIn }
-
-        if let hh = HouseholdService.shared.household,
-           hh.ownerUserID == uid.uuidString {
-            _ = try? await supabase
-                .from("households")
-                .delete()
-                .eq("id", value: hh.id)
-                .execute()
-        }
-
+        guard await currentUserID() != nil else { throw AuthError.notLoggedIn }
         try await supabase.rpc("delete_my_account").execute()
     }
 
