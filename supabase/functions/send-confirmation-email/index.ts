@@ -1,7 +1,7 @@
 // send-confirmation-email — Supabase Edge Function
-// Generates a Supabase signup confirmation link via the Admin API and delivers
-// it via Resend. Called right after auth.signUp() so confirmation emails use
-// Resend instead of Supabase's rate-limited default SMTP.
+// Re-sends the signup confirmation link for an existing, unconfirmed account
+// via Resend. Called by the "Resend" button on hemvo.app/verify-email.html
+// (the app's own sign-up goes through create-account).
 //
 // Secrets used (already set):
 //   RESEND_API_KEY, FROM_ADDRESS, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -88,51 +88,37 @@ serve(async (req: Request) => {
     return jsonError(429, "Too many requests — please wait before requesting another confirmation email");
   }
 
-  // Guard: only generate a link for an account that already exists.
-  // generateLink({ type: "magiclink" }) creates a bare user as a side-effect if
-  // the email is not in auth.users — this check prevents that from happening when
-  // the app calls this function after a failed signUp.
-  const { data: existingUser } = await admin.auth.admin.getUserByEmail(email);
-  if (!existingUser?.user) {
-    // Return success silently — leaking 404 would confirm that an email is
-    // not registered, enabling account enumeration via this endpoint.
-    console.log(`send-confirmation-email: no account found for [redacted], returning silent 200`);
+  // Per-address limit (the old 60 s check read confirmation_sent_at off
+  // admin.getUserByEmail, which doesn't exist in supabase-js v2 — every call
+  // threw, so the hemvo.app "Resend" button never worked).
+  if (!await isAllowed(admin, email.toLowerCase(), "confirmation-email", 3, 60)) {
+    return jsonError(429, "Too many requests — please wait before requesting another confirmation email");
+  }
+
+  // A SIGNUP confirmation link, never a magic link. Supabase Auth erases the
+  // password of an unconfirmed user who confirms through a magic link, so the
+  // new account could no longer sign in with the password it was created with
+  // (verified against the live project 2026-11-24).
+  //
+  // Without a password, generateLink({type:"signup"}) only works for an
+  // existing UNCONFIRMED user and leaves that user's password untouched:
+  //   • unknown email   → 400 validation_failed, no user created
+  //   • confirmed email → 422 email_exists
+  // Both are answered with a silent 200 so this endpoint can't be used to
+  // enumerate which emails are registered.
+  // deno-lint-ignore no-explicit-any
+  const linkParams: any = { type: "signup", email, options: { redirectTo: REDIRECT_TO } };
+  const { data, error: genError } = await admin.auth.admin.generateLink(linkParams);
+
+  if (genError || !data?.properties?.hashed_token) {
+    console.log(`send-confirmation-email: no link (${genError?.message ?? "no token"}) — silent 200`);
     return new Response(JSON.stringify({ sent: false }), {
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  // Rate limit: at most one confirmation email per 60 seconds per address.
-  // Uses the confirmation_sent_at timestamp already maintained by Supabase Auth —
-  // no extra table required.
-  const lastSent = existingUser.user.confirmation_sent_at;
-  if (lastSent) {
-    const secondsAgo = (Date.now() - new Date(lastSent).getTime()) / 1000;
-    if (secondsAgo < 60) {
-      return jsonError(429, "Too many requests — please wait before requesting another confirmation email");
-    }
-  }
-
-  // Use magiclink instead of signup — magiclink requires no password, works for
-  // unconfirmed users, and logs the user in on click (confirming their email
-  // in the same step).
-  const { data, error: genError } = await admin.auth.admin.generateLink({
-    type: "magiclink",
-    email,
-    options: { redirectTo: REDIRECT_TO },
-  });
-
-  if (genError || !data?.properties?.action_link) {
-    console.error(
-      `Confirmation link not generated: ${genError?.message ?? "no link"}`
-    );
-    return jsonError(502, "Could not generate confirmation link");
-  }
-
-  const rawLink     = data.properties.action_link;
-  const rawUrl      = new URL(rawLink);
-  const token       = rawUrl.searchParams.get("token") ?? "";
-  const type        = rawUrl.searchParams.get("type") ?? "magiclink";
+  const token       = data.properties.hashed_token;
+  const type        = data.properties.verification_type ?? "signup";
   const confirmLink = `https://hemvo.app/verify-email.html?token=${encodeURIComponent(token)}&type=${encodeURIComponent(type)}&email=${encodeURIComponent(email)}`;
   const safeEmail   = htmlEscape(email);
   const year        = new Date().getFullYear();
