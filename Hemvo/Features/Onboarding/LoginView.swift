@@ -1026,7 +1026,6 @@ struct PasswordLoginField: View {
                 .font(.system(size: 15))
                 .foregroundColor(focused ? accent : Color(.systemGray3))
                 .frame(width: 20).padding(.leading, 16)
-                .animation(.easeInOut(duration: 0.15), value: focused)
             Group {
                 if showText {
                     TextField(label, text: $text)
@@ -1063,7 +1062,6 @@ struct PasswordLoginField: View {
             .padding(.trailing, 14)
         }
         .background(focused ? accent.opacity(0.04) : Color.clear)
-        .animation(.easeInOut(duration: 0.15), value: focused)
     }
 }
 
@@ -1092,7 +1090,6 @@ struct LoginField: View {
                 .font(.system(size: 15))
                 .foregroundColor(focused ? accent : Color(.systemGray3))
                 .frame(width: 20).padding(.leading, 16)
-                .animation(.easeInOut(duration: 0.15), value: focused)
             Group {
                 if isSecure {
                     SecureField(label, text: $text)
@@ -1131,7 +1128,6 @@ struct LoginField: View {
             }
         }
         .background(focused ? accent.opacity(0.04) : Color.clear)
-        .animation(.easeInOut(duration: 0.15), value: focused)
     }
 }
 

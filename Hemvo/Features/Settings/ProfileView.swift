@@ -321,7 +321,6 @@ struct WarmPersonalSection: View {
                         focused != nil ? amber.opacity(0.5) : divider,
                         lineWidth: focused != nil ? 2 : 1
                     )
-                    .animation(.easeInOut(duration: 0.15), value: focused != nil)
             )
             .shake(trigger: shake)
 
@@ -395,14 +394,12 @@ struct WarmPersonalSection: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(focused == field ? amber : muted)
             }
-            .animation(.easeInOut(duration: 0.15), value: focused == field)
             .padding(.leading, 16)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
                     .font(.system(size: 9, weight: .heavy)).kerning(1.2)
                     .foregroundColor(focused == field ? amber : muted)
-                    .animation(.easeInOut(duration: 0.15), value: focused == field)
                 TextField(placeholder, text: text)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(brown)
@@ -425,7 +422,6 @@ struct WarmPersonalSection: View {
         }
         .padding(.vertical, 14)
         .background(focused == field ? amberBg.opacity(0.3) : Color.clear)
-        .animation(.easeInOut(duration: 0.15), value: focused == field)
     }
 
     private func fieldHint(_ text: String) -> some View {
@@ -593,7 +589,6 @@ struct SecuritySection: View {
                         focusedField != nil ? Color.bpNavy.opacity(0.4) : Color.bpDivider,
                         lineWidth: focusedField != nil ? 2 : 1
                     )
-                    .animation(.easeInOut(duration: 0.15), value: focusedField != nil)
             )
             .shadow(color: Color.bpText.opacity(0.04), radius: 6, y: 2)
             .shake(trigger: shake)
@@ -744,13 +739,11 @@ private struct SecurityPasswordRow: View {
                 Image(systemName: icon)
                     .font(.system(size: 13, weight: .semibold)).foregroundColor(accentColor)
             }
-            .animation(.easeInOut(duration: 0.15), value: isFocused)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
                     .font(.system(size: 10, weight: .heavy)).kerning(0.5)
                     .foregroundColor(isFocused ? Color.bpNavy : Color.bpTextSub)
-                    .animation(.easeInOut(duration: 0.15), value: isFocused)
                 // Only one field lives in the hierarchy at a time so the two
                 // views never compete for first-responder with the same tag.
                 // onChange re-focuses the newly visible field to keep the keyboard up.
@@ -798,7 +791,6 @@ private struct SecurityPasswordRow: View {
         }
         .padding(.horizontal, 14).padding(.vertical, 14)
         .background(isFocused ? Color.bpNavyLight.opacity(0.4) : Color.clear)
-        .animation(.easeInOut(duration: 0.15), value: isFocused)
     }
 }
 

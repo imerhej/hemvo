@@ -53,6 +53,7 @@ struct BudgetEditorView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 20)
                 }
+                .scrollDismissesKeyboard(.interactively)
 
                 // ── Toast ────────────────────────────────────
                 if showSavedToast {
@@ -85,16 +86,27 @@ struct BudgetEditorView: View {
                         .foregroundColor(.primary)
                 }
             }
-            .onAppear {
-                prefill()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { incomeFocused = true }
+            // No auto-focus on appear and no screen-wide tap-to-unfocus.
+            // Both changed focus while something was animating (the sheet
+            // presentation; the field border), and showing the keyboard while
+            // a SwiftUI animation is in flight deadlocks UIKit's keyboard
+            // reload against SwiftUI's async renderer — the app freezes at 0%
+            // CPU with no crash log. See BudgetEditorView freeze, 2026-11-24.
+            // The decimal pad has no return key, so dismissal is a toolbar
+            // button plus dragging the scroll view.
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { hideKeyboard() }
+                        .font(.system(size: 15, weight: .semibold))
+                }
             }
+            .onAppear { prefill() }
             .onChange(of: vm.budget.categories.count) { _, _ in
                 for cat in vm.monthCategories where categoryLimits[cat.name] == nil {
                     categoryLimits[cat.name] = String(Int(cat.limit))
                 }
             }
-            .onTapGesture { incomeFocused = false }
         }
     }
 
@@ -140,7 +152,6 @@ struct BudgetEditorView: View {
                         incomeFocused ? Color.bpNavy : Color.bpDivider,
                         lineWidth: incomeFocused ? 2 : 1
                     )
-                    .animation(.easeInOut(duration: 0.15), value: incomeFocused)
             )
             .shadow(color: incomeFocused ? Color.bpNavy.opacity(0.1) : .clear, radius: 8, y: 3)
             .shake(trigger: shakeTrigger)
@@ -159,7 +170,6 @@ struct BudgetEditorView: View {
                                 .background(isSelected ? Color.bpNavy : Color.bpNavyLight)
                                 .cornerRadius(20)
                         }
-                        .animation(.easeInOut(duration: 0.12), value: isSelected)
                     }
                 }
             }
@@ -202,7 +212,6 @@ struct BudgetEditorView: View {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(isOverBudget ? Color.red : Color.bpNavy)
                         .frame(width: geo.size.width * allocationPct, height: 10)
-                        .animation(.spring(response: 0.4), value: allocationPct)
                 }
             }
             .frame(height: 10)
@@ -293,7 +302,6 @@ struct BudgetEditorView: View {
             .background(income > 0 ? Color.bpNavy : Color.bpDivider)
             .cornerRadius(16)
             .shadow(color: income > 0 ? Color.bpNavy.opacity(0.35) : .clear, radius: 10, y: 4)
-            .animation(.easeInOut(duration: 0.15), value: income > 0)
         }
         .disabled(income <= 0)
     }
@@ -337,6 +345,9 @@ struct BudgetEditorView: View {
     }
 
     private func save() {
+        // Drop the keyboard BEFORE the toast animation starts, so the
+        // keyboard teardown never overlaps an in-flight SwiftUI animation.
+        hideKeyboard()
         guard let inc = Double(incomeText), inc > 0 else {
             withAnimation { shakeTrigger += 1 }
             return
@@ -453,7 +464,6 @@ struct BudgetEditorCategoryRow: View {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(catColor)
                         .frame(width: geo.size.width * pct, height: 5)
-                        .animation(.spring(response: 0.3), value: pct)
                 }
             }
             .frame(height: 5)
