@@ -51,7 +51,7 @@ final class CertificatePinner: NSObject, URLSessionDelegate {
     // MARK: - Pinned hashes
     // SHA-256 of the SubjectPublicKeyInfo DER bytes, base64-encoded.
     // Managed by .github/workflows/check-cert-pins.yml (runs every Monday).
-    // Last checked: 2026-10-04 — live host serves the 2026-11-24 leaf below.
+    // Last checked: 2026-11-24 — live host serves the 2027-01-22 leaf below.
     // New hashes are added alongside old ones (parallel pinning); hashes whose
     // expiry date is >14 days past are pruned automatically on the next run.
     //
@@ -60,10 +60,12 @@ final class CertificatePinner: NSObject, URLSessionDelegate {
     // chain walk below accepts a match at any depth, which is the single reason traffic
     // kept validating — leaf-only pinning would have taken the app offline. Keep an
     // intermediate pinned.
+    // 2026-11-24: it happened again — the leaf rotated on 2026-10-24 and only WE1 matched
+    // for a month. The GTS Root R4 is now pinned too as a second long-lived anchor.
     private static let pinnedHashes: Set<String> = [
-        "yyBDqvMo9Jc2CwnVJBDj8TE8u5xHielbUS/+h7VM2xs=",  // leaf — CURRENTLY LIVE (served since 2026-08-26, expires 2026-11-24; refresh pins by ~2026-11-03)
-        "ZcJbApTb7wyllleAjHw2vYAskqdT+DhMY9aPDFwAtf4=",  // leaf — previous cert, expired 2026-09-26, no longer served (prune after 2026-10-10 per the >14-day rule)
-        "kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4="   // Google Trust Services WE1 intermediate CA (expires 2029-02-20)
+        "B9zUXavotYYIs217h2OZnCqCTp2vB/2pNC1zDijcIAo=",  // leaf — CURRENTLY LIVE (served since 2026-10-24, expires 2027-01-22; refresh pins by ~2026-12-23)
+        "kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4=",  // Google Trust Services WE1 intermediate CA (expires 2029-02-20)
+        "mEflZT5enoR1FuXLgYYGqnVEoZvmf9c2bVBpiOjYQ0c="   // GTS Root R4 (cross-signed copy served in chain, expires 2028-01-28)
     ]
 
     // MARK: - URLSessionDelegate
