@@ -10,14 +10,16 @@ struct HouseholdSetupView: View {
     @EnvironmentObject private var authVM: AuthViewModel
     @StateObject private var householdService = HouseholdService.shared
     @Environment(\.dismiss) private var dismiss
+    /// True when shown as a sheet (from HouseholdMembersView); false when it is
+    /// RootView's own screen, where `dismiss()` is a no-op and RootView swaps
+    /// to ContentView by itself as soon as `household` becomes non-nil.
+    @Environment(\.isPresented) private var isPresented
 
     @State private var mode: SetupMode      = .choose
     @State private var householdName        = ""
     @State private var joinCode             = ""
     @State private var errorMessage: String?
     @State private var isLoading            = false
-    @State private var showSuccess          = false
-    @State private var successMessage       = ""
 
     @FocusState private var nameFocused: Bool
     @FocusState private var codeFocused: Bool
@@ -58,11 +60,14 @@ struct HouseholdSetupView: View {
                 .padding(.bottom, 40)
             }
         }
-        .alert("Success", isPresented: $showSuccess) {
-            Button("Let's go!") { dismiss() }
-        } message: {
-            Text(successMessage)
-        }
+        // Any edit clears a stale error from the previous attempt.
+        .onChange(of: householdName) { _, _ in errorMessage = nil }
+        .onChange(of: joinCode)      { _, _ in errorMessage = nil }
+    }
+
+    /// A household code is 8 characters plus an optional dash ("ABCD-EFGH").
+    private var normalizedJoinCode: String {
+        joinCode.uppercased().filter { $0.isLetter || $0.isNumber }
     }
 
     // MARK: - Header
@@ -148,7 +153,13 @@ struct HouseholdSetupView: View {
                 Text("HOUSEHOLD NAME")
                     .font(.system(size: 10, weight: .heavy)).kerning(1.4)
                     .foregroundStyle(muted)
-                TextField("e.g. The Henderson House", text: $householdName)
+                // Explicit text + prompt colours: the field sits on a fixed
+                // white background, so the default (.primary) text colour
+                // renders white-on-white when the device is in Dark Mode.
+                TextField("", text: $householdName,
+                          prompt: Text("e.g. The Henderson House").foregroundStyle(muted.opacity(0.7)))
+                    .foregroundStyle(brown)
+                    .tint(amber)
                     .focused($nameFocused)
                     .submitLabel(.done)
                     .padding(14)
@@ -158,12 +169,12 @@ struct HouseholdSetupView: View {
                     .font(.system(size: 15, weight: .medium))
             }
             if let err = errorMessage { errorBanner(err) }
+            let isDisabled = householdName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading
             Button(action: createHousehold) {
                 primaryLabel("Create Household", loading: isLoading)
             }
-            .disabled(
-                householdName.trimmingCharacters(in: .whitespaces).isEmpty || isLoading
-            )
+            .disabled(isDisabled)
+            .opacity(isDisabled && !isLoading ? 0.5 : 1)
             backButton
         }
         .onAppear {
@@ -182,7 +193,10 @@ struct HouseholdSetupView: View {
                 Text("INVITE CODE")
                     .font(.system(size: 10, weight: .heavy)).kerning(1.4)
                     .foregroundStyle(muted)
-                TextField("e.g. ABCD-EFGH", text: $joinCode)
+                TextField("", text: $joinCode,
+                          prompt: Text("e.g. ABCD-EFGH").foregroundStyle(muted.opacity(0.7)))
+                    .foregroundStyle(brown)
+                    .tint(amber)
                     .focused($codeFocused)
                     .submitLabel(.done)
                     .textInputAutocapitalization(.characters)
@@ -198,13 +212,12 @@ struct HouseholdSetupView: View {
                     .foregroundStyle(muted)
             }
             if let err = errorMessage { errorBanner(err) }
-            let trimmed = joinCode.trimmingCharacters(in: .whitespacesAndNewlines)
-            let isDisabled = trimmed.count < 4 || isLoading
+            let isDisabled = normalizedJoinCode.count != 8 || isLoading
             Button(action: joinHousehold) {
                 primaryLabel("Join Household", loading: isLoading)
             }
             .disabled(isDisabled)
-            .opacity(isDisabled ? 0.5 : 1)
+            .opacity(isDisabled && !isLoading ? 0.5 : 1)
             backButton
         }
         .onAppear {
@@ -275,6 +288,7 @@ struct HouseholdSetupView: View {
     // MARK: - Actions
 
     private func createHousehold() {
+        guard !isLoading else { return }
         isLoading    = true
         errorMessage = nil
         Task {
@@ -287,19 +301,32 @@ struct HouseholdSetupView: View {
                 isLoading    = false
                 return
             }
-            householdService.createHousehold(
-                name:          householdName.trimmingCharacters(in: .whitespaces),
-                ownerID:       profileID,
-                ownerUsername: profileName,
-                ownerEmail:    profileEmail
-            )
-            isLoading      = false
-            successMessage = "Your household is ready. Invite family from Settings → Household Members."
-            showSuccess    = true
+            do {
+                try await householdService.createHousehold(
+                    name:          householdName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    ownerID:       profileID,
+                    ownerUsername: profileName,
+                    ownerEmail:    profileEmail
+                )
+                isLoading = false
+                finishSetup()
+            } catch {
+                errorMessage = error.localizedDescription
+                isLoading    = false
+            }
         }
     }
 
+    /// The old "Success" alert never appeared when this was RootView's own
+    /// screen: setting `household` swaps RootView to ContentView in the same
+    /// update, tearing this view (and its alert) down. Only a sheet needs an
+    /// explicit dismiss.
+    private func finishSetup() {
+        if isPresented { dismiss() }
+    }
+
     private func joinHousehold() {
+        guard !isLoading else { return }
         isLoading    = true
         errorMessage = nil
         Task {
@@ -316,9 +343,8 @@ struct HouseholdSetupView: View {
                     username: profileName,
                     email:    profileEmail
                 )
-                isLoading      = false
-                successMessage = "You've joined the household! Shared data will appear shortly."
-                showSuccess    = true
+                isLoading = false
+                finishSetup()
             } catch {
                 errorMessage = error.localizedDescription
                 isLoading    = false

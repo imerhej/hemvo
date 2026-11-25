@@ -241,6 +241,11 @@ struct WarmPersonalSection: View {
         selectedColor != (authVM.profile?.avatarColor ?? "#C8922A")
     }
 
+    // Same rules as sign-up — see ProfileValidator.
+    var isNameValid:     Bool { ProfileValidator.isValidName(name) }
+    var isUsernameValid: Bool { ProfileValidator.isValidUsername(username) }
+    var canSave: Bool { isDirty && isNameValid && isUsernameValid }
+
     var body: some View {
         VStack(spacing: 18) {
             warmLabel(icon: "person.fill", text: "ACCOUNT DETAILS")
@@ -258,6 +263,11 @@ struct WarmPersonalSection: View {
                     submitLabelType: .next,
                     onSubmitAction: { focused = .username }
                 )
+                // Also shown while empty once the form is dirty, so a legacy
+                // profile with a blank field explains its disabled Save button.
+                if !isNameValid && (!name.isEmpty || isDirty) {
+                    fieldHint(ProfileValidator.nameHint)
+                }
                 divider.frame(height: 1).padding(.leading, 52)
 
                 // Editable username field
@@ -272,6 +282,9 @@ struct WarmPersonalSection: View {
                     submitLabelType: .done,
                     onSubmitAction: { focused = nil }
                 )
+                if !isUsernameValid && (!username.isEmpty || isDirty) {
+                    fieldHint(ProfileValidator.usernameHint)
+                }
                 divider.frame(height: 1).padding(.leading, 52)
 
                 // Email — read-only
@@ -308,7 +321,6 @@ struct WarmPersonalSection: View {
                         focused != nil ? amber.opacity(0.5) : divider,
                         lineWidth: focused != nil ? 2 : 1
                     )
-                    .animation(.easeInOut(duration: 0.15), value: focused != nil)
             )
             .shake(trigger: shake)
 
@@ -341,11 +353,11 @@ struct WarmPersonalSection: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 17)
-                .background(isDirty ? amber : Color(.systemGray4))
+                .background(canSave ? amber : Color(.systemGray4))
                 .cornerRadius(16)
-                .animation(.easeInOut(duration: 0.15), value: isDirty)
+                .animation(.easeInOut(duration: 0.15), value: canSave)
             }
-            .disabled(!isDirty || isSaving)
+            .disabled(!canSave || isSaving)
 
             if showToast {
                 HStack(spacing: 10) {
@@ -382,14 +394,12 @@ struct WarmPersonalSection: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(focused == field ? amber : muted)
             }
-            .animation(.easeInOut(duration: 0.15), value: focused == field)
             .padding(.leading, 16)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
                     .font(.system(size: 9, weight: .heavy)).kerning(1.2)
                     .foregroundColor(focused == field ? amber : muted)
-                    .animation(.easeInOut(duration: 0.15), value: focused == field)
                 TextField(placeholder, text: text)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(brown)
@@ -412,7 +422,18 @@ struct WarmPersonalSection: View {
         }
         .padding(.vertical, 14)
         .background(focused == field ? amberBg.opacity(0.3) : Color.clear)
-        .animation(.easeInOut(duration: 0.15), value: focused == field)
+    }
+
+    private func fieldHint(_ text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 12, weight: .bold))
+            Text(text)
+                .font(.system(size: 12, weight: .semibold))
+        }
+        .foregroundColor(.red)
+        .padding(.leading, 62).padding(.trailing, 16).padding(.bottom, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func infoRow(label: String, value: String) -> some View {
@@ -435,8 +456,11 @@ struct WarmPersonalSection: View {
 
     // MARK: - Save to Supabase
     private func save() {
-        let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmedName.isEmpty else { withAnimation { shake += 1 }; return }
+        let trimmedName     = name.trimmingCharacters(in: .whitespaces)
+        let trimmedUsername = username.trimmingCharacters(in: .whitespaces)
+
+        guard isNameValid else { rejectSave(ProfileValidator.nameHint); return }
+        guard isUsernameValid else { rejectSave(ProfileValidator.usernameHint); return }
 
         focused  = nil
         isSaving = true
@@ -445,7 +469,7 @@ struct WarmPersonalSection: View {
             do {
                 try await AuthService.shared.updateProfile(
                     fullName: trimmedName,
-                    username: username,
+                    username: trimmedUsername,
                     avatarColor: selectedColor
                 )
                 // Refresh local profile
@@ -465,6 +489,18 @@ struct WarmPersonalSection: View {
                     withAnimation { shake += 1 }
                 }
             }
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            await MainActor.run { withAnimation { showToast = false } }
+        }
+    }
+
+    /// Surfaces a validation failure without touching Supabase.
+    private func rejectSave(_ message: String) {
+        toastMsg   = message
+        toastError = true
+        withAnimation(.spring()) { showToast = true }
+        withAnimation { shake += 1 }
+        Task {
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             await MainActor.run { withAnimation { showToast = false } }
         }
@@ -553,7 +589,6 @@ struct SecuritySection: View {
                         focusedField != nil ? Color.bpNavy.opacity(0.4) : Color.bpDivider,
                         lineWidth: focusedField != nil ? 2 : 1
                     )
-                    .animation(.easeInOut(duration: 0.15), value: focusedField != nil)
             )
             .shadow(color: Color.bpText.opacity(0.04), radius: 6, y: 2)
             .shake(trigger: shake)
@@ -704,13 +739,11 @@ private struct SecurityPasswordRow: View {
                 Image(systemName: icon)
                     .font(.system(size: 13, weight: .semibold)).foregroundColor(accentColor)
             }
-            .animation(.easeInOut(duration: 0.15), value: isFocused)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
                     .font(.system(size: 10, weight: .heavy)).kerning(0.5)
                     .foregroundColor(isFocused ? Color.bpNavy : Color.bpTextSub)
-                    .animation(.easeInOut(duration: 0.15), value: isFocused)
                 // Only one field lives in the hierarchy at a time so the two
                 // views never compete for first-responder with the same tag.
                 // onChange re-focuses the newly visible field to keep the keyboard up.
@@ -758,7 +791,6 @@ private struct SecurityPasswordRow: View {
         }
         .padding(.horizontal, 14).padding(.vertical, 14)
         .background(isFocused ? Color.bpNavyLight.opacity(0.4) : Color.clear)
-        .animation(.easeInOut(duration: 0.15), value: isFocused)
     }
 }
 

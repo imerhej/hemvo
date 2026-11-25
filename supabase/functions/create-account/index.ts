@@ -1,8 +1,12 @@
 // create-account — Supabase Edge Function
 // Creates a new user via the admin API (bypasses GoTrue's SMTP path entirely —
 // the client signUp() call causes GoTrue to delete the user if its own SMTP
-// delivery fails, which breaks the flow). After creation, generates a magic
-// link and delivers it via Resend so the user can confirm their email.
+// delivery fails, which breaks the flow). After creation, generates a SIGNUP
+// confirmation link and delivers it via Resend.
+//
+// Never use a magic link here: Supabase Auth erases the password of an
+// unconfirmed user who confirms through a magic link, which left every new
+// account unable to sign in until it ran "Forgot password" (2026-11-24).
 //
 // Secrets: RESEND_API_KEY, FROM_ADDRESS, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 // Deploy: supabase functions deploy create-account --no-verify-jwt
@@ -84,8 +88,16 @@ serve(async (req: Request) => {
   if (password.length < 8) return jsonError(400, "Password must be at least 8 characters");
   if (!/[A-Z]/.test(password)) return jsonError(400, "Password must contain at least one uppercase letter");
   if (!/[0-9]/.test(password)) return jsonError(400, "Password must contain at least one number");
-  if (fullName && fullName.length > 100) return jsonError(400, "Name is too long");
-  if (username && username.length > 30) return jsonError(400, "Username is too long");
+  // Name / username minimums mirror AppConstants.minNameLength / .minUsernameLength
+  // in the app — enforced here too so a modified client can't bypass them.
+  const trimmedName = (fullName ?? "").trim();
+  const trimmedUsername = (username ?? "").trim();
+  if (trimmedName.length < 3) return jsonError(400, "Name must be at least 3 characters");
+  if (trimmedName.length > 100) return jsonError(400, "Name is too long");
+  if (!/^[\p{L} '-]+$/u.test(trimmedName)) return jsonError(400, "Name can only contain letters, spaces, hyphens and apostrophes");
+  if (trimmedUsername.length < 3) return jsonError(400, "Username must be at least 3 characters");
+  if (trimmedUsername.length > 30) return jsonError(400, "Username is too long");
+  if (!/^[A-Za-z0-9_]+$/.test(trimmedUsername)) return jsonError(400, "Username can only contain letters, numbers and underscores");
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -111,8 +123,8 @@ serve(async (req: Request) => {
     password,
     email_confirm: false,
     user_metadata: {
-      full_name: fullName ?? "",
-      username:  (username ?? "").toLowerCase().trim(),
+      full_name: trimmedName,
+      username:  trimmedUsername.toLowerCase(),
     },
   });
 
@@ -124,19 +136,30 @@ serve(async (req: Request) => {
       || msg.includes("already exists") || msg.includes("duplicate");
 
     if (alreadyExists) {
-      // supabase-js has no admin.getUserByEmail — probe with generateLink
-      // instead: its response carries the user record, and the link itself is
-      // regenerated below before sending, so this one is never delivered.
+      // supabase-js has no admin.getUserByEmail — probe with a signup link
+      // instead. For a CONFIRMED user it fails with email_exists; for an
+      // unconfirmed one it returns the user record (and does not change the
+      // stored password). The link itself is regenerated below before sending.
       const { data: probe, error: probeErr } = await admin.auth.admin.generateLink({
-        type: "magiclink",
+        type: "signup",
         email,
+        password,
         options: { redirectTo: REDIRECT_TO },
       });
       if (probeErr || !probe?.user || probe.user.email_confirmed_at) {
         // Confirmed (or unknown) — this is a genuine "already registered" error.
         return jsonError(409, "An account with this email already exists. Please sign in instead.");
       }
-      // Unconfirmed — fall through and resend the confirmation link below.
+      // Unconfirmed — the person is signing up again, possibly with a new
+      // password. Previously the first attempt's password silently stuck, so
+      // the one they just typed never worked. The account isn't confirmed, so
+      // nobody has proven ownership of it yet: the latest sign-up's password
+      // wins, and only the real inbox owner can complete confirmation.
+      const { error: pwErr } = await admin.auth.admin.updateUserById(probe.user.id, { password });
+      if (pwErr) {
+        console.error(`create-account: password update for unconfirmed user failed: ${pwErr.message}`);
+        return jsonError(500, "Could not update your sign-up. Please try again.");
+      }
       console.log("create-account: resending confirmation for unconfirmed user [redacted]");
     } else {
       console.error(`create-account: createUser error: ${createError.message}`);
@@ -144,14 +167,15 @@ serve(async (req: Request) => {
     }
   }
 
-  // Generate a magic link — works for unconfirmed users and confirms them on tap.
+  // Signup confirmation link: confirms the email and keeps the password.
   const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
-    type: "magiclink",
+    type: "signup",
     email,
+    password,
     options: { redirectTo: REDIRECT_TO },
   });
 
-  if (linkError || !linkData?.properties?.action_link) {
+  if (linkError || !linkData?.properties?.hashed_token) {
     console.error(`create-account: generateLink error: ${linkError?.message ?? "no link"}`);
     // Account was created — return success even if we couldn't send the email.
     // The user can sign in with email+password once confirmed via another path.
@@ -160,10 +184,9 @@ serve(async (req: Request) => {
     });
   }
 
-  const rawLink     = linkData.properties.action_link;
-  const rawUrl      = new URL(rawLink);
-  const token       = rawUrl.searchParams.get("token") ?? "";
-  const type        = rawUrl.searchParams.get("type") ?? "magiclink";
+  // hemvo.app/verify-email.html calls verifyOtp({ token_hash, type }).
+  const token       = linkData.properties.hashed_token;
+  const type        = linkData.properties.verification_type ?? "signup";
   const confirmLink = `https://hemvo.app/verify-email.html?token=${encodeURIComponent(token)}&type=${encodeURIComponent(type)}&email=${encodeURIComponent(email)}`;
   const safeEmail   = htmlEscape(email);
   const year        = new Date().getFullYear();

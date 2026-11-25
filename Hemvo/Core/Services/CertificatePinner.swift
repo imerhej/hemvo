@@ -51,13 +51,21 @@ final class CertificatePinner: NSObject, URLSessionDelegate {
     // MARK: - Pinned hashes
     // SHA-256 of the SubjectPublicKeyInfo DER bytes, base64-encoded.
     // Managed by .github/workflows/check-cert-pins.yml (runs every Monday).
-    // Last checked: 2026-07-06 — live host serves the 2026-09-26 leaf below.
+    // Last checked: 2026-11-24 — live host serves the 2027-01-22 leaf below.
     // New hashes are added alongside old ones (parallel pinning); hashes whose
     // expiry date is >14 days past are pruned automatically on the next run.
+    //
+    // 2026-10-04: the leaf rotated on 2026-08-26 without the pins being refreshed, so
+    // for ~5 weeks the only hash matching the live chain was the WE1 intermediate. The
+    // chain walk below accepts a match at any depth, which is the single reason traffic
+    // kept validating — leaf-only pinning would have taken the app offline. Keep an
+    // intermediate pinned.
+    // 2026-11-24: it happened again — the leaf rotated on 2026-10-24 and only WE1 matched
+    // for a month. The GTS Root R4 is now pinned too as a second long-lived anchor.
     private static let pinnedHashes: Set<String> = [
-        "ZcJbApTb7wyllleAjHw2vYAskqdT+DhMY9aPDFwAtf4=",  // leaf — CURRENTLY LIVE (expires 2026-09-26; refresh pins by ~2026-09-05, remove only after the next cert is live)
-        "p51goejPCgGH+Oog/MU2k6PObcEfTrrr73jUcuWJ7w0=",  // leaf — previous cert, no longer served (expires 2026-07-29, safe to remove after 2026-08-12)
-        "kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4="   // Google Trust Services WE1 intermediate CA
+        "B9zUXavotYYIs217h2OZnCqCTp2vB/2pNC1zDijcIAo=",  // leaf — CURRENTLY LIVE (served since 2026-10-24, expires 2027-01-22, refresh pins by ~2026-12-23)
+        "kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4=",  // Google Trust Services WE1 intermediate CA (expires 2029-02-20)
+        "mEflZT5enoR1FuXLgYYGqnVEoZvmf9c2bVBpiOjYQ0c="   // GTS Root R4 (cross-signed copy served in chain, expires 2028-01-28)
     ]
 
     // MARK: - URLSessionDelegate

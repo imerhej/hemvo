@@ -642,7 +642,6 @@ struct NewShoppingListSheet: View {
                         .overlay(RoundedRectangle(cornerRadius: 16)
                             .stroke(focused ? accent.opacity(0.6) : slDivider,
                                     lineWidth: focused ? 2 : 1))
-                        .animation(.easeInOut(duration: 0.15), value: focused)
 
                         // Create button
                         Button {

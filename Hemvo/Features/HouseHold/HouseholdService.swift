@@ -21,6 +21,7 @@ enum HouseholdError: LocalizedError {
     case emailMismatch             // signed-in account email doesn't match invite recipient
     case emailFailed(code: String) // invite was saved but email delivery failed
     case rateLimitExceeded
+    case syncFailed                // the server rejected or never received the change
 
     var errorDescription: String? {
         switch self {
@@ -32,6 +33,7 @@ enum HouseholdError: LocalizedError {
         case .emailMismatch:      return "This invite was sent to a different email address. Sign in with the account that received the invite."
         case .emailFailed(let c): return "Invite saved, but the email couldn't be delivered. Share this code manually: \(c)"
         case .rateLimitExceeded:  return "Too many attempts. Please wait a few minutes and try again."
+        case .syncFailed:         return "Couldn't save that change. Check your connection and try again."
         }
     }
 }
@@ -163,15 +165,22 @@ final class HouseholdService: ObservableObject {
     // MARK: - Create Household
 
     /// Called by the first member (owner) to start a new household.
-    /// Creates the record locally first (for instant UI response), then
-    /// inserts it into the Supabase `households` table and updates the
-    /// owner's `profiles.household_id` in the background.
+    /// Writes to Supabase FIRST and only adopts the household locally once the
+    /// server has both the `households` row and the owner's claim on it.
+    /// Previously this was optimistic + fire-and-forget: a failed insert left a
+    /// phone-only household that the next `syncWithProfile` silently wiped
+    /// (the profile still had no household_id), taking any data entered in the
+    /// meantime with it.
     func createHousehold(name: String,
                          ownerID: String,
                          ownerUsername: String,
-                         ownerEmail: String) {
+                         ownerEmail: String) async throws {
+        guard household == nil else { throw HouseholdError.alreadyMember }
         // Use a real UUID so the row can be stored in Supabase's households table.
         let householdUUID = UUID()
+        try await upsertHouseholdToSupabase(householdUUID: householdUUID,
+                                            name: name,
+                                            ownerID: ownerID)
         let membership = HouseholdMembership(
             id: ownerID,
             username: ownerUsername,
@@ -189,20 +198,16 @@ final class HouseholdService: ObservableObject {
         )
         saveHousehold()
         PushNotificationService.shared.refreshToken()
-        // Sync to Supabase without blocking the caller.
-        Task { await upsertHouseholdToSupabase(householdUUID: householdUUID,
-                                               name: name,
-                                               ownerID: ownerID) }
     }
 
     // MARK: - Supabase Sync
 
     private func upsertHouseholdToSupabase(householdUUID: UUID,
                                            name: String,
-                                           ownerID: String) async {
+                                           ownerID: String) async throws {
         guard let ownerUUID = UUID(uuidString: ownerID) else {
             Logger.household.error("createHousehold: ownerID is not a valid UUID")
-            return
+            throw HouseholdError.syncFailed
         }
         let row = SupabaseHouseholdRow(id: householdUUID,
                                        name: name,
@@ -211,24 +216,41 @@ final class HouseholdService: ObservableObject {
             let pHouseholdId: UUID
             enum CodingKeys: String, CodingKey { case pHouseholdId = "p_household_id" }
         }
+        // 1. Insert the household row.
         do {
-            // 1. Insert the household row.
             try await supabase
                 .from("households")
                 .upsert(row, onConflict: "id")
                 .execute()
+        } catch {
+            Logger.household.error("createHousehold insert error: \(error.localizedDescription)")
+            throw HouseholdError.syncFailed
+        }
 
-            // 2. Claim ownership: sets the owner's household_id and role via a
-            // guarded RPC (a raw profiles UPDATE is blocked by
-            // guard_profile_privilege_columns).
+        // 2. Claim ownership: sets the owner's household_id and role via a
+        // guarded RPC (a raw profiles UPDATE is blocked by
+        // guard_profile_privilege_columns).
+        do {
             try await supabase
                 .rpc("claim_new_household_ownership", params: ClaimParams(pHouseholdId: householdUUID))
                 .execute()
-
-            Logger.household.debug("household created")
         } catch {
-            Logger.household.error("createHousehold error: \(error.localizedDescription)")
+            Logger.household.error("createHousehold claim error: \(error.localizedDescription)")
+            // Don't leave an orphaned households row nobody belongs to. The
+            // owner's profile never got household_id, so this delete cascades
+            // to nothing. Best effort — the row is harmless if it survives.
+            _ = try? await supabase
+                .from("households")
+                .delete()
+                .eq("id", value: householdUUID.uuidString)
+                .execute()
+            if error.localizedDescription.contains("already belongs to a household") {
+                throw HouseholdError.alreadyMember
+            }
+            throw HouseholdError.syncFailed
         }
+
+        Logger.household.debug("household created")
     }
 
     // MARK: - Invite a Member
@@ -417,52 +439,51 @@ final class HouseholdService: ObservableObject {
 
     // MARK: - Leave / Remove
 
-    func leaveHousehold(userID: String) {
-        guard var h = household else { return }
-        let wasOwner = h.ownerUserID == userID
-        h.members.removeAll { $0.id == userID }
-
-        if wasOwner, let newOwner = h.members.first {
-            // Transfer ownership locally then sync both changes to Supabase.
-            h.ownerUserID = newOwner.id
-            if let i = h.members.firstIndex(where: { $0.id == newOwner.id }) {
-                h.members[i].role = .owner
-            }
-            let householdID = h.id
-            let newOwnerID  = newOwner.id
-            Task { await transferOwnershipInSupabase(householdID: householdID,
-                                                     newOwnerID:  newOwnerID,
-                                                     leavingUserID: userID) }
-        } else if wasOwner {
-            // Owner is the sole member — delete the household entirely.
-            let householdID = h.id
-            Task { await deleteHouseholdFromSupabase(householdID: householdID) }
-        } else {
-            // Regular member leaving — just clear their profile.
-            Task { await clearProfileHousehold(userID: userID) }
-        }
-
-        household = h.members.isEmpty ? nil : h
-        saveHousehold()
+    /// What the server did when the caller left.
+    enum LeaveOutcome: String, Decodable {
+        case none, left, transferred, deleted
     }
 
-    func removeMember(memberID: String, requestingUserID: String) throws {
-        guard var h = household else { throw HouseholdError.notFound }
+    /// Leaves the current household. The server (`leave_household_safely`)
+    /// decides — from the LIVE profiles table, under a row lock — whether an
+    /// owner's departure transfers ownership or deletes the household. The
+    /// client used to make that call from its cached member list, and a stale
+    /// cache could delete a multi-member household (cascading every member's
+    /// shared data) or hand ownership to a Teen.
+    @discardableResult
+    func leaveHousehold() async throws -> LeaveOutcome {
+        guard household != nil else { throw HouseholdError.notFound }
+        struct Result: Decodable { let action: LeaveOutcome }
+        let result: Result
+        do {
+            result = try await supabase
+                .rpc("leave_household_safely")
+                .execute()
+                .value
+        } catch {
+            Logger.household.error("leave_household_safely error: \(error.localizedDescription)")
+            throw HouseholdError.syncFailed
+        }
+        // The caller is out of the household server-side in every outcome, so
+        // drop all local household state (and the profiles realtime channel).
+        // Previously a leaving member kept the household locally whenever
+        // anyone else remained in it.
+        clearHousehold()
+        Logger.household.debug("left household: \(result.action.rawValue)")
+        return result.action
+    }
+
+    /// Removes a member. The server call happens first; local state only
+    /// changes once it succeeds, so a failure can't show a removal that
+    /// silently reappears on the next refresh.
+    func removeMember(memberID: String, requestingUserID: String) async throws {
+        guard let h = household else { throw HouseholdError.notFound }
         // Only the household owner may delete members.
         let isOwner = h.ownerUserID == requestingUserID ||
             h.members.first(where: { $0.id == requestingUserID })?.role == .owner
         guard isOwner else { throw HouseholdError.notOwner }
-        h.members.removeAll { $0.id == memberID }
-        household = h
-        saveHousehold()
-        Task { await deleteMemberFromSupabase(memberID: memberID) }
-    }
+        guard let memberUUID = UUID(uuidString: memberID) else { throw HouseholdError.notFound }
 
-    func deleteMemberFromSupabase(memberID: String) async {
-        guard let memberUUID = UUID(uuidString: memberID) else {
-            Logger.household.error("deleteMember: invalid UUID")
-            return
-        }
         struct Params: Encodable {
             let pMemberId: UUID
             enum CodingKeys: String, CodingKey { case pMemberId = "p_member_id" }
@@ -473,7 +494,13 @@ final class HouseholdService: ObservableObject {
                 .execute()
         } catch {
             Logger.household.error("delete_household_member error: \(error.localizedDescription)")
+            throw HouseholdError.syncFailed
         }
+
+        guard var current = household else { return }
+        current.members.removeAll { $0.id == memberID }
+        household = current
+        saveHousehold()
     }
 
     func setMemberDisabled(memberID: String, disabled: Bool) async {
@@ -506,87 +533,38 @@ final class HouseholdService: ObservableObject {
         }
     }
 
-    // Nullifies household_id and role on the caller's own profile row via a
-    // guarded RPC (a raw profiles UPDATE is blocked by
-    // guard_profile_privilege_columns). Both call sites always pass the
-    // current session's own user id.
-    private func clearProfileHousehold(userID: String) async {
-        do {
-            try await supabase
-                .rpc("leave_household")
-                .execute()
-            Logger.household.debug("profile household cleared")
-        } catch {
-            Logger.household.error("clearProfileHousehold error: \(error.localizedDescription)")
-        }
-    }
-
-    private func transferOwnershipInSupabase(householdID: String,
-                                             newOwnerID: String,
-                                             leavingUserID: String) async {
-        struct TransferParams: Encodable {
-            let pHouseholdId: String
-            let pNewOwnerId: String
-            enum CodingKeys: String, CodingKey {
-                case pHouseholdId = "p_household_id"
-                case pNewOwnerId = "p_new_owner_id"
-            }
-        }
-        do {
-            // Updates households.owner_id and the new owner's profile.role in
-            // one guarded RPC — the new owner's row isn't the caller's own,
-            // so a raw update is rejected by both profiles_update RLS and
-            // guard_profile_privilege_columns.
-            try await supabase
-                .rpc("transfer_household_ownership",
-                     params: TransferParams(pHouseholdId: householdID, pNewOwnerId: newOwnerID))
-                .execute()
-            Logger.household.debug("ownership transferred")
-        } catch {
-            Logger.household.error("transferOwnership error: \(error.localizedDescription)")
-        }
-        // Clear the leaving owner's own profile regardless of the above outcome.
-        await clearProfileHousehold(userID: leavingUserID)
-    }
-
-    private func deleteHouseholdFromSupabase(householdID: String) async {
-        do {
-            try await supabase
-                .from("households")
-                .delete()
-                .eq("id", value: householdID)
-                .execute()
-            Logger.household.debug("household deleted")
-        } catch {
-            Logger.household.error("deleteHousehold error: \(error.localizedDescription)")
-        }
-    }
-
     // MARK: - Rename
 
-    func renameHousehold(_ newName: String, requestingUserID: String) throws {
-        guard var h = household else { throw HouseholdError.notFound }
+    /// Renames the household on the server first, then locally.
+    func renameHousehold(_ newName: String, requestingUserID: String) async throws {
+        guard let h = household else { throw HouseholdError.notFound }
         guard let requester = h.members.first(where: { $0.id == requestingUserID }),
               requester.role.canInvite
         else { throw HouseholdError.notOwner }
-        h.name = newName
-        household = h
-        saveHousehold()
-        let householdID = h.id
-        Task { await updateHouseholdNameInSupabase(householdID: householdID, newName: newName) }
-    }
 
-    private func updateHouseholdNameInSupabase(householdID: String, newName: String) async {
+        struct IDOnly: Decodable { let id: UUID }
+        let updated: [IDOnly]
         do {
-            try await supabase
+            updated = try await supabase
                 .from("households")
                 .update(["name": newName])
-                .eq("id", value: householdID)
+                .eq("id", value: h.id)
+                .select("id")
                 .execute()
-            Logger.household.debug("household renamed")
+                .value
         } catch {
             Logger.household.error("renameHousehold error: \(error.localizedDescription)")
+            throw HouseholdError.syncFailed
         }
+        // households_update RLS is owner-only. A filtered UPDATE returns no
+        // error, just zero rows — treat that as "not allowed", not success.
+        guard !updated.isEmpty else { throw HouseholdError.notOwner }
+
+        guard var current = household else { return }
+        current.name = newName
+        household = current
+        saveHousehold()
+        Logger.household.debug("household renamed")
     }
 
     // MARK: - Update Own Username
@@ -671,17 +649,32 @@ final class HouseholdService: ObservableObject {
     func updateMemberPermissions(memberID: String,
                                  permissions: MemberPermissions,
                                  requestingUserID: String) async throws {
-        guard var h = household else { throw HouseholdError.notFound }
+        guard let h = household else { throw HouseholdError.notFound }
         guard h.ownerUserID == requestingUserID else { throw HouseholdError.notOwner }
-        if let i = h.members.firstIndex(where: { $0.id == memberID }) {
-            h.members[i].permissions = permissions
-            household = h
-            saveHousehold()
+        // Server first so MemberPermissionsSheet can surface a failure instead
+        // of dismissing on a change that never saved.
+        do {
+            try await sendMemberPermissions(memberID: memberID, permissions: permissions)
+        } catch {
+            throw HouseholdError.syncFailed
         }
-        await updateMemberPermissionsInSupabase(memberID: memberID, permissions: permissions)
+        guard var current = household,
+              let i = current.members.firstIndex(where: { $0.id == memberID }) else { return }
+        current.members[i].permissions = permissions
+        household = current
+        saveHousehold()
     }
 
+    /// Fire-and-forget variant used by changeRole and invite auto-apply.
     func updateMemberPermissionsInSupabase(memberID: String, permissions: MemberPermissions) async {
+        do {
+            try await sendMemberPermissions(memberID: memberID, permissions: permissions)
+        } catch {
+            Logger.household.error("updatePermissions error: \(error.localizedDescription)")
+        }
+    }
+
+    private func sendMemberPermissions(memberID: String, permissions: MemberPermissions) async throws {
         // Direct .update() is blocked by RLS (profiles: only own row).
         // Call the SECURITY DEFINER RPC which validates ownership server-side
         // and updates only the `permissions` column.
@@ -695,14 +688,10 @@ final class HouseholdService: ObservableObject {
                 case pPermissions = "p_permissions"
             }
         }
-        do {
-            try await supabase
-                .rpc("update_member_permissions",
-                     params: Params(pMemberId: memberID, pPermissions: permissions))
-                .execute()
-        } catch {
-            Logger.household.error("updatePermissions error: \(error.localizedDescription)")
-        }
+        try await supabase
+            .rpc("update_member_permissions",
+                 params: Params(pMemberId: memberID, pPermissions: permissions))
+            .execute()
     }
 
     // MARK: - Fetch & Refresh Members from Supabase
@@ -775,7 +764,13 @@ final class HouseholdService: ObservableObject {
 
             // Auto-apply permissions from pending invite records when the member just joined.
             // This lets the owner pre-configure permissions before the invite is sent.
-            let membersByEmail = Dictionary(uniqueKeysWithValues: members.map { ($0.email.lowercased(), $0) })
+            // Members with no email are stored as "", so several can share a
+            // key — `uniqueKeysWithValues` traps on duplicates and crashed every
+            // refresh. Skip blank emails and keep the first of any duplicates.
+            let membersByEmail = Dictionary(
+                members.filter { !$0.email.isEmpty }.map { ($0.email.lowercased(), $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
             for invite in pendingInvites where invite.isPending {
                 guard let invitePermissions = invite.permissions,
                       let joinedMember = membersByEmail[invite.inviteeEmail.lowercased()]

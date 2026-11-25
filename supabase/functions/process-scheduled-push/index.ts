@@ -24,6 +24,23 @@ const BUNDLE_ID         = "com.issamnmerhej.Hemvo";
 const APNS_HOST_PROD    = "https://api.push.apple.com";
 const APNS_HOST_SANDBOX = "https://api.sandbox.push.apple.com";
 
+// How late a row may be and still be worth delivering. These are time-specific
+// reminders ("your event is starting now"), so a very late push is worse than
+// none: it misinforms, and a batch of them arriving at once reads as spam. Rows
+// past this age are retired undelivered instead. This is what makes a gap in
+// processing — downtime, a broken cron schedule — self-healing rather than a
+// stale-notification flood when delivery resumes.
+const DELIVERY_GRACE_MS = 60 * 60 * 1000;
+
+// How long a due row stays eligible for retry after a failed recipient lookup.
+// A read failure is infrastructure, not "nobody to notify", so the row is left
+// unsent for the next run (this function is cron'd every minute) instead of
+// being marked sent and lost. Past this window the row is abandoned rather
+// than retried forever: a notification that late ("your event is starting
+// now") is worse than no notification, and abandoning it stops a persistent
+// fault from building a backlog that crowds out fresh rows.
+const RETRY_WINDOW_MS = 30 * 60 * 1000;
+
 // ── APNs helpers (same as notify-household) ──────────────────────────────────
 
 function base64url(input: ArrayBuffer | string): string {
@@ -113,7 +130,7 @@ serve(async (req: Request) => {
   // Fetch up to 100 unsent notifications that are due.
   const { data: pending, error: fetchErr } = await sb
     .from("notification_schedule")
-    .select("id, household_id, creator_id, title, body")
+    .select("id, household_id, creator_id, title, body, fire_at")
     .eq("sent", false)
     .lte("fire_at", new Date().toISOString())
     .limit(100);
@@ -132,8 +149,18 @@ serve(async (req: Request) => {
   // Sign the APNs JWT once and reuse for all pushes in this batch.
   const jwt = await makeAPNsJWT();
   let processed = 0;
+  let deferred  = 0;
+  let stale     = 0;
 
   for (const item of pending) {
+    // Too late to be useful — retire it rather than deliver a misleading push.
+    const lateness = Date.now() - new Date(item.fire_at).getTime();
+    if (lateness > DELIVERY_GRACE_MS) {
+      await sb.from("notification_schedule").update({ sent: true }).eq("id", item.id);
+      stale++;
+      continue;
+    }
+
     // Resolve household member IDs via profiles — more reliable than filtering
     // device_tokens by household_id (tokens may have been registered before
     // household_id was set on the row, leaving it NULL).
@@ -146,16 +173,43 @@ serve(async (req: Request) => {
       profileQuery = profileQuery.neq("id", item.creator_id);
     }
 
-    const { data: members } = await profileQuery;
+    // Both reads below are checked: an empty result means there is genuinely
+    // nobody to push to (fine — mark it sent), whereas an error means we don't
+    // know who the recipients are and must not treat that as "nobody".
+    let readFailed = false;
+
+    const { data: members, error: memberErr } = await profileQuery;
+    if (memberErr) {
+      console.error(`Failed to resolve members for ${item.id}: ${memberErr.message}`);
+      readFailed = true;
+    }
     const memberIds = (members || []).map((m: { id: string }) => m.id);
 
     let tokenRows: { token: string; apns_environment: string }[] | null = null;
-    if (memberIds.length > 0) {
-      const { data } = await sb
+    if (!readFailed && memberIds.length > 0) {
+      const { data, error: tokenErr } = await sb
         .from("device_tokens")
         .select("token, apns_environment")
         .in("user_id", memberIds);
-      tokenRows = data;
+      if (tokenErr) {
+        console.error(`Failed to fetch tokens for ${item.id}: ${tokenErr.message}`);
+        readFailed = true;
+      } else {
+        tokenRows = data;
+      }
+    }
+
+    // Nothing has been pushed yet at this point, so leaving the row unsent
+    // cannot double-deliver — the next run starts it over from scratch.
+    if (readFailed) {
+      if (lateness <= RETRY_WINDOW_MS) {
+        deferred++;
+        continue;
+      }
+      console.error(
+        `process-scheduled-push: abandoning ${item.id} — recipient lookup kept ` +
+        `failing and it is now ${Math.round(lateness / 60000)} min late`
+      );
     }
 
     if (tokenRows && tokenRows.length > 0) {
@@ -192,7 +246,9 @@ serve(async (req: Request) => {
       }
     }
 
-    // Mark as sent regardless — prevents re-delivery if APNs tokens are stale.
+    // Mark as sent once delivery has been attempted — a stale APNs token must
+    // not cause endless re-delivery to everyone else. A failed recipient
+    // lookup is the one case that leaves the row unsent (handled above).
     await sb
       .from("notification_schedule")
       .update({ sent: true })
@@ -201,8 +257,14 @@ serve(async (req: Request) => {
     processed++;
   }
 
+  if (deferred > 0) {
+    console.warn(`process-scheduled-push: deferred ${deferred} row(s) to the next run`);
+  }
+  if (stale > 0) {
+    console.warn(`process-scheduled-push: retired ${stale} row(s) past the delivery grace window`);
+  }
   console.log(`process-scheduled-push: sent ${processed} notification(s)`);
-  return new Response(JSON.stringify({ processed }), {
+  return new Response(JSON.stringify({ processed, deferred, stale }), {
     headers: { "Content-Type": "application/json" },
   });
 });

@@ -163,7 +163,7 @@ final class DemoDataSeedUITests: XCTestCase {
             app.staticTexts["AMOUNT"].tap()
 
             // OptionRow uses Toggle("", isOn:) with no label — index it.
-            // 0 = "Bill — pay later", 1 = "Already Paid".
+            // 0 = "Bill Pay", 1 = "Already Paid".
             let toggle = app.switches.element(boundBy: paid ? 1 : 0)
             XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Expense toggle missing")
             toggle.tap()

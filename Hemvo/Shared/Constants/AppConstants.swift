@@ -30,6 +30,15 @@ enum AppConstants {
     /// Opens the App Store listing with the "Write a Review" sheet already presented.
     static let appStoreReviewURL  = URL(string: "https://apps.apple.com/app/id\(appStoreID)?action=write-review")!
 
+    // MARK: - Name & Username Validation
+    /// Length bounds for a full name and a username, applied at sign-up and
+    /// when editing the profile. Mirrored server-side in the `create-account`
+    /// Edge Function and by CHECK constraints on `profiles`.
+    static let minNameLength      = 3
+    static let maxNameLength      = 100
+    static let minUsernameLength  = 3
+    static let maxUsernameLength  = 30
+
     // MARK: - Dashboard
     static let dashboardPreviewCount = 3     // rows shown in dashboard section cards
 

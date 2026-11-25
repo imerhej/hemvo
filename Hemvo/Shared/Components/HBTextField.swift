@@ -31,7 +31,6 @@ struct HBTextField: View {
                 Image(systemName: icon)
                     .foregroundColor(isFocused ? .homeBaseGreen : .secondary)
                     .frame(width: 22)
-                    .animation(.easeInOut(duration: 0.15), value: isFocused)
             }
 
             Group {
@@ -85,7 +84,6 @@ struct HBTextField: View {
                 .stroke(isFocused ? Color.homeBaseGreen : Color(.systemGray5), lineWidth: 1.5)
         )
         .shadow(color: .black.opacity(isFocused ? 0.06 : 0.03), radius: 4, y: 2)
-        .animation(.easeInOut(duration: 0.15), value: isFocused)
     }
 }
 
@@ -102,7 +100,6 @@ struct CurrencyField: View {
             Image(systemName: "dollarsign")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(isFocused ? .blue : .secondary)
-                .animation(.easeInOut(duration: 0.15), value: isFocused)
                 .frame(width: 22)
 
             TextField(label, text: $text)
@@ -126,7 +123,6 @@ struct CurrencyField: View {
                     isFocused ? Color.blue : Color(.systemGray5),
                     lineWidth: 1.5
                 )
-                .animation(.easeInOut(duration: 0.15), value: isFocused)
         )
         .shadow(color: .black.opacity(isFocused ? 0.06 : 0.02), radius: 4, y: 2)
     }

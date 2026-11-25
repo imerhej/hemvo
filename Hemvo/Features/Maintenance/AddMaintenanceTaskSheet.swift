@@ -110,7 +110,6 @@ struct AddMaintenanceTaskSheet: View {
                         .overlay(RoundedRectangle(cornerRadius: 18)
                             .stroke(titleFocused ? amber.opacity(0.6) : divider,
                                     lineWidth: titleFocused ? 2 : 1))
-                        .animation(.easeInOut(duration: 0.15), value: titleFocused)
 
                         // ── Frequency ──────────────────────────────────
                         VStack(alignment: .leading, spacing: 12) {

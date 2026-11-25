@@ -95,10 +95,24 @@ final class BudgetViewModel: ObservableObject {
     /// Unpaid bills across both scopes for the current user — used by the Dashboard summary tile.
     /// Personal bills from other household members are already excluded by the fetch query + RLS.
     var allUpcomingBills: [Expense] {
+        (householdUpcomingBills + personalUpcomingBills).sorted { $0.date < $1.date }
+    }
+
+    /// The two halves of `allUpcomingBills`, split by scope. The Dashboard's Upcoming Bills
+    /// tile counts each separately so the number you tap and the scope you land in agree —
+    /// a single cross-scope count can't say which side of the Budget scope picker it means.
+    var householdUpcomingBills: [Expense] { unpaidBillsThisMonth(in: .household) }
+
+    /// Personal bills are per-member: only the ones this user created are theirs to see.
+    /// The `createdBy` test is belt-and-braces over the fetch query + RLS, and makes the
+    /// count correct even before `cachedUserID` resolves (it yields 0 rather than everyone's).
+    var personalUpcomingBills: [Expense] { unpaidBillsThisMonth(in: .personal) }
+
+    private func unpaidBillsThisMonth(in scope: BudgetScope) -> [Expense] {
         expenses
             .filter {
-                $0.isBill && !$0.isPaid &&
-                ($0.scope == .household || $0.createdBy == cachedUserID?.uuidString) &&
+                $0.isBill && !$0.isPaid && $0.scope == scope &&
+                (scope == .household || $0.createdBy == cachedUserID?.uuidString) &&
                 Calendar.current.isDate($0.date, equalTo: selectedMonth, toGranularity: .month)
             }
             .sorted { $0.date < $1.date }
