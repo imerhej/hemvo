@@ -12,6 +12,10 @@ name: Check Certificate Pins
 #      (safe to remove once rollout window has closed).
 #   4. Fails the run if a cert expires within 30 days and no renewal
 #      has been detected, so GitHub sends an alert email.
+#   5. Fails the run EVERY week while the live leaf is not pinned on the
+#      default branch. A green run that only updates the PR is silent — that is
+#      how two rotations (2026-08-26, 2026-10-24) went unshipped for weeks with
+#      only the intermediate pin keeping the app online.
 #
 # Required GitHub secret: none beyond the default GITHUB_TOKEN.
 # Required permissions: contents: write, pull-requests: write (set below).
@@ -64,6 +68,15 @@ jobs:
           echo "Leaf hash:         $LEAF"
           echo "Intermediate hash: $INTERMEDIATE"
           echo "Cert expires:      $EXPIRY ($DAYS_LEFT days)"
+
+      - name: Is the live leaf pinned on the default branch?
+        id: pinned
+        run: |
+          if grep -qF "${{ steps.fetch.outputs.leaf }}" Hemvo/Core/Services/CertificatePinner.swift; then
+            echo "leaf_pinned=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "leaf_pinned=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Alert if cert expires within 30 days and is not yet renewed
         run: |
@@ -214,7 +227,14 @@ jobs:
                   (auth, database, Edge Functions)
             - [ ] Ship to TestFlight and smoke-test
 
-            ### No follow-up needed
-            The next Monday run will automatically prune the old leaf hash once
-            its cert has been expired for >14 days.
+            ### Until this is merged AND shipped
+            The weekly run fails (and GitHub emails you) every Monday while the
+            live leaf is missing from the default branch. Only the pinned
+            intermediate is keeping the app online in the meantime.
           labels: security,chore
+
+      - name: Fail while the live leaf is not pinned on the default branch
+        if: steps.pinned.outputs.leaf_pinned == 'false'
+        run: |
+          echo "::error::Supabase's live certificate (expires ${{ steps.fetch.outputs.expiry }}) is NOT pinned on the default branch. Merge the chore/update-cert-pins PR (or pin it in the release branch), ship an app update, and merge that release into the default branch. Until then only the intermediate pin keeps the app online."
+          exit 1

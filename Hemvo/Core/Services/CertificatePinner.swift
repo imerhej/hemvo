@@ -63,7 +63,7 @@ final class CertificatePinner: NSObject, URLSessionDelegate {
     // 2026-11-24: it happened again — the leaf rotated on 2026-10-24 and only WE1 matched
     // for a month. The GTS Root R4 is now pinned too as a second long-lived anchor.
     private static let pinnedHashes: Set<String> = [
-        "B9zUXavotYYIs217h2OZnCqCTp2vB/2pNC1zDijcIAo=",  // leaf — CURRENTLY LIVE (served since 2026-10-24, expires 2027-01-22; refresh pins by ~2026-12-23)
+        "B9zUXavotYYIs217h2OZnCqCTp2vB/2pNC1zDijcIAo=",  // leaf — CURRENTLY LIVE (served since 2026-10-24, expires 2027-01-22, refresh pins by ~2026-12-23)
         "kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4=",  // Google Trust Services WE1 intermediate CA (expires 2029-02-20)
         "mEflZT5enoR1FuXLgYYGqnVEoZvmf9c2bVBpiOjYQ0c="   // GTS Root R4 (cross-signed copy served in chain, expires 2028-01-28)
     ]
